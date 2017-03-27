@@ -1,0 +1,316 @@
+#!/usr/bin/env nextflow
+// -*- mode:groovy -*-
+
+evaluate(new File("gwas_qc_david.config"))
+
+
+def chip_producer_allowed = ["Illumina" : "Illumina", "Affymetrix" : "Affymetrix"]
+def chip_versions_allowed = [
+  "Illu300v3" : "unknown",
+  "Illu550"   : "unknown",
+  "Immunochip"    : "ichip.hg18.hg19.dbsnpID.chr1-26.txt",
+  "Exomechipv1"     : "v1_exomearray.hg19.dbsnpID.chr1-26.txt",
+  "Exomechipv1-1"   : "v1-1_exomearray.hg19.dbsnpID.chr1-26.txt",
+  "HumanCoreExome24v1" : "HumanCoreExome24_v1.0.hg19.dbsnpID.chr1-26.txt",
+  "AgiFranceCustom" : "Agifrance_custom.annot_nofilter.txt",
+  "Affy6" : "GenomeWideSNP_6.na24.annot_nofilter.txt",
+  "Affy5" : "GenomeWideSNP_5.na24.annot_nofilter.txt",
+  "Affy500kSet" : "Mapping250K.na24.annot_nofilter.txt"
+]
+def chip_strand_info_allowed = [
+  "Immunochip_orig_annotation":"ichip.orig_annotation.hg18.hg19.dbsnpID.chr1-26.minusStrandOnly.rs.hg19.txt",
+  "Immunochip_TOP_annotation":"ichip.TOP_annotation.hg18.hg19.dbsnpID.chr1-26.FlipToPlusStrandOnly.rs.hg19.txt",
+  "Exomechipv1_orig_annotation":"v1_exomearray.hg19.dbsnpID.chr1-26.minusStrandOnly.rs.txt",
+  "Exomechipv1-1_orig_annotation":"v1-1_exomearray.hg19.dbsnpID.chr1-26.minusStrandOnly.rs.txt",
+  "HumanCoreExome24v1_orig_annotation":"HumanCoreExome24_v1.0.hg19.dbsnpID.chr1-26.minusStrandOnly.rs.txt"
+]
+def chip_rs_exclude = [
+    "Immunochip":"ichip.hg18.hg19.dbsnpID.chr1-26.exclude.HailiangHuang.chr25.chr26.txt", 
+    "HumanCoreExome24v1":"HumanCoreExome24_v1.0.hg19.dbsnpID.chr1-26.duplicates.txt"
+]
+
+// should work
+plink_exclude = {
+  var procs : 1	// number of cores to use
+  var mem : 1024	// RAM in MB
+
+  def basename = "$output.bed".take("$output.bed".lastIndexOf('.'))
+  def products = [basename +".bim",basename+".fam", basename +".bed"]
+
+  from("bim", "bed", "fam", "exclude") produce(products) {
+    multi "$PLINK --threads $procs --memory $mem --bed $input.bed --bim $input.bim --fam $input.fam --exclude $input.exclude --make-bed --out $basename >$output.log",
+          "echo $output1 $output2 $output3 >/dev/null"
+  }
+
+  forward basename + ".bim", basename + ".bed", basename + ".fam"
+}
+
+// should work
+plink_flip = {
+  var procs : 1
+  var mem : 1024
+
+  def basename = "$output.bed".take("$output.bed".lastIndexOf('.'))
+
+  from("bim", "bed", "fam", "flip") produce (basename +".bim", basename +".bed", basename+".fam") {
+    multi "$PLINK --noweb --threads $procs --memory $mem --bed $input.bed --bim $input.bim --fam $input.fam --flip $input.flip --make-bed --out $basename >$output.log",
+          "echo $output1 $output2 $output3 >/dev/null"
+  }
+
+  forward basename + ".bim", basename + ".bed", basename + ".fam"
+}
+
+
+// should work
+generate_annotations = {
+
+  requires ANNOTATION_DIR : "Directory with SNP annotation dictionaries"
+
+  def annotation_file = file(ANNOTATION_DIR + '/' + switch_to_chip_build + '/' + chip_producer_allowed.get(chip_producer) + '/' + chip_versions_allowed.get(chip_version)).absolutePath
+
+  switch(chip_version) {
+  case "Immunochip":
+    produce("$output.annotations") {
+      exec """
+        perl -ne '@l=split(/\\s+/);print "\$l[3] \$l[4] \$l[7] \$l[8] \$l[5] \$l[1] \$l[2]\\n";' $annotation_file >$output.annotations
+      """
+    }
+    break;
+  case ["Exomechipv1", "Exomechipv1-1", "HumanCoreExome24v1"]:
+    produce("$output.annotations") {
+      // note that Exomechip annotations do not contain hg18 positions, so l[1] l[1] is okay here
+      exec """
+        perl -ne '@l=split(/\\s+/);print "\$l[2] \$l[3] \$l[6] \$l[7] \$l[4] \$l[1] \$l[1]\\n";' $annotation_file >$output.annotations
+      """
+    }
+    break;
+  default:
+    produce("$output.annotations") {
+      // note that Affymetrix chips do not contain hg18/hg19 positions at all
+      exec """
+        perl -ne '@l=split(/\\s+/);print "\$l[0] \$l[1] \$l[5] \$l[6] \$l[4] 0 0\\n";' $annotation_file >$output.annotations
+      """
+    }
+    break;
+  }
+
+  forward inputs, output.annotations
+}
+
+// should work
+generate_flipfile = {
+
+  // do we have a predefined flip file?
+  if(chip_strand_info_allowed.get(chip_strand_info, false)) {
+    def source = file(ANNOTATION_DIR + '/' + switch_to_chip_build + '/' + chip_producer_allowed.get(chip_producer) + '/' + chip_strand_info_allowed.get(chip_strand_info)).absolutePath
+
+    println "Using predefined strand flip file " + chip_strand_info_allowed.get(chip_strand_info)
+    produce("$output.flip") {
+      exec "cp $source $output.flip"
+    }
+
+  } else {
+    // just copy the annotation file to the flip file (?)
+    println "Generating strand flip file from annotations"
+    from("bim", "annotations") produce("$output.flip") {
+      exec "bin/generate_flipfile.pl $input.bim $input.annotations >$output.flip"
+    }
+  }
+
+  check {
+    exec "[ -e $output.flip ]"
+  } otherwise {
+    fail "Could not generate flipfile $output.flip"
+  }
+
+  forward inputs, output.flip
+}
+
+// should work
+translate_ids = {
+  from("bim", "annotations") produce ("$output.bim") {
+    exec "bin/translate_ichip_to_rs.pl $input.bim $input.annotations $chip_build $switch_to_chip_build >$output.bim"
+  }
+  forward input.bed, input.fam, output.bim, input.annotations
+}
+
+// confirmed to work
+find_duplicates = {
+  from("bim") produce ("$output.duplicates") {
+    exec "cut -f 2 $input.bim | sort | uniq -d > $output.duplicates"
+  }
+  forward inputs, output.duplicates
+}
+
+// should work
+find_nn = {
+  from("bim") produce ("$output.nn") {
+    exec """
+       grep -P "\\tN\\tN" $input.bim | cut -f2 > $output.nn
+    """
+  }
+  forward inputs, output.nn
+}
+
+
+merge_exclude_list = {
+  def chip_dir = ANNOTATION_DIR + '/' + switch_to_chip_build + '/' + chip_producer_allowed.get(chip_producer) + '/'
+
+  def chip_exclude
+  if (chip_rs_exclude.get(chip_version, false)) {
+    chip_exclude = chip_dir + chip_rs_exclude.get(chip_version)
+  } else {
+    chip_exclude = '/dev/null'
+  }
+
+  from("duplicates", "nn") produce ("$output.exclude") {
+    exec "cat $input1 $input2 $chip_exclude >$output.exclude"
+  }
+
+  forward input.bim, input.bed, input.fam, output.exclude
+}
+
+// clean_snps = segment {
+//   generate_flipfile
+//   //  + plink_flip
+//   + translate_ids
+//   + find_duplicates
+//   + find_nn
+//   //  + plink_exclude
+// }
+
+// clean_snps = segment {
+//   generate_annotations + generate_flipfile + plink_flip + translate_ids + find_duplicates + find_nn + merge_exclude_list + plink_exclude
+// }
+
+// // all projects
+// Bpipe.run {
+//   clean_snps
+// }
+
+input_files = Channel.create()
+to_flipfile = Channel.create()
+
+Channel.fromFilePairs(params.input + "{.bim,.bed,.fam}", size:3, flat: true).separate(input_files, to_flipfile) { a -> [a, a[1]] }
+
+process generate_annotations {
+  def input_files = Channel.fromFilePairs(params.input + "{.bim,.bed,.fam}", size:3, flat: true)
+
+  input:
+  file plink from input_files
+
+  output:
+  file 'annotations.list' into annotations, to_translate_ann
+
+  def annotation_file = file(ANNOTATION_DIR+'/'+params.switch_to_chip_build+'/'+chip_producer_allowed.get(params.chip_producer)+'/'+chip_versions_allowed.get(params.chip_version)).toAbsolutePath()
+
+"""
+perl -ne '@l=split(/\\s+/);print "\$l[3] \$l[4] \$l[7] \$l[8] \$l[5] \$l[1] \$l[2]\\n";' $annotation_file >annotations.list
+"""
+}
+
+// 
+process generate_flipfile {
+  input:
+  file ann from annotations
+  file bim from to_flipfile
+
+  output:
+  file 'flipfile' into to_plink_flip
+
+  def source = file(ANNOTATION_DIR+'/'+params.switch_to_chip_build+'/'+chip_producer_allowed.get(params.chip_producer)+'/'+chip_strand_info_allowed.get(params.chip_strand_info)).toAbsolutePath()
+
+"""
+if [ -e $source ]; then
+  cp $source flipfile
+else
+  bin/generate_flipfile.pl $bim $ann >flipfile
+fi
+"""
+}
+
+process plink_flip {
+  input:
+  file plink from input_files
+  file flip  from to_plink_flip
+
+  output:
+  file 'flipped.{bed,fam}' into to_plink_exclude_plink
+  file 'flipped.bim' into to_translate_bim
+
+"""
+../../../$PLINK --bed ${plink[1]} --bim ${plink[2]} --fam ${plink[3]} --flip $flip --make-bed --out flipped
+"""
+}
+
+process translate_ids {
+  input:
+  file bim from to_translate_bim
+  file ann from to_translate_ann
+
+  output:
+  file 'translated.bim' into to_find_duplicates, to_find_nn, to_exclude_bim
+
+"""
+../../../bin/translate_ichip_to_rs.pl $bim $ann ${params.chip_build} ${params.switch_to_chip_build} >translated.bim
+"""
+}
+
+process find_duplicates {
+  input:
+  file bim from to_find_duplicates
+
+  output:
+  file 'duplicates' into to_merge_exclude_duplicates
+
+"""
+cut -f 2 $bim | sort | uniq -d >duplicates
+"""
+}
+
+process find_nn {
+  input:
+  file bim from to_find_nn
+
+  output:
+  file 'nn' into to_merge_exclude_nn
+
+"""
+grep -P "\\tN\\tN" $bim | cut -f2 >nn
+"""
+}
+
+process merge_exclude_list {
+  input:
+  file duplicates from to_merge_exclude_duplicates
+  file nn from to_merge_exclude_nn
+
+  output:
+  file 'exclude' into to_plink_exclude_list
+
+  def source = ANNOTATION_DIR+'/'+params.switch_to_chip_build+'/'+chip_producer_allowed.get(params.chip_producer)+'/'+chip_rs_exclude.get(params.chip_version)
+
+"""
+if [ -e $source ]; then
+  cat $duplicates $nn $source >exclude
+else
+  cat $duplicates $nn >exclude
+fi
+"""
+}
+
+process plink_exclude {
+
+  publishDir params.output ?: '.', mode: 'move', overwrite: true
+
+  input:
+  file exclude from to_plink_exclude_list
+  file plink from to_plink_exclude_plink
+  file bim from to_exclude_bim
+
+  output:
+  file 'result.{bim,bed,fam}' into final_results
+"""
+../../../$PLINK --bed ${plink[0]} --bim $bim --fam ${plink[1]} --exclude $exclude --make-bed --out result
+"""
+}
