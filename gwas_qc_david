@@ -1,6 +1,8 @@
 #!/usr/bin/env nextflow
 // -*- mode:groovy -*-
 
+params.output = "."
+
 evaluate(new File("gwas_qc_david.config"))
 
 
@@ -29,164 +31,6 @@ def chip_rs_exclude = [
     "HumanCoreExome24v1":"HumanCoreExome24_v1.0.hg19.dbsnpID.chr1-26.duplicates.txt"
 ]
 
-// should work
-plink_exclude = {
-  var procs : 1	// number of cores to use
-  var mem : 1024	// RAM in MB
-
-  def basename = "$output.bed".take("$output.bed".lastIndexOf('.'))
-  def products = [basename +".bim",basename+".fam", basename +".bed"]
-
-  from("bim", "bed", "fam", "exclude") produce(products) {
-    multi "$PLINK --threads $procs --memory $mem --bed $input.bed --bim $input.bim --fam $input.fam --exclude $input.exclude --make-bed --out $basename >$output.log",
-          "echo $output1 $output2 $output3 >/dev/null"
-  }
-
-  forward basename + ".bim", basename + ".bed", basename + ".fam"
-}
-
-// should work
-plink_flip = {
-  var procs : 1
-  var mem : 1024
-
-  def basename = "$output.bed".take("$output.bed".lastIndexOf('.'))
-
-  from("bim", "bed", "fam", "flip") produce (basename +".bim", basename +".bed", basename+".fam") {
-    multi "$PLINK --noweb --threads $procs --memory $mem --bed $input.bed --bim $input.bim --fam $input.fam --flip $input.flip --make-bed --out $basename >$output.log",
-          "echo $output1 $output2 $output3 >/dev/null"
-  }
-
-  forward basename + ".bim", basename + ".bed", basename + ".fam"
-}
-
-
-// should work
-generate_annotations = {
-
-  requires ANNOTATION_DIR : "Directory with SNP annotation dictionaries"
-
-  def annotation_file = file(ANNOTATION_DIR + '/' + switch_to_chip_build + '/' + chip_producer_allowed.get(chip_producer) + '/' + chip_versions_allowed.get(chip_version)).absolutePath
-
-  switch(chip_version) {
-  case "Immunochip":
-    produce("$output.annotations") {
-      exec """
-        perl -ne '@l=split(/\\s+/);print "\$l[3] \$l[4] \$l[7] \$l[8] \$l[5] \$l[1] \$l[2]\\n";' $annotation_file >$output.annotations
-      """
-    }
-    break;
-  case ["Exomechipv1", "Exomechipv1-1", "HumanCoreExome24v1"]:
-    produce("$output.annotations") {
-      // note that Exomechip annotations do not contain hg18 positions, so l[1] l[1] is okay here
-      exec """
-        perl -ne '@l=split(/\\s+/);print "\$l[2] \$l[3] \$l[6] \$l[7] \$l[4] \$l[1] \$l[1]\\n";' $annotation_file >$output.annotations
-      """
-    }
-    break;
-  default:
-    produce("$output.annotations") {
-      // note that Affymetrix chips do not contain hg18/hg19 positions at all
-      exec """
-        perl -ne '@l=split(/\\s+/);print "\$l[0] \$l[1] \$l[5] \$l[6] \$l[4] 0 0\\n";' $annotation_file >$output.annotations
-      """
-    }
-    break;
-  }
-
-  forward inputs, output.annotations
-}
-
-// should work
-generate_flipfile = {
-
-  // do we have a predefined flip file?
-  if(chip_strand_info_allowed.get(chip_strand_info, false)) {
-    def source = file(ANNOTATION_DIR + '/' + switch_to_chip_build + '/' + chip_producer_allowed.get(chip_producer) + '/' + chip_strand_info_allowed.get(chip_strand_info)).absolutePath
-
-    println "Using predefined strand flip file " + chip_strand_info_allowed.get(chip_strand_info)
-    produce("$output.flip") {
-      exec "cp $source $output.flip"
-    }
-
-  } else {
-    // just copy the annotation file to the flip file (?)
-    println "Generating strand flip file from annotations"
-    from("bim", "annotations") produce("$output.flip") {
-      exec "bin/generate_flipfile.pl $input.bim $input.annotations >$output.flip"
-    }
-  }
-
-  check {
-    exec "[ -e $output.flip ]"
-  } otherwise {
-    fail "Could not generate flipfile $output.flip"
-  }
-
-  forward inputs, output.flip
-}
-
-// should work
-translate_ids = {
-  from("bim", "annotations") produce ("$output.bim") {
-    exec "bin/translate_ichip_to_rs.pl $input.bim $input.annotations $chip_build $switch_to_chip_build >$output.bim"
-  }
-  forward input.bed, input.fam, output.bim, input.annotations
-}
-
-// confirmed to work
-find_duplicates = {
-  from("bim") produce ("$output.duplicates") {
-    exec "cut -f 2 $input.bim | sort | uniq -d > $output.duplicates"
-  }
-  forward inputs, output.duplicates
-}
-
-// should work
-find_nn = {
-  from("bim") produce ("$output.nn") {
-    exec """
-       grep -P "\\tN\\tN" $input.bim | cut -f2 > $output.nn
-    """
-  }
-  forward inputs, output.nn
-}
-
-
-merge_exclude_list = {
-  def chip_dir = ANNOTATION_DIR + '/' + switch_to_chip_build + '/' + chip_producer_allowed.get(chip_producer) + '/'
-
-  def chip_exclude
-  if (chip_rs_exclude.get(chip_version, false)) {
-    chip_exclude = chip_dir + chip_rs_exclude.get(chip_version)
-  } else {
-    chip_exclude = '/dev/null'
-  }
-
-  from("duplicates", "nn") produce ("$output.exclude") {
-    exec "cat $input1 $input2 $chip_exclude >$output.exclude"
-  }
-
-  forward input.bim, input.bed, input.fam, output.exclude
-}
-
-// clean_snps = segment {
-//   generate_flipfile
-//   //  + plink_flip
-//   + translate_ids
-//   + find_duplicates
-//   + find_nn
-//   //  + plink_exclude
-// }
-
-// clean_snps = segment {
-//   generate_annotations + generate_flipfile + plink_flip + translate_ids + find_duplicates + find_nn + merge_exclude_list + plink_exclude
-// }
-
-// // all projects
-// Bpipe.run {
-//   clean_snps
-// }
 
 input_files = Channel.create()
 to_flipfile = Channel.create()
@@ -239,7 +83,7 @@ process plink_flip {
   file 'flipped.bim' into to_translate_bim
 
 """
-../../../$PLINK --bed ${plink[1]} --bim ${plink[2]} --fam ${plink[3]} --flip $flip --make-bed --out flipped
+$PLINK --bed ${plink[1]} --bim ${plink[2]} --fam ${plink[3]} --flip $flip --make-bed --out flipped
 """
 }
 
@@ -252,7 +96,7 @@ process translate_ids {
   file 'translated.bim' into to_find_duplicates, to_find_nn, to_exclude_bim
 
 """
-../../../bin/translate_ichip_to_rs.pl $bim $ann ${params.chip_build} ${params.switch_to_chip_build} >translated.bim
+translate_ichip_to_rs.pl $bim $ann ${params.chip_build} ${params.switch_to_chip_build} >translated.bim
 """
 }
 
@@ -311,6 +155,6 @@ process plink_exclude {
   output:
   file 'result.{bim,bed,fam}' into final_results
 """
-../../../$PLINK --bed ${plink[0]} --bim $bim --fam ${plink[1]} --exclude $exclude --make-bed --out result
+$PLINK --bed ${plink[0]} --bim $bim --fam ${plink[1]} --exclude $exclude --make-bed --out result
 """
 }
