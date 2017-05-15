@@ -6,7 +6,7 @@ Rplink <- function(PHENO,GENO,CLUSTER,COVAR){
 	library(hwde)
 	
         # annotation file that has the affection status, ethnic group and batch information
-	annotation  <- read.csv("$individuals_annotation", sep="\t", header=T)  
+	annotation  <- read.csv("INDIVIDUALS_ANNOTATION", sep="\t", header=T)  
 
 	runHWE <- function(x, ii){
 		obs_hom1 <- sum(x[ii]==0, na.rm=T)

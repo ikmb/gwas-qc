@@ -3,7 +3,7 @@
 
 params.output = "."
 
-evaluate(new File("gwas_qc_david.config"))
+evaluate(new File("QC-Rs.nf"))
 
 
 def chip_producer_allowed = ["Illumina" : "Illumina", "Affymetrix" : "Affymetrix"]
