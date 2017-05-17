@@ -44,18 +44,28 @@ def chip_rs_autosomes  = [
 // initialize configuration
 params.output = "."
 evaluate(new File("QCI.config"))
-input_basename = file(params.input)
+input_basename = params.input
 hwe_template_script = file(params.hwe_template)
 
+// Lots of indirection layers require lots of backslash escaping
+individuals_annotation = file(BATCH_DIR + "/" + params.individuals_annotation)
+definetti_r = file(SCRIPT_DIR + "/DeFinetti_hardy.r")
+autosomes = file(ANNOTATION_DIR + "/" + params.chip_build + "/" + chip_producer_allowed[params.chip_producer] + "/" + chip_rs_autosomes[params.chip_version])
+
 // set up channels
-input_files = Channel.create()
-to_hwe_diagram = Channel.create()
-to_split = Channel.create()
 to_calc_hwe_script = Channel.create()
 to_calc_hwe = Channel.create()
 
-// set up input data set
-Channel.fromFilePairs(params.input + "{.bim,.bed,.fam}", size:3, flat: true).separate(to_hwe_diagram, to_split) { a -> [a, a] }
+input_bim = file(params.input + ".bim")
+input_bed = file(params.input + ".bed")
+input_fam = file(params.input + ".fam")
+
+// verify inputs
+assert file(hwe_template_script).exists() : "Could not find HWE template script: $hwe_template_script"
+assert file(individuals_annotation).exists() : "Could not find individuals annotation file: $individuals_annotation"
+assert file(autosomes).exists() : "Could not find autosome annotation file: $autosomes"
+assert file(definetti_r).exists() : "Could not find DeFinetti plotting script: $definetti_r"
+
 
 /*
  Generate HWE tables and draw DeFinetti plots of the whole data set
@@ -64,7 +74,12 @@ process generate_hwe_diagrams {
   publishDir params.output ?: '.', mode: 'move', overwrite: true
 
   input:
-    file plink from to_hwe_diagram
+    //file plink from to_hwe_diagram
+    file autosomes
+    file definetti_r
+    file input_bim
+    file input_bed
+    file input_fam
 
   output:
     file 'controls_DeFinetti.jpg'
@@ -72,11 +87,9 @@ process generate_hwe_diagrams {
     file 'cases_controls_DeFinetti.jpg'
     file 'hardy.hwe'
 
-  def autosomes = ANNOTATION_DIR + "/" + params.chip_build + "/" + chip_producer_allowed[params.chip_producer] + "/" + chip_rs_autosomes[params.chip_version]
-  def definetti_r = "$SCRIPT_DIR/DeFinetti_hardy.r"
-
+    def basename = new File(input_bim.toString()).getBaseName()
 """
-$PLINK --noweb --bfile ${input_basename} --hardy --out hardy --hwe 0.0 --seed 123 --extract $autosomes
+$PLINK --noweb --bfile ${basename} --hardy --out hardy --hwe 0.0 --extract $autosomes
 R --slave --args hardy.hwe controls_DeFinetti cases_DeFinetti cases_controls_DeFinetti <$definetti_r
 """
 }
@@ -86,15 +99,14 @@ R --slave --args hardy.hwe controls_DeFinetti cases_DeFinetti cases_controls_DeF
  */
 process split_dataset {
   input:
-  file plink from to_split
+    //file plink from to_split // [bim, bed, fam]
+    file input_bim
 
   output:
   file 'chunk_*' into to_calc_hwe
 
-  def par = input_basename + ".bim"
-
   """
-  cut -f 2 $par | split -l 1000 -a 3 -d - chunk_
+  cut -f 2 $input_bim | split -l 1000 -a 3 -d - chunk_
   """
 }
 
@@ -102,32 +114,42 @@ process split_dataset {
  Generate a HWE calculation R script to be used as a Plink slave.
  */
 process generate_hwe_script {
+  input:
+    file individuals_annotation
+    file hwe_template_script
+
   output:
-  file "hwe-script.r" into to_calc_hwe_script
+    file "hwe-script.r" into to_calc_hwe_script
 
-  // Lots of indirection layers require lots of backslash escaping
-  def annotation_file = (ANNOTATION_DIR + "/" + params.chip_build + "/" + chip_producer_allowed[params.chip_producer] + "/" + params.individuals_annotation).replaceAll('/', '\\\\\\\\/')
 
-  script:
-  """
+  shell:
+  '''
   R CMD Rserve --save
-  sed s/INDIVIDUALS_ANNOTATION/${annotation_file}/g ${hwe_template_script} >hwe-script.r
-  """
+  sed "s|INDIVIDUALS_ANNOTATION|!{individuals_annotation}|g" "!{hwe_template_script}" >hwe-script.r
+  '''
 }
 
 /*
  Run the HWE calculation R script on every 1000-SNP chunk
  */
 process calculate_hwe {
+
   input:
-  set file(chunk), file('hwe-script.r') from to_calc_hwe.flatten().combine(to_calc_hwe_script)
+    set file(chunk), file('hwe-script.r') from to_calc_hwe.flatten().combine(to_calc_hwe_script)
+    file input_bim
+    file input_bed
+    file input_fam
+    file individuals_annotation // not directly used in the script below but hwe-script.r expects this to be staged
 
   output:
   file "${chunk}-out.auto.R" into from_calc_hwe
   file "${chunk}-out.nosex"
 
+  def basename = new File(input_bim.toString()).getBaseName()
+
 """
-$PLINK --noweb --bfile ${input_basename} --R hwe-script.r --missing-phenotype 0 --allow-no-sex --extract ${chunk} --out ${chunk}-out
+#R CMD Rserve --save
+$PLINK --noweb --bfile "${basename}" --R hwe-script.r --allow-no-sex --extract ${chunk} --out ${chunk}-out
 """
 }
 
@@ -137,6 +159,9 @@ $PLINK --noweb --bfile ${input_basename} --R hwe-script.r --missing-phenotype 0 
 process merge_and_verify_chunked_hwe {
     input:
     file 'chunk' from from_calc_hwe.collect()
+    file input_bim
+    file input_bed
+    file input_fam
 
     output:
     file 'chunks_combined.hwe'
@@ -147,7 +172,7 @@ process merge_and_verify_chunked_hwe {
 cat chunk* >chunks_combined.hwe
 
 combined_hwe_nas=`grep -c NA chunks_combined.hwe`
-input_nas=`grep -c NA !{input_basename}.bim`
+input_nas=`grep -c NA !{input_bim}`
 if [ $combined_hwe_nas -ne $input_nas ]
 then
    echo "There are missing HWE calculations, $combined_hwe_nas NAs in chunked HWE calculations and $input_nas in input."
@@ -155,7 +180,7 @@ then
 fi
 
 chunked_snps=`wc -l chunks_combined.hwe`
-input_snps=`wc -l !{input_basename}.bim`
+input_snps=`wc -l !{input_bim}`
 if [ $chunked_snps -ne $input_snps ]
 then
    echo "Some SNPs have gone missing during input splitting. I was expecting $input_snps but got only $chunked_snps."
@@ -164,5 +189,30 @@ fi
 '''
 }
 
+/*
+variant_excludes = Channel.create()
 
+process exclude_lists_for_failed_hwe {
+    input:
+    file hwe_result
+
+    output:
+}
+
+process exclude_lists_for_missingness_whole {
+    input:
+    file missingness
+
+    output:
+    file 'excludes-missingness-whole' into variant_excludes
+}
+
+process exclude_lists_for_missingness_per_batch {
+    input:
+    file missingness // same as in missingness_whole
+
+    output:
+    file 'excludes-missingness-per-batch' into variant_excludes
+}
+*/
 
