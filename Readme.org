@@ -1,0 +1,43 @@
+#+AUTHOR: Jan Christian Kaessens <j.kaessens@ikmb.uni-kiel.de>
+#+TITLE: GWAS QC Pipeline
+
+This pipeline is divided into several sub-pipelines that do quality control on GWAS data sets
+
+* Running
+   You will need the IKMB module environment, with =Nextflow= and =Java= loaded.
+   This pipeline makes use of the module environment itself so you won't have to
+   choose or define specific tool versions (i.e. Plink).
+* Configuration
+* Pipelines
+** Name cleansing
+  Pipeline script: =SNPQC-Rs.nf=
+    
+  Performs the following steps:
+  1. translate Immunochip (or other chip-specific SNP names for that matter) to 'Rs'-type SNP names
+  2. flips alleles based on data set-specific flip files
+  3. removes duplicates, NN-type SNPs and those specified in a chip-specific exclude lists from the data set
+
+  *Parameters*:
+  - ~--output[=.]~ :: define output directory. It's /optional/ but will litter your current working directory if not specified.
+  - ~--input=basename~ :: define the input data set. It's /required/ and should
+       point to your Plink data set's base name, i.e. the given example will use
+       the files =basename.bim=, =basename.bed= and =basename.fam= as input
+       data.
+  - ~--output-basename[=result]~ :: output basename. /Optional/, defaults to =result.{bim,bed,fam,...}= as result names
+
+** SNP QC Phase I
+  Pipeline script: =SNPQCI.nf=
+
+  Performs the following steps:
+  1. calculate HWE values for whole collection
+  2. draw DeFinetti plots of cases, controls and cases+controls
+  3. split the data set into 1000-SNP chunks, and calculate HWE on each chunk
+  4. merge all chunks back into a single HWE table
+  5. determine variants that should be excluded:
+     - based on sample annotation list (?)
+     - based on whole-collection missingness
+     - based on per-batch missingness
+  6. apply exclusion lists
+  7. plot DeFinetti diagrams for merged batch
+  8. plot DeFinetti diagrams per batch before and after SNPQCI
+

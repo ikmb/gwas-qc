@@ -43,7 +43,7 @@ def chip_rs_autosomes  = [
 
 // initialize configuration
 params.output = "."
-evaluate(new File("QCI-Part1.config"))
+evaluate(new File("QCI.config"))
 input_basename = file(params.input)
 hwe_template_script = file(params.hwe_template)
 
@@ -145,6 +145,7 @@ process merge_and_verify_chunked_hwe {
 '''
 #!/usr/bin/env bash
 cat chunk* >chunks_combined.hwe
+
 combined_hwe_nas=`grep -c NA chunks_combined.hwe`
 input_nas=`grep -c NA !{input_basename}.bim`
 if [ $combined_hwe_nas -ne $input_nas ]
@@ -162,4 +163,6 @@ then
 fi
 '''
 }
+
+
 

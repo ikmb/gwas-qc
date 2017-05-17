@@ -1,3 +1,7 @@
 work
 .nextflow*
 nextflow
+out-rs
+out-snpqci-part1
+out-snpqci-part2
+
