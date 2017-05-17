@@ -1,5 +1,24 @@
 // -*- mode:groovy -*-
 
+/*
+ Author: Jan Kässens <j.kaessens@ikmb.uni-kiel.de>
+
+ TODO:
+
+ - Turn all absolute paths, i.e. files taken from the PoA hierarchy, into staged
+   files. This should reduce friction when running things on the cluster.
+   Nextflow (and Slurm, for that matter) will then know what to do.
+
+ - Use module() to select the appropriate Plink version. Reduces configuration
+   overhead and maybe eliminates pipeline-specific configuration files
+   completely.
+
+ - Check why Plink 1.9 excludes 51 SNPs more than Plink 1.02. Plink 1.9 is more
+   desirable because it is MUCH faster and uses less memory. Right now, Plink
+   1.02 is used to match with David's verification data sets.
+*/
+
+// Set default output directory
 params.output = "."
 
 evaluate(new File("QC-Rs.config"))
@@ -29,12 +48,17 @@ def chip_rs_exclude = [
     "HumanCoreExome24v1":"HumanCoreExome24_v1.0.hg19.dbsnpID.chr1-26.duplicates.txt"
 ]
 
+// Set up channels between processes
 
 input_files = Channel.create()
 to_flipfile = Channel.create()
 
+// Move input files (basename given via --input PLINK) into first-stage channel
 Channel.fromFilePairs(params.input + "{.bim,.bed,.fam}", size:3, flat: true).separate(input_files, to_flipfile) { a -> [a, a[1]] }
 
+/*
+ Transform a chip-specific annotations file into a format that is easier to process by the following stages.
+ */
 process generate_annotations {
     def input_files = Channel.fromFilePairs(params.input + "{.bim,.bed,.fam}", size:3, flat: true)
 
@@ -51,7 +75,9 @@ perl -ne '@l=split(/\\s+/);print "\$l[3] \$l[4] \$l[7] \$l[8] \$l[5] \$l[1] \$l[
 """
 }
 
-//
+/*
+ Generate a Plink flipfile based on annotations and strand info
+ */
 process generate_flipfile {
     input:
     file ann from annotations
@@ -71,6 +97,9 @@ fi
 """
 }
 
+/*
+ Call Plink to actually flip alleles based on strand information
+ */
 process plink_flip {
     input:
     file plink from input_files
@@ -85,6 +114,9 @@ p-link --noweb --bed ${plink[1]} --bim ${plink[2]} --fam ${plink[3]} --flip $fli
 """
 }
 
+/*
+ Translate Immunochop IDs to Rs names
+ */
 process translate_ids {
     input:
     file bim from to_translate_bim
@@ -98,6 +130,9 @@ translate_ichip_to_rs.pl $bim $ann ${params.chip_build} ${params.switch_to_chip_
 """
 }
 
+/*
+ Create a list of duplicate SNPs now that all SNPs have standardized Rs names
+ */
 process find_duplicates {
     input:
     file bim from to_find_duplicates
@@ -110,6 +145,9 @@ cut -f 2 $bim | sort | uniq -d >duplicates
 """
 }
 
+/*
+ Create a list of NN SNPs
+ */
 process find_nn {
     input:
     file bim from to_find_nn
@@ -122,6 +160,9 @@ grep -P "\\tN\\tN" $bim | cut -f2 >nn
 """
 }
 
+/*
+ Merge duplicates, NNs and, if available, a chip-specific exclude file into a single file
+ */
 process merge_exclude_list {
     input:
     file duplicates from to_merge_exclude_duplicates
@@ -142,6 +183,9 @@ fi
 """
 }
 
+/*
+ Apply an exclude list to the translated Plink data set
+ */
 process plink_exclude {
 
     publishDir params.output ?: '.', mode: 'move', overwrite: true
@@ -158,3 +202,4 @@ process plink_exclude {
 p-link --noweb --bed ${plink[0]} --bim $bim --fam ${plink[1]} --exclude $exclude --allow-no-sex --make-bed --out result
 """
 }
+
