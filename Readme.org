@@ -1,5 +1,8 @@
 #+AUTHOR: Jan Christian Kaessens <j.kaessens@ikmb.uni-kiel.de>
 #+TITLE: GWAS QC Pipeline
+#+STARTUP: showall
+
+/Note: This is currently under heavy development. Is likely that this documentation does not match the actual source code. It will soon, though./
 
 This pipeline is divided into several sub-pipelines that do quality control on GWAS data sets
 
@@ -12,7 +15,15 @@ This pipeline is divided into several sub-pipelines that do quality control on G
 ~nextflow -c dataset.config [ -c more.config [ -c andevenmore.config ]] run <script.nf> --input=<basename> [<other options>]~
 #+END_QUOTE
 
+*Example:*
 
+#+BEGIN_QUOTE
+~nextflow -c set_cvid2.config -c rs.config run SNPQC-Rs.nf --input=../CVID2 --output=./out --output-basename=after-Rs~
+
+This will load paramters from =set_cvid2.config= and =rs.config= (in that order, silently overwriting
+previously defined options), run the pipeline script at =SNPQC-Rs.nf= with the input 
+files =../CVID2.{bim,bed,fam}=, writes the results into the =./out= directory and sets the result basename to =after-Rs=.
+#+END_QUOTE
 
 * Configuration
   Each data set comes with a set of configuration items that need to be provided in the =params= namespace:
