@@ -33,16 +33,21 @@ while(<$bim_fh>) {
     chomp;
     my @l = split(/\s+/);
     my $ichip = $l[1];
-    my %ann = %{$annotations{$ichip}};
 
-    if ($ann{hg19} eq 'NA') {
-        $ann{hg19} = '-9999999';
-    }
+    if(defined $annotations{$ichip}) {
+        my %ann = %{$annotations{$ichip}};
 
-    if ($chip_build eq 'hg18' and $switch_to eq 'hg19') {
-        say "$l[0]\t$ann{rs}\t$l[2]\t$ann{hg19}\t$l[4]\t$l[5]";
+        if ($ann{hg19} eq 'NA') {
+            $ann{hg19} = '-9999999';
+        }
+
+        if ($chip_build eq 'hg18' and $switch_to eq 'hg19') {
+            say "$l[0]\t$ann{rs}\t$l[2]\t$ann{hg19}\t$l[4]\t$l[5]";
+        } else {
+            say "$l[0]\t$ann{rs}\t$l[2]\t$l[3]\t$l[4]\t$l[5]";
+        }
     } else {
-        say "$l[0]\t$ann{rs}\t$l[2]\t$l[3]\t$l[4]\t$l[5]";
+        say STDERR "Could not find SNP $ichip in annotation file!";
     }
 
 }

@@ -21,7 +21,7 @@
 // Set default output directory
 params.output = "."
 
-evaluate(new File("QC-Rs.config"))
+// evaluate(new File("config/QC-Rs.config"))
 
 def chip_producer_allowed = ["Illumina" : "Illumina", "Affymetrix" : "Affymetrix"]
 def chip_versions_allowed = [
@@ -68,7 +68,7 @@ process generate_annotations {
     output:
     file 'annotations.list' into annotations, to_translate_ann
 
-    def annotation_file = file(ANNOTATION_DIR+'/'+params.switch_to_chip_build+'/'+chip_producer_allowed.get(params.chip_producer)+'/'+chip_versions_allowed.get(params.chip_version)).toAbsolutePath()
+    def annotation_file = file(params.annotation_dir+'/'+params.switch_to_chip_build+'/'+chip_producer_allowed.get(params.chip_producer)+'/'+chip_versions_allowed.get(params.chip_version)).toAbsolutePath()
 
 """
 perl -ne '@l=split(/\\s+/);print "\$l[3] \$l[4] \$l[7] \$l[8] \$l[5] \$l[1] \$l[2]\\n";' $annotation_file >annotations.list
@@ -86,13 +86,15 @@ process generate_flipfile {
     output:
     file 'flipfile' into to_plink_flip
 
-    def source = file(ANNOTATION_DIR+'/'+params.switch_to_chip_build+'/'+chip_producer_allowed.get(params.chip_producer)+'/'+chip_strand_info_allowed.get(params.chip_strand_info)).toAbsolutePath()
+    module 'perl5.22.0'
+
+    def source = file(params.annotation_dir+'/'+params.switch_to_chip_build+'/'+chip_producer_allowed.get(params.chip_producer)+'/'+chip_strand_info_allowed.get(params.chip_strand_info)).toAbsolutePath()
 
 """
 if [ -e $source ]; then
   cp $source flipfile
 else
-  bin/generate_flipfile.pl $bim $ann >flipfile
+  generate_flipfile.pl $bim $ann >flipfile
 fi
 """
 }
@@ -109,8 +111,10 @@ process plink_flip {
     file 'flipped.{bed,fam}' into to_plink_exclude_plink
     file 'flipped.bim' into to_translate_bim
 
+    module 'IKMB:Plink/1.9b4.4'
+
 """
-p-link --noweb --bed ${plink[1]} --bim ${plink[2]} --fam ${plink[3]} --flip $flip --make-bed --out flipped
+plink --bed ${plink[1]} --bim ${plink[2]} --fam ${plink[3]} --flip $flip --make-bed --out flipped
 """
 }
 
@@ -124,6 +128,8 @@ process translate_ids {
 
     output:
     file 'translated.bim' into to_find_duplicates, to_find_nn, to_exclude_bim
+
+    module 'perl5.22.0'
 
 """
 translate_ichip_to_rs.pl $bim $ann ${params.chip_build} ${params.switch_to_chip_build} >translated.bim
@@ -171,7 +177,7 @@ process merge_exclude_list {
     output:
     file 'exclude' into to_plink_exclude_list
 
-    def source = ANNOTATION_DIR+'/'+params.switch_to_chip_build+'/'+chip_producer_allowed.get(params.chip_producer)+'/'+chip_rs_exclude.get(params.chip_version)
+    def source = params.annotation_dir+'/'+params.switch_to_chip_build+'/'+chip_producer_allowed.get(params.chip_producer)+'/'+chip_rs_exclude.get(params.chip_version)
     println "Using chip exclude list $source"
 
 """
@@ -198,8 +204,9 @@ process plink_exclude {
     output:
     file 'result.{bim,bed,fam}'
 
+    module 'IKMB:Plink/1.9b4.4'
 """
-p-link --noweb --bed ${plink[0]} --bim $bim --fam ${plink[1]} --exclude $exclude --allow-no-sex --make-bed --out result
+plink --bed ${plink[0]} --bim $bim --fam ${plink[1]} --exclude $exclude --allow-no-sex --make-bed --out result
 """
 }
 
