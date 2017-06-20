@@ -2,20 +2,6 @@
 
 /*
  Author: Jan Kässens <j.kaessens@ikmb.uni-kiel.de>
-
- TODO:
-
- - Turn all absolute paths, i.e. files taken from the PoA hierarchy, into staged
-   files. This should reduce friction when running things on the cluster.
-   Nextflow (and Slurm, for that matter) will then know what to do.
-
- - Use module() to select the appropriate Plink version. Reduces configuration
-   overhead and maybe eliminates pipeline-specific configuration files
-   completely.
-
- - Check why Plink 1.9 excludes 51 SNPs more than Plink 1.02. Plink 1.9 is more
-   desirable because it is MUCH faster and uses less memory. Right now, Plink
-   1.02 is used to match with David's verification data sets.
 */
 
 // Set default output directory
@@ -60,6 +46,10 @@ Channel.fromFilePairs(params.input + "{.bim,.bed,.fam}", size:3, flat: true).sep
  Transform a chip-specific annotations file into a format that is easier to process by the following stages.
  */
 process generate_annotations {
+
+//    memory "128 MB"
+//    cpus 1
+
     def input_files = Channel.fromFilePairs(params.input + "{.bim,.bed,.fam}", size:3, flat: true)
 
     input:
@@ -67,6 +57,7 @@ process generate_annotations {
 
     output:
     file 'annotations.list' into annotations, to_translate_ann
+
 
     def annotation_file = file(params.annotation_dir+'/'+params.switch_to_chip_build+'/'+chip_producer_allowed.get(params.chip_producer)+'/'+chip_versions_allowed.get(params.chip_version)).toAbsolutePath()
 
@@ -87,6 +78,8 @@ process generate_flipfile {
     file 'flipfile' into to_plink_flip
 
     module 'perl5.22.0'
+ //   memory '128 MB'
+//    cpus 1
 
     def source = file(params.annotation_dir+'/'+params.switch_to_chip_build+'/'+chip_producer_allowed.get(params.chip_producer)+'/'+chip_strand_info_allowed.get(params.chip_strand_info)).toAbsolutePath()
 
@@ -111,10 +104,13 @@ process plink_flip {
     file 'flipped.{bed,fam}' into to_plink_exclude_plink
     file 'flipped.bim' into to_translate_bim
 
-    module 'IKMB:Plink/1.9b4.4'
+    module 'IKMB'
+    module 'Plink/1.9b4.4'
+//    cpus 1
+//    memory '6 GB'
 
 """
-plink --bed ${plink[1]} --bim ${plink[2]} --fam ${plink[3]} --flip $flip --make-bed --out flipped
+plink --bed ${plink[1]} --bim ${plink[2]} --fam ${plink[3]} --flip $flip --threads 1 --memory 6144 --make-bed --out flipped
 """
 }
 
@@ -130,6 +126,10 @@ process translate_ids {
     file 'translated.bim' into to_find_duplicates, to_find_nn, to_exclude_bim
 
     module 'perl5.22.0'
+//    cpus 1
+//    memory '512 MB'
+
+    println "Switching from ${params.chip_build} to ${params.switch_to_chip_build}"
 
 """
 translate_ichip_to_rs.pl $bim $ann ${params.chip_build} ${params.switch_to_chip_build} >translated.bim
@@ -146,6 +146,9 @@ process find_duplicates {
     output:
     file 'duplicates' into to_merge_exclude_duplicates
 
+//    cpus 1
+//    memory '128 MB'
+
 """
 cut -f 2 $bim | sort | uniq -d >duplicates
 """
@@ -160,6 +163,9 @@ process find_nn {
 
     output:
     file 'nn' into to_merge_exclude_nn
+
+//    cpus 1
+//    memory '128 MB'
 
 """
 grep -P "\\tN\\tN" $bim | cut -f2 >nn
@@ -176,6 +182,9 @@ process merge_exclude_list {
 
     output:
     file 'exclude' into to_plink_exclude_list
+
+//    cpus 1
+//    memory '128 MB'
 
     def source = params.annotation_dir+'/'+params.switch_to_chip_build+'/'+chip_producer_allowed.get(params.chip_producer)+'/'+chip_rs_exclude.get(params.chip_version)
     println "Using chip exclude list $source"
@@ -205,8 +214,10 @@ process plink_exclude {
     file 'result.{bim,bed,fam}'
 
     module 'IKMB:Plink/1.9b4.4'
+//    cpus 1
+//    memory '6 GB'
 """
-plink --bed ${plink[0]} --bim $bim --fam ${plink[1]} --exclude $exclude --allow-no-sex --make-bed --out result
+plink --bed ${plink[0]} --bim $bim --fam ${plink[1]} --exclude $exclude --threads 1 --memory 6144 --allow-no-sex --make-bed --out result
 """
 }
 

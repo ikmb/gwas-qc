@@ -43,7 +43,6 @@ def chip_rs_autosomes  = [
 
 // initialize configuration
 params.output = "."
-evaluate(new File("QCI.config"))
 input_basename = params.input
 hwe_template_script = file(params.hwe_template)
 
@@ -87,9 +86,14 @@ process generate_hwe_diagrams {
     file 'cases_controls_DeFinetti.jpg'
     file 'hardy.hwe'
 
+    module 'IKMB'
+    module 'Plink/1.9b4.4'
+    memory '8 G'
+    cpus 1
+
     def basename = new File(input_bim.toString()).getBaseName()
 """
-$PLINK --noweb --bfile ${basename} --hardy --out hardy --hwe 0.0 --extract $autosomes
+plink --bfile ${basename} --hardy --out hardy --threads 1 --memory 8192 --hwe 0.0 --extract $autosomes
 R --slave --args hardy.hwe controls_DeFinetti cases_DeFinetti cases_controls_DeFinetti <$definetti_r
 """
 }
@@ -124,7 +128,7 @@ process generate_hwe_script {
 
   shell:
   '''
-  R CMD Rserve --save
+
   sed "s|INDIVIDUALS_ANNOTATION|!{individuals_annotation}|g" "!{hwe_template_script}" >hwe-script.r
   '''
 }
@@ -145,11 +149,16 @@ process calculate_hwe {
   file "${chunk}-out.auto.R" into from_calc_hwe
   file "${chunk}-out.nosex"
 
+    module 'IKMB'
+    module 'Plink/1.9b4.4'
+    cpus 1
+    memory '8 GB'
+
   def basename = new File(input_bim.toString()).getBaseName()
 
 """
-#R CMD Rserve --save
-$PLINK --noweb --bfile "${basename}" --R hwe-script.r --allow-no-sex --extract ${chunk} --out ${chunk}-out
+R CMD Rserve --save
+plink --bfile "${basename}" --R hwe-script.r --threads 1 --memory 8192 --allow-no-sex --extract ${chunk} --out ${chunk}-out
 """
 }
 
