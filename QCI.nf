@@ -88,8 +88,8 @@ process generate_hwe_diagrams {
 
     module 'IKMB'
     module 'Plink/1.9b4.4'
-    memory '8 G'
-    cpus 1
+//    memory '8 GB'
+//    cpus 1
 
     def basename = new File(input_bim.toString()).getBaseName()
 """
@@ -101,15 +101,19 @@ R --slave --args hardy.hwe controls_DeFinetti cases_DeFinetti cases_controls_DeF
 /*
  Split the data set into 1000-SNP chunks so they can be evaluated in parallel.
  */
+
+
 process split_dataset {
   input:
     //file plink from to_split // [bim, bed, fam]
     file input_bim
 
   output:
-  file 'chunk_*' into to_calc_hwe
+    file 'chunk_*' into to_calc_hwe
+//    file input_bim into to_calc_hwe
 
   """
+# this is a dummy, no need to split anymore
   cut -f 2 $input_bim | split -l 1000 -a 3 -d - chunk_
   """
 }
@@ -128,7 +132,6 @@ process generate_hwe_script {
 
   shell:
   '''
-
   sed "s|INDIVIDUALS_ANNOTATION|!{individuals_annotation}|g" "!{hwe_template_script}" >hwe-script.r
   '''
 }
@@ -151,15 +154,22 @@ process calculate_hwe {
 
     module 'IKMB'
     module 'Plink/1.9b4.4'
-    cpus 1
-    memory '8 GB'
+    module 'R-3.3.1'
+//    cpus 1
+//    memory '8 GB'
 
   def basename = new File(input_bim.toString()).getBaseName()
 
-"""
-R CMD Rserve --save
-plink --bfile "${basename}" --R hwe-script.r --threads 1 --memory 8192 --allow-no-sex --extract ${chunk} --out ${chunk}-out
-"""
+shell:
+'''
+#!/usr/bin/env bash
+
+R CMD Rserve --RS-port 12345 --save
+THEPWD=$(pwd)
+echo "setwd('$THEPWD')" >hwe-script-local.r
+cat hwe-script.r >>hwe-script-local.r
+plink --bfile "!{new File(input_bim.toString()).getBaseName()}" --R-port 12345 --R hwe-script-local.r --threads 1 --memory 8192 --allow-no-sex --extract !{chunk} --out !{chunk}-out
+'''
 }
 
 /*

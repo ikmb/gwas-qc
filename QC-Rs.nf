@@ -7,7 +7,8 @@
 // Set default output directory
 params.output = "."
 
-// evaluate(new File("config/QC-Rs.config"))
+// includeConfig 'config/QC-Rs.config'
+
 
 def chip_producer_allowed = ["Illumina" : "Illumina", "Affymetrix" : "Affymetrix"]
 def chip_versions_allowed = [
@@ -46,9 +47,6 @@ Channel.fromFilePairs(params.input + "{.bim,.bed,.fam}", size:3, flat: true).sep
  Transform a chip-specific annotations file into a format that is easier to process by the following stages.
  */
 process generate_annotations {
-
-//    memory "128 MB"
-//    cpus 1
 
     def input_files = Channel.fromFilePairs(params.input + "{.bim,.bed,.fam}", size:3, flat: true)
 
@@ -126,8 +124,8 @@ process translate_ids {
     file 'translated.bim' into to_find_duplicates, to_find_nn, to_exclude_bim
 
     module 'perl5.22.0'
-//    cpus 1
-//    memory '512 MB'
+    cpus 1
+    memory 512.M
 
     println "Switching from ${params.chip_build} to ${params.switch_to_chip_build}"
 
@@ -213,11 +211,12 @@ process plink_exclude {
     output:
     file 'result.{bim,bed,fam}'
 
-    module 'IKMB:Plink/1.9b4.4'
-//    cpus 1
-//    memory '6 GB'
+    // Note that Plink 1.07 only excludes the first of duplicates, while 1.9+ removes all duplicates
+    module 'IKMB'
+    module 'Plink/1.7'
+
 """
-plink --bed ${plink[0]} --bim $bim --fam ${plink[1]} --exclude $exclude --threads 1 --memory 6144 --allow-no-sex --make-bed --out result
+plink --noweb --bed ${plink[0]} --bim $bim --fam ${plink[1]} --exclude $exclude --make-bed --out result
 """
 }
 

@@ -1,5 +1,3 @@
-#!/usr/bin/env R
-# Warning: this is an nextflow template R script, not an R script on its own!
 
 Rplink <- function(PHENO,GENO,CLUSTER,COVAR){
 
@@ -25,31 +23,31 @@ Rplink <- function(PHENO,GENO,CLUSTER,COVAR){
 		pval <- c()
 		nsample <- c()
 		i<-1	
-		batch <- sort(unique(annotation\$batch))
+		batch <- sort(unique(annotation$batch))
 		
                 # change the ethnic group to what you want
 		eth <- "European" # user defined variable
 			
                 # calculate HWE across entire collection
-		ii <- annotation\$phenotype=="1" & annotation\$ethnicity_predicted ==eth
+		ii <- annotation$phenotype=="1" & annotation$ethnicity_predicted ==eth
 		ret <- runHWE(x, ii)
-		pval[i] <- ret\$pval
-		nsample[i] <- ret\$sample
+		pval[i] <- ret$pval
+		nsample[i] <- ret$sample
 		i<-i+1
 		for (batch in batch){
 
 			# calculate HWE for particular batch
-			ii <- annotation\$phenotype=="1" & annotation\$ethnicity_predicted ==eth & annotation\$batch==batch
+			ii <- annotation$phenotype=="1" & annotation$ethnicity_predicted ==eth & annotation$batch==batch
 			ret <- runHWE(x, ii)
-			pval[i] <- ret\$pval
-			nsample[i] <- ret\$sample
+			pval[i] <- ret$pval
+			nsample[i] <- ret$sample
 			i<-i+1
 				
 			# calculate HWE for all batches excluding particular batch
-			ii <- annotation\$phenotype=="1" & annotation\$ethnicity_predicted ==eth & annotation\$batch!=batch
+			ii <- annotation$phenotype=="1" & annotation$ethnicity_predicted ==eth & annotation$batch!=batch
 			ret <- runHWE(x, ii)
-			pval[i] <- ret\$pval
-			nsample[i] <- ret\$sample
+			pval[i] <- ret$pval
+			nsample[i] <- ret$sample
 			i<-i+1
 		}
 	return(c(length(pval)*2, c(pval, nsample)))
