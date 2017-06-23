@@ -60,11 +60,12 @@ input_bed = file(params.input + ".bed")
 input_fam = file(params.input + ".fam")
 
 // verify inputs
+/* not working well with singularity containers as they are started with the processes, not right here
 assert file(hwe_template_script).exists() : "Could not find HWE template script: $hwe_template_script"
 assert file(individuals_annotation).exists() : "Could not find individuals annotation file: $individuals_annotation"
 assert file(autosomes).exists() : "Could not find autosome annotation file: $autosomes"
 assert file(definetti_r).exists() : "Could not find DeFinetti plotting script: $definetti_r"
-
+*/
 
 /*
  Generate HWE tables and draw DeFinetti plots of the whole data set
@@ -155,8 +156,8 @@ process calculate_hwe {
     module 'IKMB'
     module 'Plink/1.9b4.4'
     module 'R-3.3.1'
-//    cpus 1
-//    memory '8 GB'
+
+    memory '512 MB'
 
   def basename = new File(input_bim.toString()).getBaseName()
 
@@ -168,7 +169,7 @@ R CMD Rserve --RS-port 12345 --save
 THEPWD=$(pwd)
 echo "setwd('$THEPWD')" >hwe-script-local.r
 cat hwe-script.r >>hwe-script-local.r
-plink --bfile "!{new File(input_bim.toString()).getBaseName()}" --R-port 12345 --R hwe-script-local.r --threads 1 --memory 8192 --allow-no-sex --extract !{chunk} --out !{chunk}-out
+plink --bfile "!{new File(input_bim.toString()).getBaseName()}" --R-port 12345 --R hwe-script-local.r --threads 1 --memory 512 --allow-no-sex --extract !{chunk} --out !{chunk}-out
 '''
 }
 

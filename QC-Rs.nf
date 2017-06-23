@@ -4,12 +4,10 @@
  Author: Jan Kässens <j.kaessens@ikmb.uni-kiel.de>
 */
 
-// Set default output directory
+// Set default output directory, overwritten by --output=<dir>
 params.output = "."
 
-// includeConfig 'config/QC-Rs.config'
-
-
+// might (should?) be externalized in the future
 def chip_producer_allowed = ["Illumina" : "Illumina", "Affymetrix" : "Affymetrix"]
 def chip_versions_allowed = [
     "Illu300v3" : "unknown",
@@ -44,7 +42,7 @@ to_flipfile = Channel.create()
 Channel.fromFilePairs(params.input + "{.bim,.bed,.fam}", size:3, flat: true).separate(input_files, to_flipfile) { a -> [a, a[1]] }
 
 /*
- Transform a chip-specific annotations file into a format that is easier to process by the following stages.
+ Transform a chip-specific annotations file into a format that is easier to pr bbocess by the following stages.
  */
 process generate_annotations {
 
@@ -106,10 +104,10 @@ process plink_flip {
     module 'Plink/1.9b4.4'
 //    cpus 1
 //    memory '6 GB'
-
-"""
-plink --bed ${plink[1]} --bim ${plink[2]} --fam ${plink[3]} --flip $flip --threads 1 --memory 6144 --make-bed --out flipped
-"""
+shell:
+'''
+plink --bed !{plink[1]} --bim !{plink[2]} --fam !{plink[3]} --flip !{flip} --threads 1 --memory 6144 --make-bed --out flipped
+'''
 }
 
 /*
@@ -124,8 +122,6 @@ process translate_ids {
     file 'translated.bim' into to_find_duplicates, to_find_nn, to_exclude_bim
 
     module 'perl5.22.0'
-    cpus 1
-    memory 512.M
 
     println "Switching from ${params.chip_build} to ${params.switch_to_chip_build}"
 

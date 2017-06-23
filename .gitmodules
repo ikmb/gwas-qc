@@ -1,0 +1,3 @@
+[submodule "singularity/modules"]
+	path = singularity/modules
+	url = git@git.ikmb.uni-kiel.de:j.kaessens/singularity-modules.git
