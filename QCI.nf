@@ -153,6 +153,7 @@ process calculate_hwe {
   file "${chunk}-out.auto.R" into from_calc_hwe
   file "${chunk}-out.nosex"
 
+  tag { chunk }
     module 'IKMB'
     module 'Plink/1.9b4.4'
     module 'R-3.3.1'
