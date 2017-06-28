@@ -14,19 +14,23 @@ ln -s /bin/bash /bin/sh
 locale-gen en_US en_US.UTF-8 de_DE.UTF-8 de_DE
 
 echo "Installing Plink 1.07"
-cd /opt
-wget 'http://zzz.bwh.harvard.edu/plink/dist/plink-1.07-x86_64.zip'
-unzip plink-1.07-x86_64.zip
-mv plink-1.07-x86_64 plink-1.07
-rm plink-1.07-x86_64.zip
+if [ ! -f /opt/plink-1.07 ]; then
+   cd /opt
+   wget 'http://zzz.bwh.harvard.edu/plink/dist/plink-1.07-x86_64.zip'
+   unzip plink-1.07-x86_64.zip
+   mv plink-1.07-x86_64 plink-1.07
+   rm plink-1.07-x86_64.zip
+fi
 
 echo "Installing Plink 1.9b4.4"
-cd /opt
-mkdir plink-1.9b4.4
-cd plink-1.9b4.4
-wget https://www.cog-genomics.org/static/bin/plink170531/plink_linux_x86_64.zip
-unzip plink_linux_x86_64.zip
-rm plink_linux_x86_64.zip
+if [ ! -f /opt/plink-1.9b4.4 ]; then
+   cd /opt
+   mkdir plink-1.9b4.4
+   cd plink-1.9b4.4
+   wget https://www.cog-genomics.org/static/bin/plink170531/plink_linux_x86_64.zip
+   unzip plink_linux_x86_64.zip
+   rm plink_linux_x86_64.zip
+fi
 
 echo "Installing R packages"
 echo "install.packages('Rserve', repo='http://cran.uni-muenster.de/')" >/tmp/packages.r
@@ -34,19 +38,32 @@ echo "install.packages('hwde', repo='http://cran.uni-muenster.de/')" >>/tmp/pack
 Rscript /tmp/packages.r
 
 echo "Installing modules"
-cd /opt
-git clone https://git.code.sf.net/p/modules/modules-tcl modules-modules-tcl
-cd modules-modules-tcl
-git checkout v1.832
-echo "#!/bin/bash" >/tmp/modules-setup.bash
-echo "./configure && make && make install" >>/tmp/modules-setup.bash
-chmod a+x /tmp/modules-setup.bash
-/tmp/modules-setup.bash
+if [ ! -f /opt/modules-modules-tcl ]; then
+   cd /opt
+   git clone https://git.code.sf.net/p/modules/modules-tcl modules-modules-tcl
+   cd modules-modules-tcl
+   git checkout v1.832
+   echo "#!/bin/bash" >/tmp/modules-setup.bash
+   echo "./configure && make && make install" >>/tmp/modules-setup.bash
+   chmod a+x /tmp/modules-setup.bash
+   /tmp/modules-setup.bash
+fi
 
 cd /opt
-git clone http://git.ikmb.uni-kiel.de/j.kaessens/singularity-modules.git modules
-echo "module use --append /opt/modules" >>/usr/local/modules-tcl/init/modulerc
+if [ ! -f /opt/modules ]; then
+   git clone http://git.ikmb.uni-kiel.de/j.kaessens/singularity-modules.git modules
+   echo "module use --append /opt/modules" >>/usr/local/modules-tcl/init/modulerc
+else
+   cd modules
+   git pull --rebase
+fi
+
+if [ ! -f /work_zfs/sukmb388 ]
+   mkdir -p /work_zfs/sukmb388
+   chmod 777 /work_zfs/sukmb388
+fi
 
 %environment
+export MODULEPATH=/opt/modules
 source /usr/local/modules-tcl/init/bash
 

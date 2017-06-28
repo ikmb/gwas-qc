@@ -5,18 +5,7 @@
 
  TODO:
 
- - Turn all absolute paths, i.e. files taken from the PoA hierarchy, into staged
-   files. This should reduce friction when running things on the cluster.
-   Nextflow (and Slurm, for that matter) will then know what to do.
 
- - Use module() to select the appropriate Plink version. Reduces configuration
-   overhead and maybe eliminates pipeline-specific configuration files
-   completely.
-
- - Find out why an Rserve process starts lingering around, blocking the whole
-   pipeline execution on some occasions. In all cases, an OnError handler should
-   be installed to kill a leftover Rserve process once the pipeline terminates
-   abnormally.
 
 */
 
@@ -50,6 +39,7 @@ hwe_template_script = file(params.hwe_template)
 individuals_annotation = file(BATCH_DIR + "/" + params.individuals_annotation)
 definetti_r = file(SCRIPT_DIR + "/DeFinetti_hardy.r")
 autosomes = file(ANNOTATION_DIR + "/" + params.chip_build + "/" + chip_producer_allowed[params.chip_producer] + "/" + chip_rs_autosomes[params.chip_version])
+draw_fdr = file("bin/SNP_QCI_draw_FDR.r")
 
 // set up channels
 to_calc_hwe_script = Channel.create()
@@ -68,11 +58,11 @@ assert file(definetti_r).exists() : "Could not find DeFinetti plotting script: $
 */
 
 /*
- Generate HWE tables and draw DeFinetti plots of the whole data set
+ Generate HWE tables and draw DeFinhttps://www.cog-genomics.org/static/bin/plink170627/plink_linux_x86_64_dev.zipetti plots of the whole data set
  */
 process generate_hwe_diagrams {
-  publishDir params.output ?: '.', mode: 'move', overwrite: true
-
+    publishDir params.output ?: '.', mode: 'move'
+    
   input:
     //file plink from to_hwe_diagram
     file autosomes
@@ -102,19 +92,14 @@ R --slave --args hardy.hwe controls_DeFinetti cases_DeFinetti cases_controls_DeF
 /*
  Split the data set into 1000-SNP chunks so they can be evaluated in parallel.
  */
-
-
 process split_dataset {
   input:
-    //file plink from to_split // [bim, bed, fam]
     file input_bim
 
   output:
     file 'chunk_*' into to_calc_hwe
-//    file input_bim into to_calc_hwe
 
   """
-# this is a dummy, no need to split anymore
   cut -f 2 $input_bim | split -l 1000 -a 3 -d - chunk_
   """
 }
@@ -155,10 +140,7 @@ process calculate_hwe {
 
   tag { chunk }
     module 'IKMB'
-    module 'Plink/1.9b4.4'
-    module 'R-3.3.1'
-
-    memory '512 MB'
+    module 'Plink/1.9b4.5'
 
   def basename = new File(input_bim.toString()).getBaseName()
 
@@ -166,11 +148,19 @@ shell:
 '''
 #!/usr/bin/env bash
 
-R CMD Rserve --RS-port 12345 --save
+# Start Rserve process in background. This is necessary to get the PID, it would have gone to background anyway
+R CMD Rserve --RS-socket /scratch/rserve.sock --save &
+R_PID=$!
+# Wait for R to spawn the Rserve daemon
+wait $R_PID
 THEPWD=$(pwd)
 echo "setwd('$THEPWD')" >hwe-script-local.r
 cat hwe-script.r >>hwe-script-local.r
-plink --bfile "!{new File(input_bim.toString()).getBaseName()}" --R-port 12345 --R hwe-script-local.r --threads 1 --memory 512 --allow-no-sex --extract !{chunk} --out !{chunk}-out
+plink --bfile "!{new File(input_bim.toString()).getBaseName()}" --R-socket /scratch/rserve.sock --R hwe-script-local.r --threads 1 --memory 512 --allow-no-sex --extract !{chunk} --out !{chunk}-out
+
+# Stop Rserve from lingering around and blocking job slots
+# I know. But it's okay since we're running in our own PID namespace, so killall only finds the above instance
+killall Rserve
 '''
 }
 
@@ -185,24 +175,24 @@ process merge_and_verify_chunked_hwe {
     file input_fam
 
     output:
-    file 'chunks_combined.hwe'
+    file 'chunks_combined.hwe' into excl_failed_hwe, excl_miss_whole, excl_miss_batch
 
     shell:
 '''
 #!/usr/bin/env bash
-cat chunk* >chunks_combined.hwe
+cat chunk[0-9]* >chunks_combined.hwe
 
 combined_hwe_nas=`grep -c NA chunks_combined.hwe`
 input_nas=`grep -c NA !{input_bim}`
-if [ $combined_hwe_nas -ne $input_nas ]
+if [ "$combined_hwe_nas" -ne "$input_nas" ]
 then
    echo "There are missing HWE calculations, $combined_hwe_nas NAs in chunked HWE calculations and $input_nas in input."
    exit 1
 fi
 
-chunked_snps=`wc -l chunks_combined.hwe`
-input_snps=`wc -l !{input_bim}`
-if [ $chunked_snps -ne $input_snps ]
+chunked_snps=`wc -l chunks_combined.hwe | cut -f1 -d" "`
+input_snps=`wc -l !{input_bim} | cut -f1 -d" "`
+if [ "$chunked_snps" -ne "$input_snps" ]
 then
    echo "Some SNPs have gone missing during input splitting. I was expecting $input_snps but got only $chunked_snps."
    exit 1
@@ -211,29 +201,120 @@ fi
 }
 
 /*
-variant_excludes = Channel.create()
+Make a lists of variants that
+ a) fail a HWE test over the entire collection with its worst batch removed
+ b) fail at least two tests where the HWE is calculated for each batch
 
-process exclude_lists_for_failed_hwe {
-    input:
-    file hwe_result
-
-    output:
-}
-
-process exclude_lists_for_missingness_whole {
-    input:
-    file missingness
-
-    output:
-    file 'excludes-missingness-whole' into variant_excludes
-}
-
-process exclude_lists_for_missingness_per_batch {
-    input:
-    file missingness // same as in missingness_whole
-
-    output:
-    file 'excludes-missingness-per-batch' into variant_excludes
-}
+Additionally, FDR values are ploted for both lists
 */
+process exclude_lists_for_failed_hwe {
+
+    publishDir params.output ?: '.', mode: 'move'
+
+    input:
+    file hwe_result from excl_failed_hwe
+    file individuals_annotation
+    file draw_fdr
+
+    output:
+    file "exclude-whole-collection" into excludes_whole
+    file "exclude-per-batch" into excludes_perbatch
+    file "exclude-whole-collection.FDRthresholds.SNPQCI.1.txt.png"
+    file "exclude-per-batch.FDRthresholds.SNPQCI.2.txt.png"
+
+//    script:
+"""
+SNPQCI_fdr_filter.py "$hwe_result" "$individuals_annotation" "$draw_fdr" exclude-whole-collection exclude-per-batch ${params.FDR_index_remove_variants}
+"""
+}
+
+/*
+ Determine the missingness for the entire collection
+ */
+process determine_missingness_entire {
+    input:
+    file input_bim
+    file input_bed
+    file input_fam
+
+    output:
+    file 'missingness-excludes-entire' into excludes_miss_entire
+
+    module 'IKMB'
+    module 'Plink/1.9b4.4'
+
+"""
+plink  --bfile "${new File(input_bim.toString()).getBaseName()}" --missing --out missingness_entire --allow-no-sex
+SNPQCI_extract_missingness_entire.py missingness_entire.lmiss ${params.geno_entire_collection} missingness-excludes-entire
+"""
+}
+
+process determine_missingness_per_batch {
+    input:
+    file individuals_annotation
+    file input_bim
+    file input_bed
+    file input_fam
+
+    output:
+    file 'missingness-excludes-perbatch' into excludes_miss_perbatch
+
+    module 'IKMB'
+    module 'Plink/1.9b4.4'
+
+"""
+awk '{print \$1, \$2, \$7 }' "${individuals_annotation}" | grep -v "familyID" >cluster_file
+plink --bfile "${new File(input_bim.toString()).getBaseName()}" --missing --out missingness_perbatch --allow-no-sex --within cluster_file
+SNPQCI_extract_missingness_perbatch.py missingness_perbatch.lmiss ${params.geno_batch} "$individuals_annotation" missingness-excludes-perbatch
+"""
+}
+
+process exclude_bad_variants {
+    publishDir params.output ?: '.', mode: 'move'
+
+    input:
+    file input_bim
+    file input_bed
+    file input_fam
+    file excludes_whole from excludes_whole
+    file excludes_perbatch from excludes_perbatch
+    file missingness_excludes_entire from excludes_miss_entire
+    file missingness_excludes_perbatch from excludes_miss_perbatch
+
+    output:
+    file "final.{bim,bed,fam}" into draw_definetti_after
+
+    module 'IKMB'
+    module 'Plink/1.9b4.4'
+
+"""
+(tail -n +2 "$excludes_whole" | cut -f1; cat "$excludes_perbatch"; cat "$missingness_excludes_entire"; cat "$missingness_excludes_perbatch") | sort -n >variant-excludes
+plink --bfile "${new File(input_bim.toString()).getBaseName()}" --exclude variant-excludes --make-bed --out final
+"""
+}
+
+process draw_definetti_after_QCI {
+    publishDir params.output ?: '.', mode: 'move'
+
+    def prefix = 'SNPQCI_entire_collection'
+
+    input:
+    file autosomes
+    file new_plink from draw_definetti_after
+    file definetti_r
+
+    output:
+    file prefix+".hwe"
+    file prefix+"_{cases,controls,cases_controls}_DeFinetti.jpg"
+//    file prefix+"_cases_DeFinetti.jpg"
+
+    module 'IKMB'
+    module 'Plink/1.9b4.4'
+
+"""
+plink --bfile "${new File(new_plink[0].toString()).getBaseName()}" --hardy --out ${prefix} --hwe 0.0 --extract "$autosomes"
+R --slave --args ${prefix}.hwe ${prefix}_controls_DeFinetti ${prefix}_cases_DeFinetti ${prefix}_cases_controls_DeFinetti <"$definetti_r"
+"""
+}
+
 
