@@ -58,10 +58,10 @@ assert file(definetti_r).exists() : "Could not find DeFinetti plotting script: $
 */
 
 /*
- Generate HWE tables and draw DeFinhttps://www.cog-genomics.org/static/bin/plink170627/plink_linux_x86_64_dev.zipetti plots of the whole data set
+ Generate HWE tables and draw DeFinetti plots of the whole data set
  */
 process generate_hwe_diagrams {
-    publishDir params.output ?: '.', mode: 'move'
+  publishDir params.output ?: '.', mode: 'move', overwrite: true
 
   input:
     //file plink from to_hwe_diagram
