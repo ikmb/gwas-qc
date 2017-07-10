@@ -62,7 +62,7 @@ assert file(definetti_r).exists() : "Could not find DeFinetti plotting script: $
  */
 process generate_hwe_diagrams {
     publishDir params.output ?: '.', mode: 'move'
-    
+
   input:
     //file plink from to_hwe_diagram
     file autosomes
