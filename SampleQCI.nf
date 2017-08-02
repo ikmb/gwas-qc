@@ -103,7 +103,7 @@ process calc_pi_hat {
     file outliers from for_calc_pi_hat_outliers
 
     output:
-    file "pruned.{bim,bed,fam}" into for_calc_imiss,for_merge_hapmap
+    file "pruned.{bim,bed,fam}" into for_calc_imiss,for_merge_hapmap,for_pca_convert_pruned
 
     module "IKMB"
     module "Plink/1.9b4.5"
@@ -161,7 +161,7 @@ process merge_dataset_with_hapmap {
     file hapmap
 
     output:
-    file "pruned_hapmap.{bim,bed,fam}" into for_pca_run
+    file "pruned_hapmap.{bim,bed,fam}" into for_pca_convert_pruned_hapmap
 
     script:
     if (binding.variables.containsKey("params.PCA_SNPList") or params.PCA_SNPList != "nofileexists") {
@@ -177,4 +177,15 @@ process merge_dataset_with_hapmap {
         plink --bfile pruned_tmp --bmerge hapmap_tmp --out pruned_hapmap
         """
     }
+}
+
+process pca_convert {
+    module "IKMB"
+    module "Plink/1.9b4.5"
+
+    input:
+    file pruned_hapmap from for_pca_convert_pruned_hapmap
+    file pruned from for_pca_convert_pruned
+
+    
 }
