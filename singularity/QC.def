@@ -37,6 +37,12 @@ echo "Installing Plink 1.9b4.5"
    wget -nc https://www.cog-genomics.org/static/bin/plink170725/plink_linux_x86_64.zip
    unzip -o plink_linux_x86_64.zip
 
+echo "Installing EIGENSTRAT 6.1.4"
+
+	cd /opt
+	wget -nc https://data.broadinstitute.org/alkesgroup/EIGENSOFT/EIG-6.1.4.tar.gz
+	tar xvaf EIG-6.1.4.tar.gz
+	mv EIG-6.1.4 eigensoft-6.1.4
 
 # Make bind mount points
 mkdir -p /scratch
