@@ -61,7 +61,7 @@ assert file(definetti_r).exists() : "Could not find DeFinetti plotting script: $
  Generate HWE tables and draw DeFinetti plots of the whole data set
  */
 process generate_hwe_diagrams {
-  publishDir params.output ?: '.', mode: 'move', overwrite: true
+  publishDir params.output ?: '.', mode: 'copy', overwrite: true
 
   input:
     //file plink from to_hwe_diagram
@@ -78,7 +78,7 @@ process generate_hwe_diagrams {
     file 'hardy.hwe'
 
     module 'IKMB'
-    module 'Plink/1.9b4.4'
+    module 'Plink/1.9b4.5'
 //    memory '8 GB'
 //    cpus 1
 
@@ -126,7 +126,8 @@ process generate_hwe_script {
  Run the HWE calculation R script on every 1000-SNP chunk
  */
 process calculate_hwe {
-
+  // Should have been zero, but killall -q returns 1 if it didn't find anything
+  validExitStatus 0,1
   input:
     set file(chunk), file('hwe-script.r') from to_calc_hwe.flatten().combine(to_calc_hwe_script)
     file input_bim
@@ -148,19 +149,29 @@ shell:
 '''
 #!/usr/bin/env bash
 
-# Start Rserve process in background. This is necessary to get the PID, it would have gone to background anyway
-R CMD Rserve --RS-socket /scratch/rserve.sock --save &
-R_PID=$!
-# Wait for R to spawn the Rserve daemon
-wait $R_PID
+# Start Rserve process in background. Keep in mind that --RS-pidfile is an undocumented feature that writes the PID after daemonizing (that is, not the R pid but the Rserve pid) into the specified file. It might be changed in the future
+R CMD Rserve --RS-socket /scratch/rserve.sock --no-save --RS-pidfile /scratch/rserve.pid
+
+# Wait for R to spawn the Rserve daemon and open its socket. Rule out race conditions with plink not finding the Rserve socket on time
+while [ ! -e /scratch/rserve.sock ]
+do
+   sleep 0.5
+done
+RSERVE_PID=$(cat /scratch/rserve.pid)
+echo Rserve process spawned with pid $RSERVE_PID
+
+# Cwd to the staging directory where the scripts and chunks are stored
 THEPWD=$(pwd)
 echo "setwd('$THEPWD')" >hwe-script-local.r
 cat hwe-script.r >>hwe-script-local.r
 plink --bfile "!{new File(input_bim.toString()).getBaseName()}" --R-socket /scratch/rserve.sock --R hwe-script-local.r --threads 1 --memory 512 --allow-no-sex --extract !{chunk} --out !{chunk}-out
-
-# Stop Rserve from lingering around and blocking job slots
-# I know. But it's okay since we're running in our own PID namespace, so killall only finds the above instance
-killall Rserve
+sleep 1
+if [ -e /scratch/rserve.sock ]; then
+   echo Killing Rserve with pid $RSERVE_PID
+   kill $RSERVE_PID
+else
+   echo Rserve died on its own
+fi
 '''
 }
 
@@ -241,7 +252,7 @@ process determine_missingness_entire {
     file 'missingness-excludes-entire' into excludes_miss_entire
 
     module 'IKMB'
-    module 'Plink/1.9b4.4'
+    module 'Plink/1.9b4.5'
 
 """
 plink  --bfile "${new File(input_bim.toString()).getBaseName()}" --missing --out missingness_entire --allow-no-sex
@@ -260,7 +271,7 @@ process determine_missingness_per_batch {
     file 'missingness-excludes-perbatch' into excludes_miss_perbatch
 
     module 'IKMB'
-    module 'Plink/1.9b4.4'
+    module 'Plink/1.9b4.5'
 
 """
 awk '{print \$1, \$2, \$7 }' "${individuals_annotation}" | grep -v "familyID" >cluster_file
@@ -270,7 +281,7 @@ SNPQCI_extract_missingness_perbatch.py missingness_perbatch.lmiss ${params.geno_
 }
 
 process exclude_bad_variants {
-    publishDir params.output ?: '.', mode: 'move'
+    publishDir params.output ?: '.', mode: 'copy'
 
     input:
     file input_bim
@@ -285,7 +296,7 @@ process exclude_bad_variants {
     file "final.{bim,bed,fam}" into draw_definetti_after
 
     module 'IKMB'
-    module 'Plink/1.9b4.4'
+    module 'Plink/1.9b4.5'
 
 """
 (tail -n +2 "$excludes_whole" | cut -f1; cat "$excludes_perbatch"; cat "$missingness_excludes_entire"; cat "$missingness_excludes_perbatch") | sort -n >variant-excludes
@@ -309,7 +320,7 @@ process draw_definetti_after_QCI {
 //    file prefix+"_cases_DeFinetti.jpg"
 
     module 'IKMB'
-    module 'Plink/1.9b4.4'
+    module 'Plink/1.9b4.5'
 
 """
 plink --bfile "${new File(new_plink[0].toString()).getBaseName()}" --hardy --out ${prefix} --hwe 0.0 --extract "$autosomes"

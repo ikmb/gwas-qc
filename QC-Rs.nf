@@ -101,7 +101,7 @@ process plink_flip {
     file 'flipped.bim' into to_translate_bim
 
     module 'IKMB'
-    module 'Plink/1.9b4.4'
+    module 'Plink/1.9b4.5'
 //    cpus 1
 //    memory '6 GB'
 shell:
