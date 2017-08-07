@@ -7,3 +7,4 @@ out-snpqci-part2
 
 singularity/qc.img
 *.orig
+/tmp/
