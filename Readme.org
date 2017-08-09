@@ -71,3 +71,10 @@ files =../CVID2.{bim,bed,fam}=, writes the results into the =./out= directory an
   7. plot DeFinetti diagrams for merged batch
   8. plot DeFinetti diagrams per batch before and after SNPQCI
 
+* Development and Implementation Status
+  | Original file               | New file     | Implemented | Verified |
+  |-----------------------------+--------------+-------------+----------|
+  | SampleQCI_parallel_part2.py | SampleQCI.nf |             |          |
+
+** SampleQCI   
+*** `merge_with_hapmap` macht seltsame Fehler, input.4 und input.5 werden falsch übergeben.
