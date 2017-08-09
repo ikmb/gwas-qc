@@ -80,4 +80,4 @@ if __name__ == "__main__":
         print "\t<target-file> list of variants that should be filtered\n"
         sys.exit(1)
         
-    write_snps_autosomes_noLDRegions_noATandGC_noIndels(sys.argv[1], sys.argv[2]):
+    write_snps_autosomes_noLDRegions_noATandGC_noIndels(sys.argv[1], sys.argv[2])

@@ -10,6 +10,12 @@
 
 // initialize configuration
 params.output = "."
+params.PCA_SNPList = ""
+
+if (params.PCA_SNPList == "nofileexists") {
+    params.PCA_SNPList = ""
+}
+
 input_basename = params.input
 
 script_dir = file(SCRIPT_DIR)
@@ -18,6 +24,10 @@ input_bim = file(params.input + ".bim")
 input_bed = file(params.input + ".bed")
 input_fam = file(params.input + ".fam")
 
+hapmap = Channel.fromFilePairs(params.preQCIMDS_HapMap2 + ".{bim,bed,fam}")
+
+sampleqci_variant_filter = file("bin/SampleQCI_variant_filter.py")
+sampleqci_pca_convert = file("bin/SampleQCI_pca_convert.py")
 
 /*
  *
@@ -52,15 +62,14 @@ plink --bfile ${basename} --make-bed --out manually-removed
 
 
 process determine_miss_het {
-    cpus 2
-
     input:
     file dataset from for_det_miss_het
 
     output:
     file "het.het.{1.png,2.png,logscale.1.png,logscale.2.png}"
     file "miss.lmiss.{1.png,2.png,logscale.1.png,logscale.2.png}"
-    file "{het.het,miss}.outlier.txt" into for_calc_pi_hat_outliers
+    file "miss.outlier.txt" into for_calc_pi_hat_outliers
+    file "het.het.outlier.txt"
 
     publishDir params.output ?: '.', mode: 'copy', overwrite: true
 
@@ -92,7 +101,7 @@ wait
 R --slave --args het.het < "!{script_dir + "/heterozygosity.r"}" # generates het.het.outlier.txt
 
 # generate individual outliers
-perl -ne 'chomp;next if $.==1; @s=split /\\s+/;print "$s[6]\n" if $s[6]>!{params.mind};' <miss.imiss >miss.outlier.txt
+perl -ne 'chomp;next if $.==1; @s=split /\\A\\s+|\\s+\\z/;print "$s[0]\t$s[1]\n" if $s[6]>!{params.mind};' <miss.imiss >miss.outlier.txt
 '''
 }
 
@@ -101,6 +110,7 @@ process calc_pi_hat {
     input:
     file dataset from for_calc_pi_hat
     file outliers from for_calc_pi_hat_outliers
+    file sampleqci_variant_filter
 
     output:
     file "pruned.{bim,bed,fam}" into for_calc_imiss,for_merge_hapmap,for_pca_convert_pruned
@@ -109,17 +119,17 @@ process calc_pi_hat {
     module "Plink/1.9b4.5"
 
     script:
-    if (binding.variables.containsKey("params.PCA_SNPList") or params.PCA_SNPList != "nofileexists") {
+    if (params.PCA_SNPList != "") {
 """
 echo Using PCA SNP List file for variant selection
-plink --bfile "${new File(dataset[0].toString()).getBaseName()}" --extract "$params.PCA_SNPList" --remove  "$outliers" --out pruned
+plink --bfile "${new File(dataset[0].toString()).getBaseName()}" --extract "$params.PCA_SNPList" --remove  "$outliers" --make-bed --out pruned
 """
     } else {
 """
 echo Generating PCA SNP List file for variant selection
 plink --bfile "${new File(dataset[0].toString()).getBaseName()}" --indep-pairwise 50 5 0.2 --out _prune
 plink --bfile "${new File(dataset[0].toString()).getBaseName()}" --extract _prune.prune.in --maf 0.05 --remove "$outliers" --make-bed --out intermediate
-python SampleQCI_variant_filter.py "${dataset[0].toString()}" include_variants
+python ${sampleqci_variant_filter} "${new File(dataset[0].toString()).getBaseName()}.bim" include_variants
 plink --bfile "${new File(dataset[0].toString()).getBaseName()}" --extract include_variants --make-bed --out pruned
 """
     }
@@ -164,7 +174,7 @@ process merge_dataset_with_hapmap {
     file "pruned_hapmap.{bim,bed,fam}" into for_pca_convert_pruned_hapmap
 
     script:
-    if (binding.variables.containsKey("params.PCA_SNPList") or params.PCA_SNPList != "nofileexists") {
+    if (params.PCA_SNPList != "") {
         """
         plink --bfile "${new File(pruned[0].toString()).getBaseName()}" --extract "${hapmap[0]}" --exclude "${params.PCA_SNPList}" --make-bed --out pruned_tmp
         plink --bfile "${new File(hapmap[0].toString()).getBaseName()}" --extract "${pruned[0]}" --exclude "${params.PCA_SNPList}" --make-bed --out hapmap_tmp
@@ -179,6 +189,7 @@ process merge_dataset_with_hapmap {
     }
 }
 
+/*
 process pca_convert {
     module "IKMB"
     module "Plink/1.9b4.5"
@@ -189,3 +200,4 @@ process pca_convert {
 
     
 }
+ */

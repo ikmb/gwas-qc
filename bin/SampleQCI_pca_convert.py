@@ -125,11 +125,9 @@ def pca_convert(plink, eigenstrat_parameter_file, annotation_file):
 if __name__ == "__main__":
 
     # check args
-    if len(sys.argv) != 3:
-        print "Usage: " + sys.argv[0] + " <bim-file> <target-file>\n"
-        print "\twhere:\n"
-        print "\t<bim-file> BIM input\n"
-        print "\t<target-file> list of variants that should be filtered\n"
+    if len(sys.argv) != 4:
+        print "Usage: " + sys.argv[0] + " <input plink basename> <eigenstrat parameter file> <annotations>\n"
         sys.exit(1)
         
-    write_snps_autosomes_noLDRegions_noATandGC_noIndels(sys.argv[1], sys.argv[2]):
+	pca_convert(sys.argv[1], sys.argv[2], sys.argv[3])
+	
