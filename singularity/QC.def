@@ -49,6 +49,8 @@ mkdir -p /scratch
 chmod 777 /scratch
 mkdir -p /work_zfs/sukmb388
 chmod 777 /work_zfs/sukmb388
+mkdir -p /home/sukmb388
+chmod 777 /home/sukmb388
 
 echo "Installing R packages"
    echo "if('Rserve' %in% rownames(installed.packages()) == FALSE) {install.packages('Rserve', repo='http://cran.uni-muenster.de/')}" >/tmp/packages.r

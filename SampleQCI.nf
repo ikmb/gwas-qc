@@ -24,10 +24,10 @@ input_bim = file(params.input + ".bim")
 input_bed = file(params.input + ".bed")
 input_fam = file(params.input + ".fam")
 
-hapmap = Channel.fromFilePairs(params.preQCIMDS_HapMap2 + ".{bim,bed,fam}")
-
 sampleqci_variant_filter = file("bin/SampleQCI_variant_filter.py")
 sampleqci_pca_convert = file("bin/SampleQCI_pca_convert.py")
+
+
 
 /*
  *
@@ -143,8 +143,8 @@ process calc_imiss {
     file dataset from for_calc_imiss
 
     output:
-    file "IBS.{bim,bed,fam}"
-    file "miss.{bim,bed,fam}"
+    file "IBS.genome"
+    file "miss.{imiss,lmiss}"
 
 """
 plink --bfile "${new File(dataset[0].toString()).getBaseName()}" --genome --out IBS&
@@ -168,7 +168,10 @@ process merge_dataset_with_hapmap {
 
     input:
     file pruned from for_merge_hapmap
-    file hapmap
+
+
+    def hapmap = params.preQCIMDS_HapMap2
+
 
     output:
     file "pruned_hapmap.{bim,bed,fam}" into for_pca_convert_pruned_hapmap
@@ -176,28 +179,36 @@ process merge_dataset_with_hapmap {
     script:
     if (params.PCA_SNPList != "") {
         """
-        plink --bfile "${new File(pruned[0].toString()).getBaseName()}" --extract "${hapmap[0]}" --exclude "${params.PCA_SNPList}" --make-bed --out pruned_tmp
-        plink --bfile "${new File(hapmap[0].toString()).getBaseName()}" --extract "${pruned[0]}" --exclude "${params.PCA_SNPList}" --make-bed --out hapmap_tmp
+        plink --bfile "${new File(pruned[0].toString()).getBaseName()}" --extract "${hapmap}.bim" --exclude "${params.PCA_SNPList}" --make-bed --out pruned_tmp
+        plink --bfile "${hapmap}" --extract "${new File(pruned[0].toString()).getBaseName()}.bim" --exclude "${params.PCA_SNPList}" --make-bed --out hapmap_tmp
         plink --bfile pruned_tmp --bmerge hapmap_tmp --out pruned_hapmap
         """
     } else {
         """
-        plink --bfile "${new File(pruned[0].toString()).getBaseName()}" --extract "${hapmap[0]}" --make-bed --out pruned_tmp
-        plink --bfile "${new File(hapmap[0].toString()).getBaseName()}" --extract "${pruned[0]}" --make-bed --out hapmap_tmp
+        plink --bfile "${new File(pruned[0].toString()).getBaseName()}" --extract "${hapmap}.bim" --make-bed --out pruned_tmp
+        plink --bfile "${hapmap}" --extract "${new File(pruned[0].toString()).getBaseName()}.bim" --make-bed --out hapmap_tmp
         plink --bfile pruned_tmp --bmerge hapmap_tmp --out pruned_hapmap
         """
     }
 }
 
-/*
+
 process pca_convert {
-    module "IKMB"
-    module "Plink/1.9b4.5"
+  module "IKMB"
+  module "Plink/1.9b4.5"
+  module "Eigensoft"
 
-    input:
-    file pruned_hapmap from for_pca_convert_pruned_hapmap
-    file pruned from for_pca_convert_pruned
+  input:
+  file pruned_hapmap from for_pca_convert_pruned_hapmap
+  file pruned from for_pca_convert_pruned
 
-    
+  output:
+  file 'eigenstrat-parameters'
+
+  def annotations = ANNOTATION_DIR + "/" + params.individuals_annotation_hapmap2
+
+"""
+  SampleQCI_pca_convert.py "${new File(pruned[0].toString()).getBaseName()}" eigenstrat-parameters ${annotations}
+"""
 }
- */
+

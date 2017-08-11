@@ -4,77 +4,113 @@
 
 /Note: This is currently under heavy development. Is likely that this documentation does not match the actual source code. It will soon, though./
 
-This pipeline is divided into several sub-pipelines that do quality control on GWAS data sets
+This pipeline is divided into several sub-pipelines that do quality control on
+GWAS data sets. It can be run on any platform that supports Singularity, i.e.
+the =rzcluster=, a local workstation, or the experimental IKMB OpenStack
+elasticluster.
+
+* Setup
+** Container Bootstrapping
+  Before you can run any of the pipelines, you will need to bootstrap the
+  pipeline container on a computer you have root access on. Perform the
+  following commands to create the container =qc.img=:
+#+BEGIN_QUOTE
+=singularity create -F -s 4096 singularity/qc.img=\\
+=singularity bootstrap singularity/qc.img singularity/QC.def=
+#+END_QUOTE
+  Now move the container to the place where you want to run the pipelines, i.e.
+the =rzcluster= head node or the elasticluster frontend node and you're ready to go.
+
+/Note: this step takes some time and is required everytime the =QC.def= definition file changes/
+
+** Configuration Adjustment
+   You should also take a look at the various configuration files and adjust some file paths:
+*** =nextflow.config=
+    Choose an environment configuration. You will most likely want the
+    =rzcluster-singularity.config=, so be sure that this is the only one
+    uncommented.
+*** =config/singularity.config=
+    In the singularity stanza, change the =runOptions= key in the following manner:
+#+BEGIN_QUOTE
+=runOptions = "--bind /home/myusername -H /path/to/pipeline-root/:/home/sukmb388/"=
+#+END_QUOTE
+    Be sure to set =/home/myusername= to your actual home folder and
+    =/path/to/pipeline-root= to the folder where you put the pipeline stage
+    scripts. The current configuration expects this folder to contain the
+    =PoAtools_2= and =immunochip_batches= folders from David Ellinghaus'
+    =PoAtools_2= package.
+*** =config/{QC-Rs,QCI,SampleQCI}.config=
+    These files have been auto-generated from the =PoAtools_2= configuration. If
+    you need changes to the workflow parameters, thresholds, etc., this is the
+    place to go.
+
+  You will probably notice, that most of the config keys contain the
+  =/home/sukmb388= path specification. This is okay even if you are not
+  =sukmb388=, because singularity's =runOptions= make the pipeline scripts
+  believe you are. There is no need to change that. In fact, you would probably break things.
 
 * Running
-   You will need the =IKMB= module environment, with =Nextflow= and =Java= loaded.
-   This pipeline makes use of the module environment itself so you won't have to
-   choose or define specific tool versions (i.e. Plink/1.02).
 
+In some environments (i.e. =rzcluster=), you will need to load some modules: =IKMB=, =Nextflow= and =singularity2.3=.
+
+Actually running the pipeline script is rather straight-forward:
 #+BEGIN_QUOTE
-~nextflow -c dataset.config [ -c more.config [ -c andevenmore.config ]] run <script.nf> --input=<basename> [<other options>]~
+~nextflow -c config/QC-Rs.config -c config/set_cvidv2_rs.config run QC-Rs.nf --input=./CVID_Ichip-orig_DvH-Opti_v2/CVID_Ichip-orig_DvH-Opti_v2 --output=out-RS~
 #+END_QUOTE
 
-*Example:*
+You only need to specifiy the stage configuration =QC-Rs.config=, the data
+set-specific configuration =set_cvidv2_rs.config=, the actual script =QC-RS.nf=,
+the input files and output folder.
 
-#+BEGIN_QUOTE
-~nextflow -c set_cvid2.config -c rs.config run SNPQC-Rs.nf --input=../CVID2 --output=./out --output-basename=after-Rs~
+Unfortunately, not much error checking is currently done and if errors appear,
+they will likely be somewhat cryptic. This will change in the future.
 
-This will load paramters from =set_cvid2.config= and =rs.config= (in that order, silently overwriting
-previously defined options), run the pipeline script at =SNPQC-Rs.nf= with the input 
-files =../CVID2.{bim,bed,fam}=, writes the results into the =./out= directory and sets the result basename to =after-Rs=.
-#+END_QUOTE
-
-* Configuration
-  Each data set comes with a set of configuration items that need to be provided in the =params= namespace:
-
-  | Key                      | Example value                                 | Description |
-  |--------------------------+-----------------------------------------------+-------------|
-  | =chip_version=           | =Immunochip=                                  |             |
-  | =chip_producer=          | =Illumina=                                    |             |
-  | =chip_build=             | =hg19=                                        |             |
-  | =chip_strand_info=       | =Immunochip_orig_annotation=                  |             |
-  | =switch_to_chip_build=   | =hg19=                                        |             |
-  | =individuals_annotation= | =CVID-HC_individuals_Ichip_annotation_v2.txt= |             |
-  
-  You can find examples in the =config/= directory.
-
-* Pipelines
-** Name Cleansing
-  Pipeline script: =SNPQC-Rs.nf=
-    
-  Performs the following steps:
-  1. translate Immunochip (or other chip-specific SNP names for that matter) to 'Rs'-type SNP names
-  2. flips alleles based on data set-specific flip files
-  3. removes duplicates, NN-type SNPs and those specified in a chip-specific exclude lists from the data set
-
-  *Parameters*:
-  + ~--input=basename~ :: /mandatory/ define the input data set. Should point to
-       your Plink data set's base name, i.e. the given example will use the
-       files =basename.bim=, =basename.bed= and =basename.fam= as input data.
-  + ~--output[=.]~ :: /optional/ define output directory. It's /optional/ but will litter your current working directory if not specified.
-  + ~--output-basename[=result]~ :: /optional/ output basename. Defaults to =result.{bim,bed,fam,...}= as result names
-
-** SNP QC Phase I
-  Pipeline script: =SNPQCI.nf=
-
-  Performs the following steps:
-  1. calculate HWE values for whole collection
-  2. draw DeFinetti plots of cases, controls and cases+controls
-  3. split the data set into 1000-SNP chunks, and calculate HWE on each chunk
-  4. merge all chunks back into a single HWE table
-  5. determine variants that should be excluded:
-     - based on sample annotation list (?)
-     - based on whole-collection missingness
-     - based on per-batch missingness
-  6. apply exclusion lists
-  7. plot DeFinetti diagrams for merged batch
-  8. plot DeFinetti diagrams per batch before and after SNPQCI
 
 * Development and Implementation Status
-  | Original file               | New file     | Implemented | Verified |
-  |-----------------------------+--------------+-------------+----------|
-  | SampleQCI_parallel_part2.py | SampleQCI.nf |             |          |
+  | Original file                 | New file       | Implemented     | Results Verified |
+  |-------------------------------+----------------+-----------------+------------------|
+  | =Rs.py=                       | =QC-Rs.nf=     | <2017-05-15 Mo> |                  |
+  | =SNPQCI_parallel_part1.py=    | =QCI.nf=       | <2017-05-17 Mi> |                  |
+  | =SNPQCI_parallel_part2.py=    | =QCI.nf=       | <2017-06-28 Mi> |                  |
+  | =SampleQCI_parallel_part1.py= | =SampleQCI.nf= | <2017-08-02 Mi> |                  |
+  | =SampleQCI_parallel_part2.py= | =SampleQCI.nf= |                 |                  |
+  | =SampleQCI_parallel_part3.py= | =SampleQCI.nf= |                 |                  |
+  | =SampleQCI_parallel_part4.py= | =SampleQCI.nf= |                 |                  |
 
-** SampleQCI   
-*** `merge_with_hapmap` macht seltsame Fehler, input.4 und input.5 werden falsch übergeben.
+** QC-Rs.nf
+  - [X] =generate_annotations=
+  - [X] =generate_flipfile=
+  - [X] =find_duplicates=
+  - [X] =find_nn=
+  - [X] =merge_exclude_list=
+  - [X] =plink_exclude=
+** QCI.nf
+  - [X] =generate_hwe_diagrams=
+  - [X] =split_dataset=
+  - [X] =generate_hwe_script=
+  - [X] =calculate_hwe=
+  - [X] =merge_and_verify_chunked_hwe=
+  - [X] =exclude_lists_for_failed_hwe=
+  - [X] =determine_missingness_entire=
+  - [X] =determine_missingness_per_batch=
+  - [X] =exclude_bad_variants=
+  - [X] =draw_definetti_after_QCI=
+** SampleQCI.nf   
+  - [X] =apply_precalc_remove_list=
+  - [X] =determine_miss_het=
+  - [X] =calc_pi_hat=
+  - [X] =calc_imiss=
+  - [X] =merge_dataset_with_hapmap=
+  - [ ] =pca_convert=
+
+*** DONE =calc_imiss= behauptet, die IBS.{bim,bed,fam} files würden nicht erzeugt
+    CLOSED: [2017-08-10 Do 09:41]
+    Werden sie ja auch nicht. =--genome= erzeugt eine =.genome=-Datei
+*** DONE =merge_with_hapmap= macht seltsame Fehler, input.4 und input.5 werden falsch übergeben.
+    CLOSED: [2017-08-11 Fr 10:56]
+*** DONE =merge_with_hapmap= sagt, die hapmap files konnten nicht gefunden werden
+    CLOSED: [2017-08-11 Fr 10:47]
+    - singularity directory binding problem? files sind nämlich da
+    - Lösung: Reihenfolge im Binding. Zuerst home folder mit =--bind=, danach
+      pipeline root mit -H an =/home/sukmb388= binden. Dann geht's.
+*** TODO =pca_convert= beklagt sich über fehlende Bibliotheken
