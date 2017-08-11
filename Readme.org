@@ -113,4 +113,6 @@ they will likely be somewhat cryptic. This will change in the future.
     - singularity directory binding problem? files sind nämlich da
     - Lösung: Reihenfolge im Binding. Zuerst home folder mit =--bind=, danach
       pipeline root mit -H an =/home/sukmb388= binden. Dann geht's.
-*** TODO =pca_convert= beklagt sich über fehlende Bibliotheken
+*** DONE =pca_convert= beklagt sich über fehlende Bibliotheken
+    CLOSED: [2017-08-11 Fr 16:09]
+    Pfad zur =PYDIR_LIB= mit in die config gepackt. Müsste so gehen, PoAtools wird eh benötigt.

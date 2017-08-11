@@ -204,8 +204,11 @@ process pca_convert {
 
   output:
   file 'eigenstrat-parameters'
+  file 'pruned.eigenstratgeno'
+  file 'pruned.ind'
+  file 'pruned.snp'
 
-  def annotations = ANNOTATION_DIR + "/" + params.individuals_annotation_hapmap2
+  def annotations = BATCH_DIR + "/" + params.individuals_annotation_hapmap2
 
 """
   SampleQCI_pca_convert.py "${new File(pruned[0].toString()).getBaseName()}" eigenstrat-parameters ${annotations}

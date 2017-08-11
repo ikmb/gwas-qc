@@ -18,12 +18,15 @@ import subprocess
 
 # import Ingos lib
 #sys.path.append(join(sys.path[0], "../../all_scripts"))
-#from all_common import *
+sys.path.append(os.environ['PYLIB_DIR'] + "/all_scripts")
+from all_common import *
 
 # import my lib
 #sys.path.append(join(sys.path[0], "../lib"))
-#from plink_classes import *
-#from eigenstrat_classes import *
+sys.path.append(os.environ['PYLIB_DIR'] + "/lib")
+
+from plink_classes import *
+from eigenstrat_classes import *
 
 def pca_convert(plink, eigenstrat_parameter_file, annotation_file):
     """ convert PLINK file data set to eigenstrat format """
@@ -45,8 +48,8 @@ def pca_convert(plink, eigenstrat_parameter_file, annotation_file):
     # - run convertf program - #
     # ------------------------ #
 
-    cmd = Command( "%s -p %s" \
-        %(pca_convert_program, eigenstrat_parameter_file) )
+    cmd = Command( "convertf -p %s" \
+        %(eigenstrat_parameter_file) )
     cmd.run() ; del cmd
 
     os.system("mv %s.ind %s.ind.orig" \
@@ -129,5 +132,5 @@ if __name__ == "__main__":
         print "Usage: " + sys.argv[0] + " <input plink basename> <eigenstrat parameter file> <annotations>\n"
         sys.exit(1)
         
-	pca_convert(sys.argv[1], sys.argv[2], sys.argv[3])
+    pca_convert(sys.argv[1], sys.argv[2], sys.argv[3])
 	
