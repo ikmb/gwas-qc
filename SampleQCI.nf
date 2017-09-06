@@ -6,7 +6,13 @@
  TODO:
 */
 
-
+// Helper closure to check input files
+fileExists = { fn ->
+              if (fn.exists())
+                  return fn;
+              else
+                  error("File not found: $fn")
+}
 
 // initialize configuration
 params.output = "."
@@ -16,13 +22,17 @@ if (params.PCA_SNPList == "nofileexists") {
     params.PCA_SNPList = ""
 }
 
-input_basename = params.input
-
 script_dir = file(SCRIPT_DIR)
 
-input_bim = file(params.input + ".bim")
-input_bed = file(params.input + ".bed")
-input_fam = file(params.input + ".fam")
+input_ch = Channel.create()
+Channel.fromFilePairs("${params.input}.{bed,bim,fam}", size: 3, flat: true) { file -> file.baseName } \
+    .ifEmpty{ error "Could not find Plink input dataset" } \
+    .map { a -> [fileExists(a[1]), fileExists(a[2]), fileExists(a[3])] }
+    .separate (input_ch) { a -> [a] }
+
+//input_bim = file(params.input + ".bim")
+//input_bed = file(params.input + ".bed")
+//input_fam = file(params.input + ".fam")
 
 sampleqci_variant_filter = file("bin/SampleQCI_variant_filter.py")
 sampleqci_pca_convert = file("bin/SampleQCI_pca_convert.py")
@@ -40,23 +50,23 @@ sampleqci_pca_convert = file("bin/SampleQCI_pca_convert.py")
 /* Apply pre-calculated remove list for indidividuals */
 process apply_precalc_remove_list {
     input:
-    file input_bim
-    file input_bed
-    file input_fam
+    file plink from input_ch
 //    file precalculated_remove_list
 
     output:
-    file "manually-removed.{bim,bed,fam}" into for_det_miss_het, for_calc_pi_hat
+    file "manually-removed.{bed,bim,fam}" into for_det_miss_het, for_calc_pi_hat
 
     module "IKMB"
     module "Plink/1.9b4.5"
 
-    def basename = new File(input_bim.toString()).getBaseName()
-// plink --bfile ${basename} --remove ${precalculated_remove_list} --make-bed --out manually-removed
+//    def basename = new File(input_bim.toString()).getBaseName()
+    // plink --bfile ${basename} --remove ${precalculated_remove_list} --make-bed --out manually-removed
 
+    script:
+        base = plink[0].baseName
 """
 # generates manually-removed.{bim,bed,fam,log,nosex,hh}
-plink --bfile ${basename} --make-bed --out manually-removed
+plink --bfile ${base} --make-bed --out manually-removed
 """
 }
 
@@ -113,24 +123,27 @@ process calc_pi_hat {
     file sampleqci_variant_filter
 
     output:
-    file "pruned.{bim,bed,fam}" into for_calc_imiss,for_merge_hapmap,for_pca_convert_pruned
+    set file('pruned.bed'), file('pruned.bim'), file('pruned.fam') into for_calc_imiss,for_merge_hapmap,for_pca_convert_pruned
 
     module "IKMB"
     module "Plink/1.9b4.5"
 
     script:
+        base = dataset[0].baseName
+        bim = dataset[1]
+
     if (params.PCA_SNPList != "") {
 """
 echo Using PCA SNP List file for variant selection
-plink --bfile "${new File(dataset[0].toString()).getBaseName()}" --extract "$params.PCA_SNPList" --remove  "$outliers" --make-bed --out pruned
+plink --bfile "${base}" --extract "$params.PCA_SNPList" --remove  "$outliers" --make-bed --out pruned
 """
     } else {
 """
 echo Generating PCA SNP List file for variant selection
-plink --bfile "${new File(dataset[0].toString()).getBaseName()}" --indep-pairwise 50 5 0.2 --out _prune
-plink --bfile "${new File(dataset[0].toString()).getBaseName()}" --extract _prune.prune.in --maf 0.05 --remove "$outliers" --make-bed --out intermediate
-python ${sampleqci_variant_filter} "${new File(dataset[0].toString()).getBaseName()}.bim" include_variants
-plink --bfile "${new File(dataset[0].toString()).getBaseName()}" --extract include_variants --make-bed --out pruned
+plink --bfile "${base}" --indep-pairwise 50 5 0.2 --out _prune
+plink --bfile "${base}" --extract _prune.prune.in --maf 0.05 --remove "$outliers" --make-bed --out intermediate
+python ${sampleqci_variant_filter} "${bim}" include_variants
+plink --bfile "${base}" --extract include_variants --make-bed --out pruned
 """
     }
 }
@@ -144,11 +157,13 @@ process calc_imiss {
 
     output:
     file "IBS.genome"
-    file "miss.{imiss,lmiss}"
+    set file("miss.imiss"), file ("miss.lmiss")
 
+    script:
+        base = dataset[0].baseName
 """
-plink --bfile "${new File(dataset[0].toString()).getBaseName()}" --genome --out IBS&
-plink --bfile "${new File(dataset[0].toString()).getBaseName()}" --missing --out miss&
+plink --bfile "${base}" --genome --out IBS&
+plink --bfile "${base}" --missing --out miss&
 wait
 """
 }
@@ -163,6 +178,9 @@ wait
  */
 
 process merge_dataset_with_hapmap {
+
+    cpus { 8 * 1 }
+
     module "IKMB"
     module "Plink/1.9b4.5"
 
@@ -174,19 +192,22 @@ process merge_dataset_with_hapmap {
 
 
     output:
-    file "pruned_hapmap.{bim,bed,fam}" into for_pca_convert_pruned_hapmap
+        set file('pruned_hapmap.bed'), file('pruned_hapmap.bim'), file('pruned_hapmap.fam') into for_pca_convert_pruned_hapmap
 
     script:
+        base_pruned = pruned[0].baseName
+        bim_pruned = pruned[1]
+
     if (params.PCA_SNPList != "") {
         """
-        plink --bfile "${new File(pruned[0].toString()).getBaseName()}" --extract "${hapmap}.bim" --exclude "${params.PCA_SNPList}" --make-bed --out pruned_tmp
-        plink --bfile "${hapmap}" --extract "${new File(pruned[0].toString()).getBaseName()}.bim" --exclude "${params.PCA_SNPList}" --make-bed --out hapmap_tmp
+        plink --bfile "${base_pruned}" --extract "${hapmap}.bim" --exclude "${params.PCA_SNPList}" --make-bed --out pruned_tmp
+        plink --bfile "${hapmap}" --extract "${bim_pruned}" --exclude "${params.PCA_SNPList}" --make-bed --out hapmap_tmp
         plink --bfile pruned_tmp --bmerge hapmap_tmp --out pruned_hapmap
         """
     } else {
         """
-        plink --bfile "${new File(pruned[0].toString()).getBaseName()}" --extract "${hapmap}.bim" --make-bed --out pruned_tmp
-        plink --bfile "${hapmap}" --extract "${new File(pruned[0].toString()).getBaseName()}.bim" --make-bed --out hapmap_tmp
+        plink --bfile "${base_pruned}" --extract "${hapmap}.bim" --make-bed --out pruned_tmp
+        plink --bfile "${hapmap}" --extract "${bim_pruned}" --make-bed --out hapmap_tmp
         plink --bfile pruned_tmp --bmerge hapmap_tmp --out pruned_hapmap
         """
     }
@@ -210,8 +231,32 @@ process pca_convert {
 
   def annotations = BATCH_DIR + "/" + params.individuals_annotation_hapmap2
 
+    script:
+        base_pruned = pruned[0].baseName
+        base_hapmap = pruned_hapmap[0].baseName
 """
-  SampleQCI_pca_convert.py "${new File(pruned[0].toString()).getBaseName()}" eigenstrat-parameters ${annotations}
+  SampleQCI_pca_convert.py "${base_pruned}" eigenstrat-parameters ${annotations}
+  SampleQCI_pca_convert.py "${base_hapmap}" eigenstrat-parameters-all ${annotations}
 """
 }
 
+// process pca_eigenstrat {
+//     when params.program_for_second_PCA == "EIGENSTRAT"
+// }
+
+// process pca_snprelate {
+//     when params.program_for_second_PCA == "SNPRELATE"
+
+//     input:
+//     file pruned
+    
+// shell:
+// '''
+// BASENAME="!{new File(pruned[0].toString()).getBaseName()}"
+// R --slave --args "$BASENAME" < !{SampleQCI_snprelate_convert2gds.r}
+// gawk '{ if ($6 == 1) print $2 }' "$BASENAME.fam" >projection_sample_file
+// R --slave --args "$BASENAME" projection_sample_file !{SampleQCI_snprelate_pca_32pcas.r}
+// touch outliers
+
+// '''
+// }

@@ -101,7 +101,9 @@ they will likely be somewhat cryptic. This will change in the future.
   - [X] =calc_pi_hat=
   - [X] =calc_imiss=
   - [X] =merge_dataset_with_hapmap=
-  - [ ] =pca_convert=
+  - [X] =pca_convert=
+  - [ ] =pca_eigenstrat=
+  - [ ] =pca_snprelate=
 
 *** DONE =calc_imiss= behauptet, die IBS.{bim,bed,fam} files würden nicht erzeugt
     CLOSED: [2017-08-10 Do 09:41]
