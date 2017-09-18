@@ -66,7 +66,7 @@ process apply_precalc_remove_list {
         base = plink[0].baseName
 """
 # generates manually-removed.{bim,bed,fam,log,nosex,hh}
-plink --bfile ${base} --make-bed --out manually-removed
+plink --bfile ${base} --make-bed --out manually-removed --allow-no-sex
 """
 }
 
@@ -91,9 +91,9 @@ process determine_miss_het {
 shell:
 '''
 # generates  miss.{hh,imiss,lmiss,log,nosex}
-plink --bfile "!{new File(dataset[0].toString()).getBaseName()}" --out miss --missing&
+plink --bfile "!{new File(dataset[0].toString()).getBaseName()}" --out miss --missing --allow-no-sex&
 # generates het.{het,hh,log,nosex}
-plink --bfile "!{new File(dataset[0].toString()).getBaseName()}" --out het --het&
+plink --bfile "!{new File(dataset[0].toString()).getBaseName()}" --out het --het --allow-no-sex&
 wait
 
 R --slave --args het.het miss.imiss < "!{script_dir + "/heterozygosity_logimiss_withoutthresh.r"}"& # generates het.het.logscale.1.png
@@ -135,15 +135,15 @@ process calc_pi_hat {
     if (params.PCA_SNPList != "") {
 """
 echo Using PCA SNP List file for variant selection
-plink --bfile "${base}" --extract "$params.PCA_SNPList" --remove  "$outliers" --make-bed --out pruned
+plink --bfile "${base}" --extract "$params.PCA_SNPList" --remove  "$outliers" --make-bed --out pruned --allow-no-sex
 """
     } else {
 """
 echo Generating PCA SNP List file for variant selection
-plink --bfile "${base}" --indep-pairwise 50 5 0.2 --out _prune
-plink --bfile "${base}" --extract _prune.prune.in --maf 0.05 --remove "$outliers" --make-bed --out intermediate
+plink --bfile "${base}" --indep-pairwise 50 5 0.2 --out _prune --allow-no-sex
+plink --bfile "${base}" --extract _prune.prune.in --maf 0.05 --remove "$outliers" --make-bed --out intermediate --allow-no-sex
 python ${sampleqci_variant_filter} "${bim}" include_variants
-plink --bfile "${base}" --extract include_variants --make-bed --out pruned
+plink --bfile "${base}" --extract include_variants --make-bed --out pruned --allow-no-sex
 """
     }
 }
@@ -162,8 +162,8 @@ process calc_imiss {
     script:
         base = dataset[0].baseName
 """
-plink --bfile "${base}" --genome --out IBS&
-plink --bfile "${base}" --missing --out miss&
+plink --bfile "${base}" --genome --out IBS --allow-no-sex&
+plink --bfile "${base}" --missing --out miss --allow-no-sex&
 wait
 """
 }
@@ -200,15 +200,15 @@ process merge_dataset_with_hapmap {
 
     if (params.PCA_SNPList != "") {
         """
-        plink --bfile "${base_pruned}" --extract "${hapmap}.bim" --exclude "${params.PCA_SNPList}" --make-bed --out pruned_tmp
-        plink --bfile "${hapmap}" --extract "${bim_pruned}" --exclude "${params.PCA_SNPList}" --make-bed --out hapmap_tmp
-        plink --bfile pruned_tmp --bmerge hapmap_tmp --out pruned_hapmap
+        plink --bfile "${base_pruned}" --extract "${hapmap}.bim" --exclude "${params.PCA_SNPList}" --make-bed --out pruned_tmp --allow-no-sex
+        plink --bfile "${hapmap}" --extract "${bim_pruned}" --exclude "${params.PCA_SNPList}" --make-bed --out hapmap_tmp --allow-no-sex
+        plink --bfile pruned_tmp --bmerge hapmap_tmp --out pruned_hapmap --allow-no-sex
         """
     } else {
         """
-        plink --bfile "${base_pruned}" --extract "${hapmap}.bim" --make-bed --out pruned_tmp
-        plink --bfile "${hapmap}" --extract "${bim_pruned}" --make-bed --out hapmap_tmp
-        plink --bfile pruned_tmp --bmerge hapmap_tmp --out pruned_hapmap
+        plink --bfile "${base_pruned}" --extract "${hapmap}.bim" --make-bed --out pruned_tmp --allow-no-sex
+        plink --bfile "${hapmap}" --extract "${bim_pruned}" --make-bed --out hapmap_tmp --allow-no-sex
+        plink --bfile pruned_tmp --bmerge hapmap_tmp --out pruned_hapmap --allow-no-sex
         """
     }
 }
@@ -240,23 +240,10 @@ process pca_convert {
 """
 }
 
-// process pca_eigenstrat {
-//     when params.program_for_second_PCA == "EIGENSTRAT"
-// }
+process pca_eigenstrat {
+    when params.program_for_second_PCA == "EIGENSTRAT"
 
-// process pca_snprelate {
-//     when params.program_for_second_PCA == "SNPRELATE"
 
-//     input:
-//     file pruned
-    
-// shell:
-// '''
-// BASENAME="!{new File(pruned[0].toString()).getBaseName()}"
-// R --slave --args "$BASENAME" < !{SampleQCI_snprelate_convert2gds.r}
-// gawk '{ if ($6 == 1) print $2 }' "$BASENAME.fam" >projection_sample_file
-// R --slave --args "$BASENAME" projection_sample_file !{SampleQCI_snprelate_pca_32pcas.r}
-// touch outliers
-
-// '''
-// }
+process pca_flashpca2 {
+    when params.program_for_second_PCA == "FLASHPCA2"
+}

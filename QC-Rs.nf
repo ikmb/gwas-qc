@@ -4,37 +4,13 @@
  Author: Jan Kässens <j.kaessens@ikmb.uni-kiel.de>
 */
 
+
+def ChipDefinitions = this.class.classLoader.parseClass(new File("config/ChipDefinitions.groovy"))
+
 // Set default output directory, overwritten by --output=<dir>
 params.output = "."
 
-// might (should?) be externalized in the future
-def chip_producer_allowed = ["Illumina" : "Illumina", "Affymetrix" : "Affymetrix"]
-def chip_versions_allowed = [
-    "Illu300v3" : "unknown",
-    "Illu550"   : "unknown",
-    "Immunochip"    : "ichip.hg18.hg19.dbsnpID.chr1-26.txt",
-    "Exomechipv1"     : "v1_exomearray.hg19.dbsnpID.chr1-26.txt",
-    "Exomechipv1-1"   : "v1-1_exomearray.hg19.dbsnpID.chr1-26.txt",
-    "HumanCoreExome24v1" : "HumanCoreExome24_v1.0.hg19.dbsnpID.chr1-26.txt",
-    "AgiFranceCustom" : "Agifrance_custom.annot_nofilter.txt",
-    "Affy6" : "GenomeWideSNP_6.na24.annot_nofilter.txt",
-    "Affy5" : "GenomeWideSNP_5.na24.annot_nofilter.txt",
-    "Affy500kSet" : "Mapping250K.na24.annot_nofilter.txt"
-]
-def chip_strand_info_allowed = [
-    "Immunochip_orig_annotation":"ichip.orig_annotation.hg18.hg19.dbsnpID.chr1-26.minusStrandOnly.rs.hg19.txt",
-    "Immunochip_TOP_annotation":"ichip.TOP_annotation.hg18.hg19.dbsnpID.chr1-26.FlipToPlusStrandOnly.rs.hg19.txt",
-    "Exomechipv1_orig_annotation":"v1_exomearray.hg19.dbsnpID.chr1-26.minusStrandOnly.rs.txt",
-    "Exomechipv1-1_orig_annotation":"v1-1_exomearray.hg19.dbsnpID.chr1-26.minusStrandOnly.rs.txt",
-    "HumanCoreExome24v1_orig_annotation":"HumanCoreExome24_v1.0.hg19.dbsnpID.chr1-26.minusStrandOnly.rs.txt"
-]
-def chip_rs_exclude = [
-    "Immunochip":"ichip.hg18.hg19.dbsnpID.chr1-26.exclude.HailiangHuang.chr25.chr26.txt",
-    "HumanCoreExome24v1":"HumanCoreExome24_v1.0.hg19.dbsnpID.chr1-26.duplicates.txt"
-]
-
-// Set up channels between processes
-
+// Set up channels between processe
 input_files = Channel.create()
 to_flipfile = Channel.create()
 
@@ -55,7 +31,7 @@ process generate_annotations {
     file 'annotations.list' into annotations, to_translate_ann
 
 
-    def annotation_file = file(params.annotation_dir+'/'+params.switch_to_chip_build+'/'+chip_producer_allowed.get(params.chip_producer)+'/'+chip_versions_allowed.get(params.chip_version)).toAbsolutePath()
+    def annotation_file = file(params.annotation_dir+'/'+params.switch_to_chip_build+'/'+ChipDefinitions.Producer(params.chip_producer)+'/'+ChipDefinitions.SNPAnnotations(params.chip_version)).toAbsolutePath()
 
 """
 perl -ne '@l=split(/\\s+/);print "\$l[3] \$l[4] \$l[7] \$l[8] \$l[5] \$l[1] \$l[2]\\n";' $annotation_file >annotations.list
@@ -77,7 +53,7 @@ process generate_flipfile {
  //   memory '128 MB'
 //    cpus 1
 
-    def source = file(params.annotation_dir+'/'+params.switch_to_chip_build+'/'+chip_producer_allowed.get(params.chip_producer)+'/'+chip_strand_info_allowed.get(params.chip_strand_info)).toAbsolutePath()
+    def source = file(params.annotation_dir+'/'+params.switch_to_chip_build+'/'+ChipDefinitions.Producer(params.chip_producer)+'/'+ChipDefinitions.StrandInfo(params.chip_strand_info)).toAbsolutePath()
 
 """
 if [ -e $source ]; then
@@ -106,7 +82,7 @@ process plink_flip {
 //    memory '6 GB'
 shell:
 '''
-plink --bed !{plink[1]} --bim !{plink[2]} --fam !{plink[3]} --flip !{flip} --threads 1 --memory 6144 --make-bed --out flipped
+plink --bed !{plink[1]} --bim !{plink[2]} --fam !{plink[3]} --flip !{flip} --threads 1 --memory 6144 --make-bed --out flipped --allow-no-sex
 '''
 }
 
@@ -180,7 +156,7 @@ process merge_exclude_list {
 //    cpus 1
 //    memory '128 MB'
 
-    def source = params.annotation_dir+'/'+params.switch_to_chip_build+'/'+chip_producer_allowed.get(params.chip_producer)+'/'+chip_rs_exclude.get(params.chip_version)
+    def source = params.annotation_dir+'/'+params.switch_to_chip_build+'/'+ChipDefinitions.Producer(params.chip_producer)+'/'+ChipDefinitions.RsExclude(params.chip_version)
     println "Using chip exclude list $source"
 
 """
@@ -212,7 +188,7 @@ process plink_exclude {
     module 'Plink/1.7'
 
 """
-plink --noweb --bed ${plink[0]} --bim $bim --fam ${plink[1]} --exclude $exclude --make-bed --out result
+plink --noweb --bed ${plink[0]} --bim $bim --fam ${plink[1]} --exclude $exclude --make-bed --out result --allow-no-sex
 """
 }
 

@@ -2,33 +2,9 @@
 
 /*
  Author: Jan Kässens <j.kaessens@ikmb.uni-kiel.de>
-
- TODO:
-
-
-
 */
 
-
-// Should be factored out into some config file
-def chip_producer_allowed = ["Illumina" : "Illumina", "Affymetrix" : "Affymetrix"]
-def chip_versions_allowed = [
-  "Illu300v3" : "unknown",
-  "Illu550"   : "unknown",
-  "Immunochip"    : "ichip.hg18.hg19.dbsnpID.chr1-26.txt",
-  "Exomechipv1"     : "v1_exomearray.hg19.dbsnpID.chr1-26.txt",
-  "Exomechipv1-1"   : "v1-1_exomearray.hg19.dbsnpID.chr1-26.txt",
-  "HumanCoreExome24v1" : "HumanCoreExome24_v1.0.hg19.dbsnpID.chr1-26.txt",
-  "AgiFranceCustom" : "Agifrance_custom.annot_nofilter.txt",
-  "Affy6" : "GenomeWideSNP_6.na24.annot_nofilter.txt",
-  "Affy5" : "GenomeWideSNP_5.na24.annot_nofilter.txt",
-  "Affy500kSet" : "Mapping250K.na24.annot_nofilter.txt"
-]
-def chip_rs_autosomes  = [
-        "Immunochip" : "ichip.hg19.dbsnpID.chr1-22.rs_id.txt",
-        "HumanCoreExome24v1" : "HumanCoreExome24_v1.0.hg19.dbsnpID.chr1-22.rs_id.txt"
-        ]
-
+def ChipDefinitions = this.class.classLoader.parseClass(new File("config/ChipDefinitions.groovy"))
 
 // initialize configuration
 params.output = "."
@@ -38,7 +14,7 @@ hwe_template_script = file(params.hwe_template)
 // Lots of indirection layers require lots of backslash escaping
 individuals_annotation = file(BATCH_DIR + "/" + params.individuals_annotation)
 definetti_r = file(SCRIPT_DIR + "/DeFinetti_hardy.r")
-autosomes = file(ANNOTATION_DIR + "/" + params.chip_build + "/" + chip_producer_allowed[params.chip_producer] + "/" + chip_rs_autosomes[params.chip_version])
+autosomes = file(ANNOTATION_DIR + "/" + params.chip_build + "/" + ChipDefinitions.Producer(params.chip_producer) + "/" + ChipDefinitions.RsAutosomes(params.chip_version))
 draw_fdr = file("bin/SNP_QCI_draw_FDR.r")
 
 // set up channels
@@ -84,7 +60,7 @@ process generate_hwe_diagrams {
 
     def basename = new File(input_bim.toString()).getBaseName()
 """
-plink --bfile ${basename} --hardy --out hardy --threads 1 --memory 8192 --hwe 0.0 --extract $autosomes
+plink --bfile ${basename} --hardy --out hardy --threads 1 --memory 8192 --hwe 0.0 --extract $autosomes --allow-no-sex
 R --slave --args hardy.hwe controls_DeFinetti cases_DeFinetti cases_controls_DeFinetti <$definetti_r
 """
 }
@@ -300,7 +276,7 @@ process exclude_bad_variants {
 
 """
 (tail -n +2 "$excludes_whole" | cut -f1; cat "$excludes_perbatch"; cat "$missingness_excludes_entire"; cat "$missingness_excludes_perbatch") | sort -n >variant-excludes
-plink --bfile "${new File(input_bim.toString()).getBaseName()}" --exclude variant-excludes --make-bed --out final
+plink --bfile "${new File(input_bim.toString()).getBaseName()}" --exclude variant-excludes --make-bed --out final --allow-no-sex
 """
 }
 
@@ -323,7 +299,7 @@ process draw_definetti_after_QCI {
     module 'Plink/1.9b4.5'
 
 """
-plink --bfile "${new File(new_plink[0].toString()).getBaseName()}" --hardy --out ${prefix} --hwe 0.0 --extract "$autosomes"
+plink --bfile "${new File(new_plink[0].toString()).getBaseName()}" --hardy --out ${prefix} --hwe 0.0 --extract "$autosomes" --allow-no-sex
 R --slave --args ${prefix}.hwe ${prefix}_controls_DeFinetti ${prefix}_cases_DeFinetti ${prefix}_cases_controls_DeFinetti <"$definetti_r"
 """
 }
