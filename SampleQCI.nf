@@ -23,6 +23,8 @@ if (params.PCA_SNPList == "nofileexists") {
 }
 
 script_dir = file(SCRIPT_DIR)
+batch_dir = file(BATCH_DIR)
+
 
 input_ch = Channel.create()
 Channel.fromFilePairs("${params.input}.{bed,bim,fam}", size: 3, flat: true) { file -> file.baseName } \
@@ -36,7 +38,7 @@ Channel.fromFilePairs("${params.input}.{bed,bim,fam}", size: 3, flat: true) { fi
 
 sampleqci_variant_filter = file("bin/SampleQCI_variant_filter.py")
 sampleqci_pca_convert = file("bin/SampleQCI_pca_convert.py")
-
+sampleqci_pca_run = file("bin/SampleQCI_pca_run.py")
 
 
 /*
@@ -123,7 +125,7 @@ process calc_pi_hat {
     file sampleqci_variant_filter
 
     output:
-    set file('pruned.bed'), file('pruned.bim'), file('pruned.fam') into for_calc_imiss,for_merge_hapmap,for_pca_convert_pruned
+    set file('pruned.bed'), file('pruned.bim'), file('pruned.fam') into for_calc_imiss,for_merge_hapmap,for_pca_convert_pruned,for_second_pca
 
     module "IKMB"
     module "Plink/1.9b4.5"
@@ -179,7 +181,7 @@ wait
 
 process merge_dataset_with_hapmap {
 
-    cpus { 8 * 1 }
+//  cpus { 8 * 1 }
 
     module "IKMB"
     module "Plink/1.9b4.5"
@@ -192,7 +194,7 @@ process merge_dataset_with_hapmap {
 
 
     output:
-        set file('pruned_hapmap.bed'), file('pruned_hapmap.bim'), file('pruned_hapmap.fam') into for_pca_convert_pruned_hapmap
+        set file('pruned_hapmap.bed'), file('pruned_hapmap.bim'), file('pruned_hapmap.fam') into for_pca_convert_pruned_hapmap, for_pca_run_pruned_hapmap
 
     script:
         base_pruned = pruned[0].baseName
@@ -225,25 +227,70 @@ process pca_convert {
 
   output:
   file 'eigenstrat-parameters'
-  file 'pruned.eigenstratgeno'
-  file 'pruned.ind'
-  file 'pruned.snp'
+  file 'pruned.{eigenstratgeno,ind,snp}'
+  file 'pruned_hapmap.{eigenstratgeno,ind,snp}'
+
 
   def annotations = BATCH_DIR + "/" + params.individuals_annotation_hapmap2
 
-    script:
-        base_pruned = pruned[0].baseName
-        base_hapmap = pruned_hapmap[0].baseName
+  script:
+  base_pruned = pruned[0].baseName
+  base_hapmap = pruned_hapmap[0].baseName
 """
   SampleQCI_pca_convert.py "${base_pruned}" eigenstrat-parameters ${annotations}
   SampleQCI_pca_convert.py "${base_hapmap}" eigenstrat-parameters-all ${annotations}
 """
 }
 
-process pca_eigenstrat {
+projection_on_populations_controls =          script_dir + '/' + params.projection_on_populations_controls
+projection_on_populations_hapmap  =     script_dir + '/' + params.projection_on_populations_hapmap 
+
+process pca_run {
+    module "IKMB"
+    module "Plink/1.9b4.5"
+    module "Eigensoft"
+
+    input:
+    file pruned_hapmap from for_pca_run_pruned_hapmap
+    file projection_on_populations_hapmap
+
+    script:
+    base_pruned = pruned_hapmap[0].baseName
+    sigma_threshold = 100.0
+
+"""
+SampleQCI_pca_run.py "${base_pruned}" ${sigma_threshold} "${projection_on_populations_hapmap}" ${params.numof_pc}"
+"""
+}
+
+process second_pca_eigenstrat {
     when params.program_for_second_PCA == "EIGENSTRAT"
 
+    input:
+    file pruned from for_second_pca
+    file projection_on_populations_controls
 
-process pca_flashpca2 {
+    script:
+    sigma_threshold = 6.0
+
+"""
+SampleQCI_pca_run.py "${pruned}" ${sigma_threshold} "${projection_on_populations_controls}" ${params.numof_pc}
+"""
+}
+
+process second_pca_flashpca2 {
     when params.program_for_second_PCA == "FLASHPCA2"
+
+    module IKMB
+    module FlashPCA
+
+    input:
+    file pruned from for_second_pca
+
+    script:
+    base_pruned = pruned_hapmap[0].baseName
+
+"""
+flashpca -d ${params.numof_pc} --bfile "${base_pruned}" --outval "${base_pruned}_eigenvalues_flashpca2" --outvec "${base_pruned}_eigenvectors_flashpca2" --outpc "${base_pruned}_pcs_flashpca2" --outpve "${base_pruned}_pve_flashpca2" --numthreads ${params.numof_threads} --outload "${base_pruned}_loadings_flashpca2" --outmeansd "${base_pruned}_meansd_flashpca2"
+"""
 }
