@@ -1,6 +1,6 @@
 BootStrap: debootstrap
 OSVersion: zesty
-MirrorURL: http://ftp.hosteurope.de/mirror/archive.ubuntu.com/ubuntu/
+MirrorURL: ftp://ftp.rz.uni-kiel.de/pub2/linux/ubuntu/
 
 %post -c /bin/bash
 
@@ -21,20 +21,12 @@ echo "Installing Plink 1.07"
    unzip -o plink-1.07-x86_64.zip
    mv plink-1.07-x86_64 plink-1.07
 
-echo "Installing Plink 1.9b4.4"
+echo "Installing Plink 1.9b4.6"
 
    cd /opt
-   mkdir -p plink-1.9b4.4
-   cd plink-1.9b4.4
-   wget -nc https://www.cog-genomics.org/static/bin/plink170731/plink_linux_x86_64.zip
-   unzip -o plink_linux_x86_64.zip
-
-echo "Installing Plink 1.9b4.5"
-
-   cd /opt
-   mkdir -p plink-1.9b4.5
-   cd plink-1.9b4.5
-   wget -nc https://www.cog-genomics.org/static/bin/plink170725/plink_linux_x86_64.zip
+   mkdir -p plink-1.9b4.6
+   cd plink-1.9b4.6
+   wget -nc https://www.cog-genomics.org/static/bin/plink170906/plink_linux_x86_64.zip
    unzip -o plink_linux_x86_64.zip
 
 echo "Installing EIGENSTRAT 6.1.4"
@@ -43,6 +35,16 @@ echo "Installing EIGENSTRAT 6.1.4"
 	wget -nc https://data.broadinstitute.org/alkesgroup/EIGENSOFT/EIG-6.1.4.tar.gz
 	tar xvaf EIG-6.1.4.tar.gz
 	mv EIG-6.1.4 eigensoft-6.1.4
+
+echo "Installing FlashPCA2"
+  cd /opt
+  mkdir -p flashpca2
+  cd flashpca2
+  wget -nc https://github.com/gabraham/flashpca/releases/download/v2.0/flashpca_x86-64.gz
+  gunzip flashpca_x86-64.gz
+  chmod a+x flashpca_x86-64 
+  ln -s flashpca_x86-64 flashpca2
+
 
 # Make bind mount points
 mkdir -p /scratch
@@ -73,8 +75,6 @@ echo "Installing modules"
    cd /opt
    git clone http://git.ikmb.uni-kiel.de/j.kaessens/singularity-modules.git modules || true
    echo "module use --append /opt/modules" >>/usr/local/modules-tcl/init/modulerc
-   
-
 
 
 %environment
