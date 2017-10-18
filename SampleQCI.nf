@@ -2,8 +2,6 @@
 
 /*
  Author: Jan Kässens <j.kaessens@ikmb.uni-kiel.de>
-
- TODO:
 */
 
 // Helper closure to check input files
@@ -18,6 +16,7 @@ fileExists = { fn ->
 params.output = "."
 params.PCA_SNPList = ""
 
+// match auto-generated "no file exists" to actual not-existing files
 if (params.PCA_SNPList == "nofileexists") {
     params.PCA_SNPList = ""
 }
@@ -25,20 +24,17 @@ if (params.PCA_SNPList == "nofileexists") {
 script_dir = file(SCRIPT_DIR)
 batch_dir = file(BATCH_DIR)
 
-
 input_ch = Channel.create()
 Channel.fromFilePairs("${params.input}.{bed,bim,fam}", size: 3, flat: true) { file -> file.baseName } \
     .ifEmpty{ error "Could not find Plink input dataset" } \
     .map { a -> [fileExists(a[1]), fileExists(a[2]), fileExists(a[3])] }
     .separate (input_ch) { a -> [a] }
 
-//input_bim = file(params.input + ".bim")
-//input_bed = file(params.input + ".bed")
-//input_fam = file(params.input + ".fam")
-
 sampleqci_variant_filter = file("bin/SampleQCI_variant_filter.py")
 sampleqci_pca_convert = file("bin/SampleQCI_pca_convert.py")
 sampleqci_pca_run = file("bin/SampleQCI_pca_run.py")
+
+sampleqci_helpers = file("bin/SampleQCI_helpers.py")
 
 
 /*
@@ -59,10 +55,7 @@ process apply_precalc_remove_list {
     file "manually-removed.{bed,bim,fam}" into for_det_miss_het, for_calc_pi_hat
 
     module "IKMB"
-    module "Plink/1.9b4.5"
-
-//    def basename = new File(input_bim.toString()).getBaseName()
-    // plink --bfile ${basename} --remove ${precalculated_remove_list} --make-bed --out manually-removed
+    module "Plink/1.9"
 
     script:
         base = plink[0].baseName
@@ -88,7 +81,7 @@ process determine_miss_het {
     //cpus {4 * task.attempt}
 
     module "IKMB"
-    module "Plink/1.9b4.5"
+    module "Plink/1.9"
 
 shell:
 '''
@@ -123,12 +116,13 @@ process calc_pi_hat {
     file dataset from for_calc_pi_hat
     file outliers from for_calc_pi_hat_outliers
     file sampleqci_variant_filter
+    file sampleqci_helpers
 
     output:
-    set file('pruned.bed'), file('pruned.bim'), file('pruned.fam') into for_calc_imiss,for_merge_hapmap,for_pca_convert_pruned,for_second_pca
+    set file('pruned.bed'), file('pruned.bim'), file('pruned.fam') into for_calc_imiss,for_merge_hapmap,for_pca_convert_pruned,for_second_pca_eigen,for_second_pca_flashpca
 
     module "IKMB"
-    module "Plink/1.9b4.5"
+    module "Plink/1.9"
 
     script:
         base = dataset[0].baseName
@@ -144,7 +138,9 @@ plink --bfile "${base}" --extract "$params.PCA_SNPList" --remove  "$outliers" --
 echo Generating PCA SNP List file for variant selection
 plink --bfile "${base}" --indep-pairwise 50 5 0.2 --out _prune --allow-no-sex
 plink --bfile "${base}" --extract _prune.prune.in --maf 0.05 --remove "$outliers" --make-bed --out intermediate --allow-no-sex
-python ${sampleqci_variant_filter} "${bim}" include_variants
+#python ${sampleqci_variant_filter} "${bim}" include_variants
+python -c 'from SampleQCI_helpers import *; write_snps_autosomes_noLDRegions_noATandGC_noIndels("${bim}", "include_variants")'
+# ${sampleqci_helpers} 
 plink --bfile "${base}" --extract include_variants --make-bed --out pruned --allow-no-sex
 """
     }
@@ -152,7 +148,7 @@ plink --bfile "${base}" --extract include_variants --make-bed --out pruned --all
 
 process calc_imiss {
     module "IKMB"
-    module "Plink/1.9b4.5"
+    module "Plink/1.9"
 
     input:
     file dataset from for_calc_imiss
@@ -184,7 +180,7 @@ process merge_dataset_with_hapmap {
 //  cpus { 8 * 1 }
 
     module "IKMB"
-    module "Plink/1.9b4.5"
+    module "Plink/1.9"
 
     input:
     file pruned from for_merge_hapmap
@@ -218,7 +214,7 @@ process merge_dataset_with_hapmap {
 
 process pca_convert {
   module "IKMB"
-  module "Plink/1.9b4.5"
+  module "Plink/1.9"
   module "Eigensoft"
 
   input:
@@ -236,9 +232,12 @@ process pca_convert {
   script:
   base_pruned = pruned[0].baseName
   base_hapmap = pruned_hapmap[0].baseName
+  plink_pca = pruned[0].baseName + "_" + String.valueOf(params.numof_pc) + "PC"
 """
-  SampleQCI_pca_convert.py "${base_pruned}" eigenstrat-parameters ${annotations}
-  SampleQCI_pca_convert.py "${base_hapmap}" eigenstrat-parameters-all ${annotations}
+  python -c 'from SampleQCI_helpers import *; pca_convert ("${base_pruned}", "eigenstrat-parameters", "${annotations}", "${plink_pca}")'
+  python -c 'from SampleQCI_helpers import *; pca_convert ("${base_pruned}", "eigenstrat-parameters-all", "${annotations}", "${plink_pca}")'
+#  SampleQCI_pca_convert.py "${base_pruned}" eigenstrat-parameters ${annotations}
+#  SampleQCI_pca_convert.py "${base_hapmap}" eigenstrat-parameters-all ${annotations}
 """
 }
 
@@ -247,7 +246,7 @@ projection_on_populations_hapmap  =     script_dir + '/' + params.projection_on_
 
 process pca_run {
     module "IKMB"
-    module "Plink/1.9b4.5"
+    module "Plink/1.9"
     module "Eigensoft"
 
     input:
@@ -259,7 +258,8 @@ process pca_run {
     sigma_threshold = 100.0
 
 """
-SampleQCI_pca_run.py "${base_pruned}" ${sigma_threshold} "${projection_on_populations_hapmap}" ${params.numof_pc}"
+# SampleQCI_pca_run.py "${base_pruned}" ${sigma_threshold} "${projection_on_populations_hapmap}" ${params.numof_pc}"
+python -c 'from SampleQCI_helpers import *; pca_run("${base_pruned}", ${sigma_threshold}, "${projection_on_populations_hapmap}", ${params.numof_pc})'
 """
 }
 
@@ -267,30 +267,46 @@ process second_pca_eigenstrat {
     when params.program_for_second_PCA == "EIGENSTRAT"
 
     input:
-    file pruned from for_second_pca
+    file pruned from for_second_pca_eigen
     file projection_on_populations_controls
 
     script:
     sigma_threshold = 6.0
 
 """
-SampleQCI_pca_run.py "${pruned}" ${sigma_threshold} "${projection_on_populations_controls}" ${params.numof_pc}
+python -c 'from SampleQCI_helpers import *; pca_run("${pruned}", ${sigma_threshold}, "${projection_on_populations_controls}", ${params.numof_pc})'
+# SampleQCI_pca_run.py "${pruned}" ${sigma_threshold} "${projection_on_populations_controls}" ${params.numof_pc}
+# determine PCA outlier
 """
 }
+
+
 
 process second_pca_flashpca2 {
     when params.program_for_second_PCA == "FLASHPCA2"
 
-    module IKMB
-    module FlashPCA
+    module "IKMB"
+    module "FlashPCA"
 
     input:
-    file pruned from for_second_pca
+    file pruned from for_second_pca_flashpca
 
     script:
-    base_pruned = pruned_hapmap[0].baseName
+    base_pruned = pruned[0].baseName
+    plink_pca = pruned[0].baseName + "_" + String.valueOf(params.numof_pc) + "PC"
+    draw_evec_FLASHPCA2 = file(script_dir+"/draw_evec_FLASHPCA2.r")
+    pcaplot_1KG = file(script_dir+"/pcaplot_1KG_v2.R")
 
 """
-flashpca -d ${params.numof_pc} --bfile "${base_pruned}" --outval "${base_pruned}_eigenvalues_flashpca2" --outvec "${base_pruned}_eigenvectors_flashpca2" --outpc "${base_pruned}_pcs_flashpca2" --outpve "${base_pruned}_pve_flashpca2" --numthreads ${params.numof_threads} --outload "${base_pruned}_loadings_flashpca2" --outmeansd "${base_pruned}_meansd_flashpca2"
+flashpca2 -d ${params.numof_pc} --bfile "${base_pruned}" --outval "${base_pruned}_eigenvalues_flashpca2" --outvec "${base_pruned}_eigenvectors_flashpca2" --outpc "${base_pruned}_pcs_flashpca2" --outpve "${base_pruned}_pve_flashpca2" --numthreads ${params.numof_threads} --outload "${base_pruned}_loadings_flashpca2" --outmeansd "${base_pruned}_meansd_flashpca2"
+
+# addbatchinfo_10PCs(evec_file=${base_pruned}_pcs_flashpca2, eval_file=
+R --slave --args "${plink_pca}" <"${draw_evec_FLASHPCA2}"
+# addcountryinfo
+R --slave --args "${plink_pca}.country" <"${draw_evec_FLASHPCA2}"
+
+# merge__new_plink_collection_pruned__1kG
+#flashpca2 -d ${params.numof_pc} 
 """
-}
+
+} 

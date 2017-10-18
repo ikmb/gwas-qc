@@ -17,18 +17,164 @@ import os
 # may also need some of these:
 
 # import Ingos lib
-sys.path.append(join(sys.path[0], "../../all_scripts"))
+#sys.path.append(os.path.join(os.path.dirname[0], "../../all_scripts"))
 sys.path.append(os.environ['PYLIB_DIR'] + "/all_scripts")
+sys.path.append(os.environ['PYLIB_DIR'] + "/lib")
 from all_common import Command
 
 # import my lib
 # sys.path.append(join(sys.path[0], "../lib"))
 # sys.path.append(os.environ['PYLIB_DIR'] + "/lib")
 
-from plink_classes import PackedPed
-# from eigenstrat_classes import *
+#from plink_classes import PackedPed
+from eigenstrat_classes import PackedPed
 
-def pca_convert(plink, eigenstrat_parameter_file, annotation_file):
+
+def addbatchinfo_10PCs(evec_file, eval_file, new_evec_file, new_eval_file, individuals_annotation, preQCIMDS_1kG_sample):
+    """ add batch information to final evec file """
+
+    id2batch = {}
+
+    try:
+        fh1 = file(individuals_annotation, "r")
+    except IOError, e:
+        print e
+        sys.exit(1)
+
+    line = fh1.readline().rstrip('\n')
+    line = fh1.readline().rstrip('\n')
+    while line:
+        list     = re.split("\s+", line)
+        indivID = list[1]
+        batch   = list[6]
+        id2batch[indivID] = batch
+        line = fh1.readline().rstrip('\n')
+    fh1.close()
+
+    try:
+        fh1 = file(preQCIMDS_1kG_sample, "r")
+    except IOError, e:
+        print e
+        sys.exit(1)
+
+    line = fh1.readline().rstrip('\n')
+    line = fh1.readline().rstrip('\n')
+    while line:
+        list     = re.split("\s+", line)
+        indivID = list[0]
+        batch   = list[1]
+        id2batch[indivID] = batch
+        line = fh1.readline().rstrip('\n')
+    fh1.close()
+
+    try:
+        fh2 = file(evec_file, "r")
+        fh3 = file(new_evec_file, "w")
+    except IOError, e:
+        print e
+        sys.exit(1)
+
+    line = fh2.readline().rstrip('\n')
+    fh3.writelines(line + "\tbatch\n")
+    line = fh2.readline().rstrip('\n')
+    while line:
+        list = re.split("\s+", line)
+        id = list[1]
+        fh3.writelines(list[0] + "\t" +
+                       list[1] + "\t" +
+                       list[2] + "\t" +
+                       list[3] + "\t" +
+                       list[4] + "\t" +
+                       list[5] + "\t" +
+                       list[6] + "\t" +
+                       list[7] + "\t" +
+                       list[8] + "\t" +
+                       list[9] + "\t" +
+                       list[10] + "\t" +
+                       list[11] + "\t" +
+                       id2batch[id] + "\n")
+        line = fh2.readline().rstrip('\n')
+
+    fh2.close()
+    fh3.close()
+
+    os.system("cp %s %s" % (eval_file, new_eval_file))
+
+
+
+def addcountryinfo_10PCs(evec_file, eval_file, new_evec_file, new_eval_file, ind_annotation_file, preQCIMDS_1kG_sample):
+    """ add country information to final evec file """
+
+    id2country = {}
+
+    try:
+        fh1 = file(ind_annotation_file, "r")
+    except IOError, e:
+        print e
+        sys.exit(1)
+
+    line = fh1.readline().rstrip('\n')
+    line = fh1.readline().rstrip('\n')
+    while line:
+        list     = re.split("\s+", line)
+        indivID = list[1]
+        country   = list[9]
+        id2country[indivID] = country
+        line = fh1.readline().rstrip('\n')
+    fh1.close()
+
+    try:
+        fh1 = file(preQCIMDS_1kG_sample, "r")
+    except IOError, e:
+        print e
+        sys.exit(1)
+
+    line = fh1.readline().rstrip('\n')
+    line = fh1.readline().rstrip('\n')
+    while line:
+        list     = re.split("\s+", line)
+        indivID = list[0]
+        batch   = list[1]
+        id2country[indivID] = batch
+        line = fh1.readline().rstrip('\n')
+    fh1.close()
+
+    try:
+        fh2 = file(evec_file, "r")
+        fh3 = file(new_evec_file, "w")
+    except IOError, e:
+        print e
+        sys.exit(1)
+
+    line = fh2.readline().rstrip('\n')
+    fh3.writelines(line + "\tcountry\n")
+    line = fh2.readline().rstrip('\n')
+    while line:
+        list = re.split("\s+", line)
+        id = list[1]
+        fh3.writelines(list[0] + "\t" +
+                       list[1] + "\t" +
+                       list[2] + "\t" +
+                       list[3] + "\t" +
+                       list[4] + "\t" +
+                       list[5] + "\t" +
+                       list[6] + "\t" +
+                       list[7] + "\t" +
+                       list[8] + "\t" +
+                       list[9] + "\t" +
+                       list[10] + "\t" +
+                       list[11] + "\t" +
+                       id2country[id] + "\n")
+        line = fh2.readline().rstrip('\n')
+
+    fh2.close()
+    fh3.close()
+
+    os.system("cp %s %s" % (eval_file, new_eval_file))
+
+
+
+def pca_convert(plink, eigenstrat_parameter_file, annotation_file, plink_pca):
     """ convert PLINK file data set to eigenstrat format """
 
     # ----------------------------- #
@@ -114,7 +260,7 @@ def pca_convert(plink, eigenstrat_parameter_file, annotation_file):
 
         # nothing to replace
         else:
-            print >> sys.stderr, "\n    warning: could not found sample " + list[0] + " in annotation file " + individuals_annotation_cases_controls_hapmap2 + " ...\n\n"
+            print >> sys.stderr, "\n    warning: could not find sample " + list[0] + " in annotation file " + annotation_file + " ...\n\n"
             fh_ind_new.writelines(line + "\n")
 
         line = fh_ind.readline().replace("\n", "")
@@ -133,7 +279,7 @@ def pca_run(plink, sigmathreshold, projection_on_populations, numof_pc, numof_th
     # - run eigenstrat program - #
     # ------------------------ #
 
-    plink_pca = plink + "_" + numof_pc + "PC"
+    plink_pca = plink + "_" + str(numof_pc) + "PC"
 
     teststring = "%s -i %s.eigenstratgeno -a %s.snp -b %s.ind -k %s -o %s.pca -p %s.plot -e %s.eval -l %s.log -m 5 -t %s -s %s -w %s -f %s -g %s.snpweights" \
                  % (pca_main_program,
