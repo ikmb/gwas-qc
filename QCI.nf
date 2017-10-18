@@ -54,7 +54,7 @@ process generate_hwe_diagrams {
     file 'hardy.hwe'
 
     module 'IKMB'
-    module 'Plink/1.9b4.5'
+    module 'Plink/1.9'
 //    memory '8 GB'
 //    cpus 1
 
@@ -117,7 +117,7 @@ process calculate_hwe {
 
   tag { chunk }
     module 'IKMB'
-    module 'Plink/1.9b4.5'
+    module 'Plink/1.9'
 
   def basename = new File(input_bim.toString()).getBaseName()
 
@@ -228,7 +228,7 @@ process determine_missingness_entire {
     file 'missingness-excludes-entire' into excludes_miss_entire
 
     module 'IKMB'
-    module 'Plink/1.9b4.5'
+    module 'Plink/1.9'
 
 """
 plink  --bfile "${new File(input_bim.toString()).getBaseName()}" --missing --out missingness_entire --allow-no-sex
@@ -247,7 +247,7 @@ process determine_missingness_per_batch {
     file 'missingness-excludes-perbatch' into excludes_miss_perbatch
 
     module 'IKMB'
-    module 'Plink/1.9b4.5'
+    module 'Plink/1.9'
 
 """
 awk '{print \$1, \$2, \$7 }' "${individuals_annotation}" | grep -v "familyID" >cluster_file
@@ -272,7 +272,7 @@ process exclude_bad_variants {
     file "final.{bim,bed,fam}" into draw_definetti_after
 
     module 'IKMB'
-    module 'Plink/1.9b4.5'
+    module 'Plink/1.9'
 
 """
 (tail -n +2 "$excludes_whole" | cut -f1; cat "$excludes_perbatch"; cat "$missingness_excludes_entire"; cat "$missingness_excludes_perbatch") | sort -n >variant-excludes
@@ -296,7 +296,7 @@ process draw_definetti_after_QCI {
 //    file prefix+"_cases_DeFinetti.jpg"
 
     module 'IKMB'
-    module 'Plink/1.9b4.5'
+    module 'Plink/1.9'
 
 """
 plink --bfile "${new File(new_plink[0].toString()).getBaseName()}" --hardy --out ${prefix} --hwe 0.0 --extract "$autosomes" --allow-no-sex
