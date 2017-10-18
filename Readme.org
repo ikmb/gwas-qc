@@ -10,18 +10,26 @@ the =rzcluster=, a local workstation, or the experimental IKMB OpenStack
 elasticluster.
 
 * Setup
+** Container Base Image Bootstrapping
+  Before the container can be created, a base image must be built with the
+  initial operating system. For this, you will need a computer with root access and Singularity 2.4 installed.
+#+BEGIN_QUOTE
+=singularity build singularity/qc.img singularity/QC.def
+#+END_QUOTE
 ** Container Bootstrapping
   Before you can run any of the pipelines, you will need to bootstrap the
   pipeline container on a computer you have root access on. Perform the
   following commands to create the container =qc.img=:
 #+BEGIN_QUOTE
-=singularity create -F -s 4096 singularity/qc.img=\\
-=singularity bootstrap singularity/qc.img singularity/QC.def=
+=singularity build singularity/baseimage.img singularity/baseimage.def=
+=singularity build singularity/qc.img singularity/QC.def=
 #+END_QUOTE
   Now move the container to the place where you want to run the pipelines, i.e.
 the =rzcluster= head node or the elasticluster frontend node and you're ready to go.
 
-/Note: this step takes some time and is required everytime the =QC.def= definition file changes/
+If you want to install additional software, change QC.def and re-build only the
+=qc.img= image. You should not normally need to update the base image, but if
+you do, you will also need to re-build the =qc.img= image.
 
 ** Configuration Adjustment
    You should also take a look at the various configuration files and adjust some file paths:

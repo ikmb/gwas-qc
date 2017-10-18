@@ -1,13 +1,16 @@
-BootStrap: debootstrap
-OSVersion: zesty
-MirrorURL: ftp://ftp.rz.uni-kiel.de/pub2/linux/ubuntu/
+BootStrap: localimage
+From: baseimage.img
+#From: ubuntu:17.04
+#OSVersion: zesty
+#MirrorURL: ftp://ftp.rz.uni-kiel.de/pub2/linux/ubuntu/
 
 %post -c /bin/bash
 
 echo "Installing basic build system"
-sed -i 's/$/ universe/' /etc/apt/sources.list
+#sed -i 's/$/ universe/' /etc/apt/sources.list
 apt -y update
-apt -y install build-essential locales wget unzip r-base git tclsh bash psmisc
+apt -y dist-upgrade
+apt -y install build-essential locales wget unzip r-base git tclsh bash psmisc curl
 
 echo "Setting bash as default shell (instead of dash, thanks Canonical Inc)"
 rm /bin/sh
@@ -21,20 +24,18 @@ echo "Installing Plink 1.07"
    unzip -o plink-1.07-x86_64.zip
    mv plink-1.07-x86_64 plink-1.07
 
-echo "Installing Plink 1.9b4.6"
-
+echo "Installing Plink 1.9"
    cd /opt
-   mkdir -p plink-1.9b4.6
-   cd plink-1.9b4.6
-   wget -nc https://www.cog-genomics.org/static/bin/plink170906/plink_linux_x86_64.zip
+   mkdir -p plink-1.9
+   cd plink-1.9
+   wget -nc $(curl -s https://www.cog-genomics.org/plink2 | grep plink_linux_x86_64.zip | perl -e '$_=<>;s|.*/static/bin/plink(.*)/plink_linux_x86_64.zip.*|https://www.cog-genomics.org/static/bin/plink$1/plink_linux_x86_64.zip|;print')
    unzip -o plink_linux_x86_64.zip
 
 echo "Installing EIGENSTRAT 6.1.4"
-
-	cd /opt
-	wget -nc https://data.broadinstitute.org/alkesgroup/EIGENSOFT/EIG-6.1.4.tar.gz
-	tar xvaf EIG-6.1.4.tar.gz
-	mv EIG-6.1.4 eigensoft-6.1.4
+   cd /opt
+   wget -nc https://data.broadinstitute.org/alkesgroup/EIGENSOFT/EIG-6.1.4.tar.gz
+   tar xvaf EIG-6.1.4.tar.gz
+   mv EIG-6.1.4 eigensoft-6.1.4
 
 echo "Installing FlashPCA2"
   cd /opt
@@ -44,7 +45,6 @@ echo "Installing FlashPCA2"
   gunzip flashpca_x86-64.gz
   chmod a+x flashpca_x86-64 
   ln -s flashpca_x86-64 flashpca2
-
 
 # Make bind mount points
 mkdir -p /scratch
