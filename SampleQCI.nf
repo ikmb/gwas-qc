@@ -235,7 +235,7 @@ process pca_convert {
   plink_pca = pruned[0].baseName + "_" + String.valueOf(params.numof_pc) + "PC"
 """
   python -c 'from SampleQCI_helpers import *; pca_convert ("${base_pruned}", "eigenstrat-parameters", "${annotations}", "${plink_pca}")'
-  python -c 'from SampleQCI_helpers import *; pca_convert ("${base_pruned}", "eigenstrat-parameters-all", "${annotations}", "${plink_pca}")'
+  python -c 'from SampleQCI_helpers import *; pca_convert ("${base_hapmap}", "eigenstrat-parameters-all", "${annotations}", "${plink_pca}")'
 #  SampleQCI_pca_convert.py "${base_pruned}" eigenstrat-parameters ${annotations}
 #  SampleQCI_pca_convert.py "${base_hapmap}" eigenstrat-parameters-all ${annotations}
 """
@@ -269,6 +269,9 @@ process second_pca_eigenstrat {
     input:
     file pruned from for_second_pca_eigen
     file projection_on_populations_controls
+
+    output:
+    file '*_flashpca2'
 
     script:
     sigma_threshold = 6.0
