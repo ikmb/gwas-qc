@@ -247,7 +247,7 @@ projection_on_populations_hapmap  =     script_dir + '/' + params.projection_on_
 process pca_run {
     module "IKMB"
     module "Plink/1.9"
-    module "Eigensoft"
+    module "Eigensoft/4.2"
 
     input:
     file pruned_hapmap from for_pca_run_pruned_hapmap
