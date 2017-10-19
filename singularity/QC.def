@@ -4,6 +4,9 @@ From: baseimage.img
 #OSVersion: zesty
 #MirrorURL: ftp://ftp.rz.uni-kiel.de/pub2/linux/ubuntu/
 
+%files
+EIG4.2.tar.xz /opt/
+
 %post -c /bin/bash
 
 echo "Installing basic build system"
@@ -23,6 +26,7 @@ echo "Installing Plink 1.07"
    wget -nc 'http://zzz.bwh.harvard.edu/plink/dist/plink-1.07-x86_64.zip'
    unzip -o plink-1.07-x86_64.zip
    mv plink-1.07-x86_64 plink-1.07
+   rm -f plink-1.07-x86_64.zip
 
 echo "Installing Plink 1.9"
    cd /opt
@@ -30,12 +34,21 @@ echo "Installing Plink 1.9"
    cd plink-1.9
    wget -nc $(curl -s https://www.cog-genomics.org/plink2 | grep plink_linux_x86_64.zip | perl -e '$_=<>;s|.*/static/bin/plink(.*)/plink_linux_x86_64.zip.*|https://www.cog-genomics.org/static/bin/plink$1/plink_linux_x86_64.zip|;print')
    unzip -o plink_linux_x86_64.zip
+   rm -f plink_linux_x86_64.zip
 
 echo "Installing EIGENSTRAT 6.1.4"
    cd /opt
    wget -nc https://data.broadinstitute.org/alkesgroup/EIGENSOFT/EIG-6.1.4.tar.gz
    tar xvaf EIG-6.1.4.tar.gz
    mv EIG-6.1.4 eigensoft-6.1.4
+   rm -f EIG-6.1.4.tar.gz
+
+echo "Installing EIGENSTRAT 4.2"
+   cd /opt
+   # archive is copied from host system in %files section
+   tar xvaf EIG-4.2.tar.xz
+   mv EIG4.2 eigensoft-4.2
+   rm -f EIG-4.2.tar.xz
 
 echo "Installing FlashPCA2"
   cd /opt
@@ -45,6 +58,7 @@ echo "Installing FlashPCA2"
   gunzip flashpca_x86-64.gz
   chmod a+x flashpca_x86-64 
   ln -s flashpca_x86-64 flashpca2
+  rm -f flashpca_x86-64.gz
 
 # Make bind mount points
 mkdir -p /scratch
@@ -64,18 +78,20 @@ echo "Installing R packages"
 echo "Installing modules"
 
    cd /opt
-   git clone https://git.code.sf.net/p/modules/modules-tcl modules-modules-tcl || true
+   git clone --branch v1.832 --depth 1 https://git.code.sf.net/p/modules/modules-tcl modules-modules-tcl || true
    cd modules-modules-tcl
-   git checkout v1.832
    echo "#!/bin/bash" >/tmp/modules-setup.bash
    echo "./configure && make -j && make install" >>/tmp/modules-setup.bash
    chmod a+x /tmp/modules-setup.bash
    /tmp/modules-setup.bash
 
    cd /opt
-   git clone http://git.ikmb.uni-kiel.de/j.kaessens/singularity-modules.git modules || true
+   git clone --depth 1 http://git.ikmb.uni-kiel.de/j.kaessens/singularity-modules.git modules || true
    echo "module use --append /opt/modules" >>/usr/local/modules-tcl/init/modulerc
 
+echo "Cleanup..."
+   apt-get -y --purge autoremove
+   apt-get -y clean
 
 %environment
 export MODULEPATH=/opt/modules
