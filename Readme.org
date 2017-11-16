@@ -75,15 +75,15 @@ they will likely be somewhat cryptic. This will change in the future.
 
 
 * Development and Implementation Status
-  | Original file                 | New file       | Implemented     | Results Verified |
-  |-------------------------------+----------------+-----------------+------------------|
-  | =Rs.py=                       | =QC-Rs.nf=     | <2017-05-15 Mo> |                  |
-  | =SNPQCI_parallel_part1.py=    | =QCI.nf=       | <2017-05-17 Mi> |                  |
-  | =SNPQCI_parallel_part2.py=    | =QCI.nf=       | <2017-06-28 Mi> |                  |
-  | =SampleQCI_parallel_part1.py= | =SampleQCI.nf= | <2017-08-02 Mi> |                  |
-  | =SampleQCI_parallel_part2.py= | =SampleQCI.nf= |                 |                  |
-  | =SampleQCI_parallel_part3.py= | =SampleQCI.nf= |                 |                  |
-  | =SampleQCI_parallel_part4.py= | =SampleQCI.nf= |                 |                  |
+  | Original file                 | New file       | Implemented     | Verification (CVID) | Verification (GSA)   |
+  |-------------------------------+----------------+-----------------+---------------------+----------------------|
+  | =Rs.py=                       | =QC-Rs.nf=     | <2017-05-15 Mo> |                     | <2017-11-08 Mi> pass |
+  | =SNPQCI_parallel_part1.py=    | =QCI.nf=       | <2017-05-17 Mi> |                     | <2017-11-09 Do> pass |
+  | =SNPQCI_parallel_part2.py=    | =QCI.nf=       | <2017-06-28 Mi> |                     | <2017-11-09 Do> pass |
+  | =SampleQCI_parallel_part1.py= | =SampleQCI.nf= | <2017-08-02 Mi> |                     |                      |
+  | =SampleQCI_parallel_part2.py= | =SampleQCI.nf= |                 |                     |                      |
+  | =SampleQCI_parallel_part3.py= | =SampleQCI.nf= |                 |                     |                      |
+  | =SampleQCI_parallel_part4.py= | =SampleQCI.nf= |                 |                     |                      |
 
 ** QC-Rs.nf
   - [X] =generate_annotations=
@@ -93,36 +93,62 @@ they will likely be somewhat cryptic. This will change in the future.
   - [X] =merge_exclude_list=
   - [X] =plink_exclude=
 ** QCI.nf
-  - [X] =generate_hwe_diagrams=
-  - [X] =split_dataset=
-  - [X] =generate_hwe_script=
-  - [X] =calculate_hwe=
-  - [X] =merge_and_verify_chunked_hwe=
-  - [X] =exclude_lists_for_failed_hwe=
-  - [X] =determine_missingness_entire=
-  - [X] =determine_missingness_per_batch=
-  - [X] =exclude_bad_variants=
-  - [X] =draw_definetti_after_QCI=
-** SampleQCI.nf   
-  - [X] =apply_precalc_remove_list=
-  - [X] =determine_miss_het=
-  - [X] =calc_pi_hat=
-  - [X] =calc_imiss=
-  - [X] =merge_dataset_with_hapmap=
-  - [X] =pca_convert=
-  - [ ] =pca_eigenstrat=
-  - [ ] =pca_snprelate=
+   | Process                      | Verified | Main result file                         | Hash                             | V. Result file                                 | V. Hash                          | Problem             |
+   |------------------------------+----------+------------------------------------------+----------------------------------+------------------------------------------------+----------------------------------+---------------------|
+   | merge_batches                | ok       | DKTNF_POPGEN_GS_QCI_merged.bed           | d5823498ff41ac4bc06e4587b5741138 | SNPQCI/DKTNF_POPGEN_GS_unQCed.bed              | d5823498ff41ac4bc06e4587b5741138 |                     |
+   | det_miss_per_batch           | ok       | cluster_file                             | 1dc83dba06cc0d8fd8e672e5f88aaca1 | DKTNF_POPGEN_GS_unQCed.cluster-file.txt        | 1dc83dba06cc0d8fd8e672e5f88aaca1 |                     |
+   |                              | ok       | missingness_per_batch.lmiss              |                                  | DKTNF_POPGEN_GS_unQCed.per_batch.lmiss         | 6c4e7378098a6f25e318d8b13ede18df | Plink 1.7/1.9       |
+   |                              | ok       | missingness_per_batch.imiss              |                                  | DKTNF_POPGEN_GS_unQCed.per_batch.imiss         | c1e86f93dd40a510e8bd6e59a9e9fb95 | Plink 1.7/1.9       |
+   |                              | ok       | missingness-excludes-perbatch            | 73c5d0d9add885b3c2bb6e538016f7d3 | .lmiss.Variant-exclude-list.SNPQCI.4.txt       | 73c5d0d9add885b3c2bb6e538016f7d3 | Python par Übergabe |
+   | det_miss_entire              | ok       | missingness_entire.imiss                 | c1e86f93dd40a510e8bd6e59a9e9fb95 | DKTNF_POPGEN_GS_unQCed.entire_collection.imiss | c1e86f93dd40a510e8bd6e59a9e9fb95 |                     |
+   |                              | ok       | missingness-excludes-entire              |                                  | .lmiss.Variant-exclude-list.SNPQCI.3.txt       | 8585b02980800bb6bb3a8c568df5eb02 |                     |
+   |                              | ok       | missingness_entire.lmiss                 |                                  | DKTNF_POPGEN_GS_unQCed.entire_collection.lmiss | 8015ca43097fc6f1fad1d7043e5e758a |                     |
+   | generate_hwe_diag            | ok       | DKTNF_POPGEN_GS_hardy.hwe                | dbb09276363f076e388e0ce50f53ac35 | DKTNF_POPGEN_GS_unQCed_hardy.hwe               | dbb09276363f076e388e0ce50f53ac35 | Falscher Vergleich  |
+   |                              | ok       | Bilder                                   |                                  |                                                |                                  |                     |
+   | exclude_lists_failed_hwe     | ok       | Bilder                                   |                                  |                                                |                                  |                     |
+   |                              | ok       | DKTNF_POPGEN_GS_exclude-per-batch        |                                  | SNPQCI.2.failed2plusbatches.txt                | 019d8e70af663a2ae4bb13493791f12b |                     |
+   |                              | ok       | DKTNF_POPGEN_GS_exclude-whole-collection |                                  | SNPQCI.1.worstbatchremoved.txt                 | 6d62a4131666bb3f788c8560098ce76f |                     |
+   | exclude_bad_variants         | !        | variant-excludes                         |                                  |                                                |                                  | ?                   |
+   |                              | ok       | DKTNF_POPGEN_GS_QCI.bed                  |                                  | DKTNF_POPGEN_GS_SNPQCI.bed                     | f3d0ee2f160331832ae09bc2414b5bd5 |                     |
+   | 7a/7fa454 draw_def_after_QCI | ok       | DKTNF_POPGEN_GS_entire_collection.hwe    |                                  | DKTNF_POPGEN_GS_SNPQCI_hardy.hwe               | a8f0edcc649b907c02720e9c620f782f |                     |
 
-*** DONE =calc_imiss= behauptet, die IBS.{bim,bed,fam} files würden nicht erzeugt
-    CLOSED: [2017-08-10 Do 09:41]
-    Werden sie ja auch nicht. =--genome= erzeugt eine =.genome=-Datei
-*** DONE =merge_with_hapmap= macht seltsame Fehler, input.4 und input.5 werden falsch übergeben.
-    CLOSED: [2017-08-11 Fr 10:56]
-*** DONE =merge_with_hapmap= sagt, die hapmap files konnten nicht gefunden werden
-    CLOSED: [2017-08-11 Fr 10:47]
-    - singularity directory binding problem? files sind nämlich da
-    - Lösung: Reihenfolge im Binding. Zuerst home folder mit =--bind=, danach
-      pipeline root mit -H an =/home/sukmb388= binden. Dann geht's.
-*** DONE =pca_convert= beklagt sich über fehlende Bibliotheken
-    CLOSED: [2017-08-11 Fr 16:09]
-    Pfad zur =PYDIR_LIB= mit in die config gepackt. Müsste so gehen, PoAtools wird eh benötigt.
+** SampleQCI.nf   
+   | Process              | Verified | Main result file                                       | Hash | V. Result file                                       | V. Hash                          | Problem             |
+   |----------------------+----------+--------------------------------------------------------+------+------------------------------------------------------+----------------------------------+---------------------|
+   | apply_precalc        | ok       | manually-removed.bed                                   |      | SampleQCI/DKTNF_POPGEN_GS_SNPQCI                     | f3d0ee2f160331832ae09bc2414b5bd5 |                     |
+   | determine_miss_het   | ok       | DKTNF_POPGEN_GS_SampleQCI_het.het                      |      | DKTNF_POPGEN_GS_SNPQCI_het.het                       | c5f41ad004fbddc3928f99b83ac8a896 | 2b/55fb5f           |
+   |                      | ok       | DKTNF_POPGEN_GS_SampleQCI_miss.imiss                   |      | DKTNF_POPGEN_GS_SNPQCI_miss.imiss                    | d3a57f52d4759d811455407b8a28de4d | Plink-Version       |
+   |                      | ok       | DKTNF_POPGEN_GS_SampleQCI_miss.lmiss                   |      | DKTNF_POPGEN_GS_SNPQCI_miss.lmiss                    | e0f396ccbc792a08796f5f16dbde558a |                     |
+   |                      | ok       | miss_outliers.txt                                      |      | SNPQCI_miss.outlier                                  | 3cf9f70c440df82480971da1f6a7f9dd | Perl Regex Escaping |
+   |                      | ok       | het_outliers.txt                                       |      | SNPQCI_het.het.outlier.txt                           | 24e3b8e2cc0d1fa7632ad7e7f61e1ea3 |                     |
+   | calc_pi_hat          | ok       | DKTNF_POPGEN_GS_SampleQCI_pruned.bed                   |      | DKTNF_POPGEN_GS_SNPQCI_pruned.bed                    | 883c7b6029ea43e7272b06aa6ccdab17 |                     |
+   |                      | ok       | DKTNF_POPGEN_GS_SNPQCI.bed (input)                     |      |                                                      |                                  |                     |
+   |                      | ok       | DKTNF_POPGEN_GS_SampleQCI_miss.outlier.txt (input)     |      |                                                      |                                  |                     |
+   | merge_with_hapmap    | ok       | include_variants                                       |      | SNPQCI_chr1-22noLDRegionsnoATandGCnoIndels.txt       | d4b462b1130380232ebaef86d6a03ec4 | 85/b55e5e           |
+   |                      | ok       | DKTNF_POPGEN_GS_SampleQCI_pruned_hapmap.bed            |      | DKTNF_POPGEN_GS_SampleQCI_pruned_hapmap.bed          | 63a7e68532192045f78deb7d05c758cc |                     |
+   | pca_convert          | ok       | DKTNF_POPGEN_GS_SampleQCI_pruned.eigenstratgeno        |      | DKTNF_POPGEN_GS_SampleQCI_pruned.eigenstratgeno      | ac9feac680ed0485f578795513cac382 |                     |
+   |                      | ok       | DKTNF_POPGEN_GS_SNPQCI_pruned_hapmap.eigenstratgeno    |      | DKTNF_POPGEN_GS_SNPQCI_pruned_hapmap2.eigenstratgeno | 6ed444c6c8cce7eb930f595ed89de95f |                     |
+   |                      | ok       | DKTNF_POPGEN_GS_SNPQCI_pruned.ind                      |      | DKTNF_POPGEN_GS_SNPQCI_pruned.ind                    | fbcd6eb9ed3298c77488dbd046645106 |                     |
+   |                      | ok       | DKTNF_POPGEN_GS_SNPQCI_pruned_hapmap.ind               |      | DKTNF_POPGEN_GS_SNPQCI_pruned_hapmap2.ind            | b8b857debb1bdcd7742d884dd39e10cb |                     |
+   |                      | ok       | DKTNF_POPGEN_GS_SNPQCI_pruned.snp                      |      | DKTNF_POPGEN_GS_SNPQCI_pruned.snp                    | identisch bis auf whitespace     |                     |
+   |                      | ok       | DKTNF_POPGEN_GS_SNPQCI_pruned_hapmap.snp               |      | DKTNF_POPGEN_GS_SNPQCI_pruned_hapmap2.snp            | identisch bis auf whitespace     |                     |
+   | calc_imiss           | ok       | DKTNF_POPGEN_GS_SampleQCI_miss.imiss                   |      | DKTNF_POPGEN_GS_SNPQCI_pruned_miss.imiss             | 776203bd005d793edee9369f3b59ff66 |                     |
+   |                      | ok       | DKTNF_POPGEN_GS_SampleQCI_miss.lmiss                   |      | DKTNF_POPGEN_GS_SNPQCI_pruned_miss.lmiss             | f70b91ee24f66dda44f264326a7c6520 |                     |
+   | flashpca2_pruned     | ok       | DKTNF_POPGEN_GS_SampleQCI_pruned_1kG_10PC.eval         |      | DKTNF_POPGEN_GS_SNPQCI_pruned_10PC.eval              | 039d0ab9a2ed003d8352a2e8b0a11e57 |                     |
+   |                      | ok       | DKTNF_POPGEN_GS_SampleQCI_pruned_10PC.pca.evec         |      | DKTNF_POPGEN_GS_SNPQCI_pruned_10PC.pca.evec          | Nur Rundungsfehler               |                     |
+   |                      | ok       | DKTNF_POPGEN_GS_SampleQCI_pruned_10PC.country.pca.evec |      | DKTNF_POPGEN_GS_SNPQCI_pruned_10PC.country.pca.evec  | Nur Rundungsfehler               |                     |
+   | flashpca2_pruned_1kg | ok       | *_flashpca2                                            |      |                                                      | Nur Rundungsfehler               |                     |
+   |                      |          |                                                        |      |                                                      |                                  |                     |
+
+
+
+   | pca_convert               |          | *.ind *.snp                                            |      |                                                      | identisch bis auf whitespace                  |                     |
+   |                           |          |                                                        |      |                                                      |                                               |                     |
+   | pca_run                   | ok       |                                                        |      |                                                      | alle gleich bis auf log uns bilder            |                     |
+   | second_pca_eigenstrat     | ok       | N/A                                                    |      |                                                      |                                               |                     |
+   | ibs_merge_and_verify      | ok?      |                                                        |      |                                                      | mein IBS hat eine Zeile mehr, sonst gleich    |                     |
+   | detect_duplicates_related | ok       | DKTNF_POPGEN_GS_SampleQCI_pruned_duplicates.txt        |      | DKTNF_POPGEN_GS_SNPQCI_pruned_remove.duplicates.txt  | c9abc616052cd7d481c1fa88e5ca379a              |                     |
+   |                           | ok       | DKTNF_POPGEN_GS_SampleQCI_pruned_flag_relatives.txt    |      | DKTNF_POPGEN_GS_SNPQCI_pruned_flag.relatives.txt     | 6eeca813d6734518141d8dcd5f50c67e              |                     |
+   |                           | ok       | DKTNF_POPGEN_GS_SampleQCI_pruned_IBS.genome.Z0.Z1      |      | DKTNF_POPGEN_GS_SNPQCI_pruned_IBS.Z0.Z1.genome       | mein genome hat eine Zeile mehr, sonst gleich |                     |
+   |                           |          |                                                        |      |                                                      |                                               |                     |
+

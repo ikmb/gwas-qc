@@ -29,7 +29,8 @@ class ChipDefinitions {
             "Immunochip_TOP_annotation":"ichip.TOP_annotation.hg18.hg19.dbsnpID.chr1-26.FlipToPlusStrandOnly.rs.hg19.txt",
             "Exomechipv1_orig_annotation":"v1_exomearray.hg19.dbsnpID.chr1-26.minusStrandOnly.rs.txt",
             "Exomechipv1-1_orig_annotation":"v1-1_exomearray.hg19.dbsnpID.chr1-26.minusStrandOnly.rs.txt",
-            "HumanCoreExome24v1_orig_annotation":"HumanCoreExome24_v1.0.hg19.dbsnpID.chr1-26.minusStrandOnly.rs.txt"
+            "HumanCoreExome24v1_orig_annotation":"HumanCoreExome24_v1.0.hg19.dbsnpID.chr1-26.minusStrandOnly.rs.txt",
+            "GSAarrayv1_orig_annotation" : "GSAarrayv1.hg19.chr1-26.minusStrandOnly.rs.txt"
         ]
 
         return chip_strand_info_allowed[ver];
@@ -38,7 +39,8 @@ class ChipDefinitions {
     static String RsExclude(String ver) {
         def chip_rs_exclude = [
             "Immunochip":"ichip.hg18.hg19.dbsnpID.chr1-26.exclude.HailiangHuang.chr25.chr26.txt",
-            "HumanCoreExome24v1":"HumanCoreExome24_v1.0.hg19.dbsnpID.chr1-26.duplicates.txt"
+            "HumanCoreExome24v1":"HumanCoreExome24_v1.0.hg19.dbsnpID.chr1-26.duplicates.txt",
+            "GSAarrayv1" : "GSAarrayv1.hg19.chr1-26.exclude.txt"
         ]
 
         return chip_rs_exclude[ver];
@@ -48,7 +50,8 @@ class ChipDefinitions {
     static String RsAutosomes(String ver) {
         def chip_rs_autosomes  = [
             "Immunochip" : "ichip.hg19.dbsnpID.chr1-22.rs_id.txt",
-            "HumanCoreExome24v1" : "HumanCoreExome24_v1.0.hg19.dbsnpID.chr1-22.rs_id.txt"
+            "HumanCoreExome24v1" : "HumanCoreExome24_v1.0.hg19.dbsnpID.chr1-22.rs_id.txt",
+	    "GSAarrayv1" : "GSAarrayv1.hg19.snp147Common.dbsnpID.chr1-22.rs_id.txt"
         ]
         return chip_rs_autosomes[ver];
     }

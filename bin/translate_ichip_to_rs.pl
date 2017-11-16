@@ -6,13 +6,15 @@ use strict;
 use 5.020;
 
 use Data::Dumper;
+use Switch 'fallthrough';
 
-die("Syntax: $0 <file.bim> <file.annotations> <from> <to>") unless @ARGV == 4;
+die("Syntax: $0 <format> <file.bim> <file.annotations> <from> <to>") unless @ARGV == 5;
 
-my $bimfile = $ARGV[0];
-my $annotfile = $ARGV[1];
-my $chip_build = $ARGV[2];
-my $switch_to = $ARGV[3];
+my $format = $ARGV[0];
+my $bimfile = $ARGV[1];
+my $annotfile = $ARGV[2];
+my $chip_build = $ARGV[3];
+my $switch_to = $ARGV[4];
 
 my %annotations;
 
@@ -23,7 +25,22 @@ open(my $annot_fh, "<$annotfile") or die("Could not open $annotfile: $!");
 while(<$annot_fh>) {
     chomp;
     my @l = split(' ');
-    $annotations{$l[0]} = { 'rs' => $l[1], 'a1' => $l[2], 'a2' => $l[3], 'strand' => $l[4], 'hg18' => $l[5], 'hg19' => $l[6] };
+
+#    switch($format) {
+#        case 'Immunochip' {
+            $annotations{$l[0]} = { 'rs' => $l[1], 'a1' => $l[2], 'a2' => $l[3], 'strand' => $l[4], 'hg18' => $l[5], 'hg19' => $l[6] };
+#            #$annotations{$l[3]} = { 'rs' => $l[4], 'a1' => $l[7], 'a2' => $l[8], 'strand' => $l[5], 'hg18' => $l[1], 'hg19' => $l[2] };#
+#
+ #           last;
+  #      }
+#        case 'Exomechipv1' {}
+#        case 'Exomechipc1-1' {}
+#        case 'HumanCoreExome24v1' {}
+#        case 'GSAarrayv1' {
+#            $annotations{$l[2]} = { 'rs' => $l[3], 'a1' => $l[6], 'a2' => $l[7], 'strand' => $l[4], 'hg18' => $l[1], 'hg19' => $l[1] };
+#            last;
+#        }
+#    }
 }
 close $annot_fh;
 

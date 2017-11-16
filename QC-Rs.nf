@@ -11,21 +11,20 @@ def ChipDefinitions = this.class.classLoader.parseClass(new File("config/ChipDef
 params.output = "."
 
 // Set up channels between processe
-input_files = Channel.create()
+input_files_flip = Channel.create()
+input_files_ann = Channel.create()
+//input_files = Channel.create()
 to_flipfile = Channel.create()
 
 // Move input files (basename given via --input PLINK) into first-stage channel
-Channel.fromFilePairs(params.input + "{.bim,.bed,.fam}", size:3, flat: true).separate(input_files, to_flipfile) { a -> [a, a[1]] }
+//Channel.fromFilePairs(params.input + "*.{bim,bed,fam}", size:3, flat: true).separate(input_files_flip, input_files_ann, to_flipfile) { a -> [a, a, a[1]] }
+Channel.fromFilePairs(params.input + "*.{bim,bed,fam}", size:3, flat: true).separate(input_files_flip, input_files_ann, to_flipfile) { a -> [a, a, a[1]] }
 
 /*
  Transform a chip-specific annotations file into a format that is easier to pr bbocess by the following stages.
  */
 process generate_annotations {
-
-    def input_files = Channel.fromFilePairs(params.input + "{.bim,.bed,.fam}", size:3, flat: true)
-
-    input:
-    file plink from input_files
+    echo true
 
     output:
     file 'annotations.list' into annotations, to_translate_ann
@@ -34,7 +33,14 @@ process generate_annotations {
     def annotation_file = file(params.annotation_dir+'/'+params.switch_to_chip_build+'/'+ChipDefinitions.Producer(params.chip_producer)+'/'+ChipDefinitions.SNPAnnotations(params.chip_version)).toAbsolutePath()
 
 """
-perl -ne '@l=split(/\\s+/);print "\$l[3] \$l[4] \$l[7] \$l[8] \$l[5] \$l[1] \$l[2]\\n";' $annotation_file >annotations.list
+echo -n Generating annotations.list from ${annotation_file}
+if [ "${params.chip_version}" == "Immunochip" ]; then
+    echo " for Immunochip"
+    perl -ne '@l=split(/\\s+/);print "\$l[3] \$l[4] \$l[7] \$l[8] \$l[5] \$l[1] \$l[2]\\n";' $annotation_file >annotations.list
+else
+    echo " for ${params.chip_version}"
+    perl -ne '@l=split(/\\s+/);print "\$l[2] \$l[3] \$l[6] \$l[7] \$l[4] \$l[1] \$l[1]\\n";' $annotation_file >annotations.list
+fi
 """
 }
 
@@ -42,6 +48,8 @@ perl -ne '@l=split(/\\s+/);print "\$l[3] \$l[4] \$l[7] \$l[8] \$l[5] \$l[1] \$l[
  Generate a Plink flipfile based on annotations and strand info
  */
 process generate_flipfile {
+//    echo true
+
     input:
     file ann from annotations
     file bim from to_flipfile
@@ -57,8 +65,10 @@ process generate_flipfile {
 
 """
 if [ -e $source ]; then
+  echo Using ${source} as flipfile
   cp $source flipfile
 else
+  echo Generating flipfile from ${ann}
   generate_flipfile.pl $bim $ann >flipfile
 fi
 """
@@ -68,13 +78,15 @@ fi
  Call Plink to actually flip alleles based on strand information
  */
 process plink_flip {
+//    echo true
+
     input:
-    file plink from input_files
+    file pl from input_files_flip
     file flip  from to_plink_flip
 
     output:
-    file 'flipped.{bed,fam}' into to_plink_exclude_plink
-    file 'flipped.bim' into to_translate_bim
+    file "${pl[1].baseName}_flipped.{bed,fam}" into to_plink_exclude_plink
+    file "${pl[1].baseName}_flipped.bim" into to_translate_bim
 
     module 'IKMB'
     module 'Plink/1.9'
@@ -82,27 +94,29 @@ process plink_flip {
 //    memory '6 GB'
 shell:
 '''
-plink --bed !{plink[1]} --bim !{plink[2]} --fam !{plink[3]} --flip !{flip} --threads 1 --memory 6144 --make-bed --out flipped --allow-no-sex
+echo Flipping strands for !{pl}
+plink --bed !{pl[1]} --bim !{pl[2]} --fam !{pl[3]} --flip !{flip} --threads 1 --memory 6144 --make-bed --out !{pl[1].baseName}_flipped --allow-no-sex
 '''
 }
-
+// 
 /*
  Translate Immunochop IDs to Rs names
  */
 process translate_ids {
+    echo true
+
     input:
     file bim from to_translate_bim
     file ann from to_translate_ann
 
     output:
-    file 'translated.bim' into to_find_duplicates, to_find_nn, to_exclude_bim
+    file "${bim.baseName}_translated.bim" into to_find_duplicates, to_find_nn, to_exclude_bim
 
     module 'perl5.22.0'
 
-    println "Switching from ${params.chip_build} to ${params.switch_to_chip_build}"
-
 """
-translate_ichip_to_rs.pl $bim $ann ${params.chip_build} ${params.switch_to_chip_build} >translated.bim
+echo Translating SNP names for ${params.chip_version}
+translate_ichip_to_rs.pl ${params.chip_version} $bim $ann ${params.chip_build} ${params.switch_to_chip_build} >${bim.baseName}_translated.bim
 """
 }
 
@@ -172,7 +186,7 @@ fi
  Apply an exclude list to the translated Plink data set
  */
 process plink_exclude {
-
+//    echo true
     publishDir params.output ?: '.', mode: 'move', overwrite: true
 
     input:
@@ -181,14 +195,15 @@ process plink_exclude {
     file bim from to_exclude_bim
 
     output:
-    file 'result.{bim,bed,fam}'
+    file "${params.collection_name}_QC-Rs.{bim,bed,fam,log}"
 
     // Note that Plink 1.07 only excludes the first of duplicates, while 1.9+ removes all duplicates
     module 'IKMB'
-    module 'Plink/1.7'
+    module 'Plink/1.9'
 
 """
-plink --noweb --bed ${plink[0]} --bim $bim --fam ${plink[1]} --exclude $exclude --make-bed --out result --allow-no-sex
+echo Excluding SNP list ${exclude} from ${plink} ${bim}
+plink  --bed ${plink[0]} --bim $bim --fam ${plink[1]} --exclude $exclude --make-bed --out ${params.collection_name}_QC-Rs --allow-no-sex
 """
 }
 

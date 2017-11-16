@@ -3,8 +3,10 @@
 import sys
 import re
 
-def generate_exclude_file4(Missingness_file, threshold, outfile, batches):
-    """ generate exclude file 3: Remove variants with certain missingness across the entire collection """
+def generate_exclude_file4(Missingness_file, threshold_par, outfile, batches_list):
+    numof_batches = len(batches_list)
+
+    threshold = float(threshold_par)
 
     try:
         fh_r  = file(Missingness_file, "r")
@@ -12,6 +14,11 @@ def generate_exclude_file4(Missingness_file, threshold, outfile, batches):
     except IOError, e:
         print e
         sys.exit(1)
+
+    print "Missingness: " + Missingness_file
+    print "Threshold:   ", threshold
+    print "Outfile:     " + outfile
+    print "Batches:    ", batches_list
 
     # skip header
     line = fh_r.readline().rstrip('\n')
@@ -26,12 +33,13 @@ def generate_exclude_file4(Missingness_file, threshold, outfile, batches):
 
         variant_excluded = False
         variant_id = list[1]
-        for i in xrange(len(batches)):
+        for i in xrange(numof_batches):
 
             variant_id_tmp = list[1]
             assert(variant_id == variant_id_tmp)
 
             missingness = float(list[6])
+            #print "missingness: ", missingness, "threshold: ", threshold
             if missingness > threshold and (not variant_excluded):
                 fh_w.writelines(list[1] + "\n")
                 variant_excluded = True

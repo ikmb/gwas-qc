@@ -3,8 +3,14 @@
 import sys
 import re
 
-def generate_exclude_file3(Missingness_file, threshold, outfile):
+def generate_exclude_file3(Missingness_file, threshold_par, outfile):
     """ generate exclude file 3: Remove variants with certain missingness across the entire collection """
+
+    print "Missingness: ", Missingness_file
+    print "Threshold: ", threshold_par
+    print "Outfile: ", outfile
+
+    threshold = float(threshold_par)
 
     try:
         fh_r  = file(Missingness_file, "r")
