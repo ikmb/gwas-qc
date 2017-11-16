@@ -29,7 +29,7 @@ if [ ! -e /opt/plink-1.07 ]; then
    mv plink-1.07-x86_64 plink-1.07
    rm -f plink-1.07-x86_64.zip
 else
-   echo "Already there."
+   echo "  Already there."
 fi
 
 echo "Installing Plink 1.9"
@@ -41,7 +41,7 @@ if [ ! -e /opt/plink-1.9 ]; then
    unzip -o plink_linux_x86_64.zip
    rm -f plink_linux_x86_64.zip
 else
-   echo "Already there."
+   echo "  Already there."
 fi
 
 echo "Installing EIGENSTRAT 6.1.4"
@@ -52,7 +52,7 @@ if [ ! -e /opt/eigensoft-6.1.4 ]; then
    mv EIG-6.1.4 eigensoft-6.1.4
    rm -f EIG-6.1.4.tar.gz
 else
-   echo "Already there."
+   echo "  Already there."
 fi
 
 echo "Installing EIGENSTRAT 4.2"
@@ -63,7 +63,7 @@ if [ ! -e /opt/eigensoft-4.2 ]; then
    mv EIG4.2 eigensoft-4.2
    rm -f EIG4.2.tar.xz
 else
-   echo "Already there."
+   echo "  Already there."
 fi
 
 echo "Installing FlashPCA2"
@@ -77,7 +77,7 @@ if [ ! -e /opt/flashpca2 ]; then
   ln -s flashpca_x86-64 flashpca2
   rm -f flashpca_x86-64.gz
 else
-  echo "Already there."
+  echo "  Already there."
 fi
 
 # Make bind mount points
@@ -89,10 +89,13 @@ mkdir -p /home/sukmb388
 chmod 777 /home/sukmb388
 
 echo "Installing R packages"
+   touch /tmp/packages.r
    echo "if('Rserve' %in% rownames(installed.packages()) == FALSE) {install.packages('Rserve', repo='http://cran.uni-muenster.de/')}" >/tmp/packages.r
    echo "if('hwde' %in% rownames(installed.packages()) == FALSE) {install.packages('hwde', repo='http://cran.uni-muenster.de/')}" >>/tmp/packages.r
-   echo 'source("https://bioconductor.org/biocLite.R")' >>/tmp/packages.r
-   echo 'biocLite("SNPRelate")' >>/tmp/packages.r
+   echo "if('SNPRelate' %in% rownames(installed.packages()) == FALSE) {source('https://bioconductor.org/biocLite.R'); biocLite('SNPRelate')}" >>/tmp/packages.r
+   echo "if('sm' %in% rownames(installed.packages()) == FALSE) {install.packages('sm', repo='http://cran.uni-muenster.de/')}" >>/tmp/packages.r
+   echo "if('plotrix' %in% rownames(installed.packages()) == FALSE) {install.packages('plotrix', repo='http://cran.uni-muenster.de/')}" >>/tmp/packages.r
+   echo "writeLines('  All done')" >>/tmp/packages.r
    Rscript /tmp/packages.r
 
 echo "Installing modules"
@@ -105,7 +108,7 @@ if [ ! -e /opt/modules-modules-tcl ]; then
    chmod a+x /tmp/modules-setup.bash
    /tmp/modules-setup.bash
 else
-   echo "Already there."
+   echo "  Already there."
 fi
 
 echo "Updating custom modules"
