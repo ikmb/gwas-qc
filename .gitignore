@@ -1,10 +1,10 @@
 work
 .nextflow*
 nextflow
-out-rs
-out-snpqci-part1
-out-snpqci-part2
-
+out-*
 singularity/qc.img
+singularity/baseimage.img
 *.orig
 /tmp/
+**/*.pyc
+
