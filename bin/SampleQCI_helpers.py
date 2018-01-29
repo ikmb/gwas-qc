@@ -624,7 +624,7 @@ def addcountryinfo_10PCs(evec_file, eval_file, new_evec_file, new_eval_file, ind
 
 
 
-def pca_convert(plink, eigenstrat_parameter_file, annotation_file, plink_pca):
+def pca_convert(plink, eigenstrat_parameter_file, annotation_file):
     """ convert PLINK file data set to eigenstrat format """
 
     # ----------------------------- #

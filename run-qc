@@ -1,0 +1,200 @@
+#!/usr/bin/env perl
+# -*- mode:perl -*-
+
+use constant OUT_RS => './out-Rs';
+use constant OUT_SNPQCI => './out-SNPQCI';
+use constant OUT_SAMPLEQC => './out-SampleQC';
+use constant OUT_SNPQCII => './out-SNPQCII';
+
+use 5.20.0;
+use strict;
+use warnings;
+
+use autodie qw(:all);
+
+# Trim leading and trailing whitespace from argument
+sub trim {
+    my $s = shift;
+    $s =~ s/^\s+|\s+$//g;
+    return $s;
+}
+
+# Strip leading and trailing double quotes from argument
+sub strip_quotes {
+    my $s = shift;
+    $s =~ s/^"|"$//g;
+    return $s;
+}
+
+# Returns a hash table that is parsed from the given config file name
+sub parse_config {
+    my %c;
+    my $f = shift; # file
+    open my $conf, "<", $f or die($!);
+    while(<$conf>) {
+        if (/^(.+)=(.+)$/) {
+            my $key = trim($1);
+            my $val = strip_quotes(trim($2));
+            $c{$key} = $val;
+        }
+    }
+    return %c;
+}
+
+# updates the relevant ENV paths via restricted variable substitution
+sub update_env_paths {
+    my $c = shift;
+
+    $c->{'BATCH_DIR'} =~ s/\$\{env.BIND_DIR\}/$c->{BIND_DIR}/;
+}
+
+# Wait for a key press
+sub pause {
+    say "\nPress enter to continue...";
+    <STDIN>;
+}
+
+if (@ARGV == 0) {
+    say STDERR "Syntax: run-qc <config> [--pause]";
+    say STDERR "\tExample: run-qc config/tutorial.config --pause";
+    exit(1);
+}
+
+my $pause = 0;
+
+if (@ARGV == 2 && $ARGV[1] == "--pause") {
+    $pause = 1;
+}
+
+my %config = parse_config($ARGV[0]);
+update_env_paths(\%config);
+
+# Feeds all single-batch datasets from the config file into the
+# Rs stage, one after another.
+sub run_rs {
+    say "--------------------------------------------";
+    say "Launching stage 1 'Rs': SNP Name Translation";
+    say "--------------------------------------------";
+
+    # Collect batches from configuration and launch Rs.nf for each batch
+    my @batches = split (/,/, $config{"disease_names"});
+    for (@batches) {
+        my $batch = $_;
+        my %batchconf = parse_config("$config{BATCH_DIR}/$_.config");
+        my @cmd = ("nextflow");
+        push @cmd, '-c';
+        push @cmd, "$config{BATCH_DIR}/$batch.config";
+        push @cmd, '-c';
+        push @cmd, $ARGV[0];
+        push @cmd, 'run';
+        push @cmd, 'Rs.nf';
+        push @cmd, '--input';
+        push @cmd, "$config{BATCH_DIR}/$batch/orig_files/$batchconf{disease_data_set_prefix_orig}";
+        push @cmd, '--output';
+        push @cmd, OUT_RS;
+        push @cmd, '-resume';
+        push @cmd, '-with-report';
+        push @cmd, OUT_RS . "/Rs-$batch.report.html";
+
+        say "Processing batch $batch...";
+        say "Calling @cmd";
+        system(@cmd);
+    }
+
+    say "Stage 1 completed. Output files have been copied to " . OUT_RS;
+}
+
+sub run_snpqci {
+    say "---------------------------------------------------------------------";
+    say "Launching stage 2 'SNPQCI': Batch merge, HWE and missingness analyses";
+    say "---------------------------------------------------------------------";
+
+    # Collect batches from configuration and launch Rs.nf for each batch
+
+
+    my @cmd = ("nextflow");
+    push @cmd, '-c';
+    push @cmd, $ARGV[0];
+    push @cmd, 'run';
+    push @cmd, 'SNPQCI.nf';
+    push @cmd, '--rs_dir';
+    push @cmd, OUT_RS;
+    push @cmd, '--output';
+    push @cmd, OUT_SNPQCI;
+    push @cmd, '-resume';
+    push @cmd, '-with-report';
+    push @cmd, OUT_SNPQCI . '/SNPQCI-report.html';
+
+    say "Calling @cmd";
+    system(@cmd);
+
+    say "Stage 2 completed. Output files have been copied to " . OUT_SNPQCI;
+}
+
+sub run_sampleqc {
+    say "-----------------------------------------------------------------------";
+    say "Launching stage 3 'SampleQC': Pruning, HapMap/1kG merging, PCA analyses";
+    say "-----------------------------------------------------------------------";
+
+    # Collect batches from configuration and launch Rs.nf for each batch
+
+
+    my @cmd = ("nextflow");
+    push @cmd, '-c';
+    push @cmd, $ARGV[0];
+    push @cmd, 'run';
+    push @cmd, 'SampleQCI.nf';
+    push @cmd, '--input';
+    push @cmd, OUT_SNPQCI . "/$config{collection_name}_QCI";
+    push @cmd, '--output';
+    push @cmd, OUT_SAMPLEQC;
+    push @cmd, '-resume';
+    push @cmd, '-with-report';
+    push @cmd, OUT_SAMPLEQC . '/SampleQC-report.html';
+
+    say "Calling @cmd";
+    system(@cmd);
+
+    say "Stage 3 completed. Output files have been copied to " . OUT_SAMPLEQC;
+}
+
+sub run_snpqcii {
+    say "--------------------------------------------------------";
+    say "Launching stage 4 'SNPQCII': HF-Test, Monomorphics check";
+    say "--------------------------------------------------------";
+
+    # Collect batches from configuration and launch Rs.nf for each batch
+
+
+    my @cmd = ("nextflow");
+    push @cmd, '-c';
+    push @cmd, $ARGV[0];
+    push @cmd, 'run';
+    push @cmd, 'SNPQCII.nf';
+    push @cmd, '--input';
+    push @cmd, OUT_SAMPLEQC . "/$config{collection_name}_SampleQCI_final";
+    push @cmd, '--input_wr';
+    push @cmd, OUT_SAMPLEQC . "/$config{collection_name}_SampleQCI_final_withoutRelatives";
+
+    push @cmd, '--output';
+    push @cmd, OUT_SNPQCII;
+    push @cmd, '-resume';
+    push @cmd, '-with-report';
+    push @cmd, OUT_SNPQCII . '/SNPQCII-report.html';
+
+    say "Calling @cmd";
+    system(@cmd);
+
+    say "Stage 4 completed. Output files have been copied to " . OUT_SNPQCII;
+    say "The final QC'ed dataset can now be found in " . OUT_SNPQCII . "/$config{disease_data_set_prefix_release}.{bed.bim,fam,log,...}";
+}
+
+
+
+run_rs;
+pause if $pause;
+run_snpqci;
+pause if $pause;
+run_sampleqc;
+pause if $pause;
+run_snpqcii;

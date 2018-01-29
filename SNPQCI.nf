@@ -8,7 +8,7 @@ def ChipDefinitions = this.class.classLoader.parseClass(new File("config/ChipDef
 
 // initialize configuration
 params.output = "."
-input_basename = params.input
+//input_basename = params.input
 hwe_template_script = file(params.hwe_template)
 
 // Lots of indirection layers require lots of backslash escaping
@@ -36,53 +36,54 @@ assert file(definetti_r).exists() : "Could not find DeFinetti plotting script: $
 */
 
 process merge_batches {
-//    echo true
-
-    publishDir params.output ?: '.', mode: 'copy', overwrite: true
+    //publishDir params.output ?: '.', mode: 'copy', overwrite: true
     //input:
     //file input_bim
     //file input_bed
     //file input_fam
 
     output:
-        file "${params.collection_name}_QCI_merged.bim" into merged_bim, to_split_bim, to_hwe_bim, to_verify_bim, to_exclude_bim, to_miss_bim, to_miss_batch_bim
-    file "${params.collection_name}_QCI_merged.bed" into merged_bed, to_split_bed, to_hwe_bed, to_verify_bed, to_exclude_bed, to_miss_bed, to_miss_batch_bed
-    file "${params.collection_name}_QCI_merged.fam" into merged_fam, to_split_fam, to_hwe_fam, to_verify_fam, to_exclude_fam, to_miss_fam, to_miss_batch_fam
-    file "${params.collection_name}_QCI_merged.log"
+    file "${params.collection_name}_Rs.bim" into merged_bim, to_split_bim, to_hwe_bim, to_verify_bim, to_exclude_bim, to_miss_bim, to_miss_batch_bim
+    file "${params.collection_name}_Rs.bed" into merged_bed, to_split_bed, to_hwe_bed, to_verify_bed, to_exclude_bed, to_miss_bed, to_miss_batch_bed
+    file "${params.collection_name}_Rs.fam" into merged_fam, to_split_fam, to_hwe_fam, to_verify_fam, to_exclude_fam, to_miss_fam, to_miss_batch_fam
+    file "${params.collection_name}_Rs.log"
 
-    module 'IKMB'
-    module 'Plink/1.9'
 
+    //.getAbsolutePath();
     shell:
+    rsdir = file(params.rs_dir)
 '''
 #!/usr/bin/env bash
 
 IFS=','
 NAMES=($(echo "!{params.disease_names}"))
 PREFIXES=($(echo "!{params.disease_data_set_prefix_rs}"))
-BASE="!{BATCH_DIR}/${NAMES[0]}/orig_files/${PREFIXES[0]}"
+BASE="!{rsdir}/${PREFIXES[0]}"
 
+    module load IKMB
+    module load Plink/1.9
+    
        for idx in ${!PREFIXES[@]}; do
            echo idx: $idx
            echo name: ${NAMES[$idx]}
            echo prefix: ${PREFIXES[$idx]}
 
            if [ "$idx" -gt 0 ]; then
-               echo -n !{BATCH_DIR}/${NAMES[$idx]}/orig_files/${PREFIXES[$idx]}.bed  >>merge-list
+               echo -n !{rsdir}/${PREFIXES[$idx]}.bed  >>merge-list
                echo -n " " >>merge-list
-               echo -n !{BATCH_DIR}/${NAMES[$idx]}/orig_files/${PREFIXES[$idx]}.bim >>merge-list
+               echo -n !{rsdir}/${PREFIXES[$idx]}.bim >>merge-list
                echo -n " " >>merge-list
-               echo !{BATCH_DIR}/${NAMES[$idx]}/orig_files/${PREFIXES[$idx]}.fam >>merge-list
+               echo !{rsdir}/${PREFIXES[$idx]}.fam >>merge-list
            fi
        done
 
        if [ "${#PREFIXES[*]}" -gt 0 ]; then
-           plink --bfile $BASE --merge-list merge-list --make-bed --out "!{params.collection_name}_QCI_merged" --allow-no-sex
+           plink --bfile $BASE --merge-list merge-list --make-bed --out "!{params.collection_name}_Rs" --allow-no-sex
        else
-           cp $BASE.bim !{params.collection_name}_QCI_merged.bim
-           cp $BASE.bed !{params.collection_name}_QCI_merged.bed
-           cp $BASE.fam !{params.collection_name}_QCI_merged.fam
-           echo "No merge perfomed, only one disease name found" >!{params.collection_name}_QCI_merged.log
+           cp $BASE.bim !{params.collection_name}_Rs.bim
+           cp $BASE.bed !{params.collection_name}_Rs.bed
+           cp $BASE.fam !{params.collection_name}_Rs.fam
+           echo "No merge perfomed, only one disease name found" >!{params.collection_name}_Rs.log
        fi
 '''
 }
@@ -109,13 +110,15 @@ process generate_hwe_diagrams {
     file "${params.collection_name}_cases_controls_DeFinetti.jpg"
     file "${params.collection_name}_hardy.hwe"
 
-    module 'IKMB'
-    module 'Plink/1.7'
+
 //    memory '8 GB'
 //    cpus 1
 
 //    def basename = new File(merged_bim.toString()).getBaseName()
 """
+    module load IKMB
+    module load Plink/1.7
+    
 plink --noweb --bfile ${merged_bim.baseName} --hardy --out ${params.collection_name}_hardy --missing-phenotype 0 --hwe 0.0 --extract $autosomes
 R --slave --args ${params.collection_name}_hardy.hwe ${params.collection_name}_controls_DeFinetti ${params.collection_name}_cases_DeFinetti ${params.collection_name}_cases_controls_DeFinetti <$definetti_r
 """
@@ -172,13 +175,15 @@ process calculate_hwe {
 //  file "${chunk}-out.nosex"
 
   tag { chunk }
-    module 'IKMB'
-    module 'Plink/1.9'
+
 
 shell:
 '''
 #!/usr/bin/env bash
 
+    module load IKMB
+    module load Plink/1.9
+    
 # Start Rserve process in background. Keep in mind that --RS-pidfile is an undocumented feature that writes the PID after daemonizing (that is, not the R pid but the Rserve pid) into the specified file. It might be changed in the future
 R CMD Rserve --RS-socket /scratch/rserve.sock --no-save --RS-pidfile /scratch/rserve.pid
 
@@ -281,10 +286,12 @@ process determine_missingness_entire {
     output:
     file 'missingness-excludes-entire' into excludes_miss_entire
 
-    module 'IKMB'
-    module 'Plink/1.7' // Achtung, 1.9 gibt hier andere Ergebnisse aus!
 
-"""
+
+"""    
+module load IKMB
+module load Plink/1.7
+
 plink  --bfile "${new File(input_bim.toString()).getBaseName()}" --missing --out missingness_entire --allow-no-sex
 SNPQCI_extract_missingness_entire.py missingness_entire.lmiss ${params.geno_entire_collection} missingness-excludes-entire
 """
@@ -301,10 +308,11 @@ process determine_missingness_per_batch {
     output:
     file 'missingness-excludes-perbatch' into excludes_miss_perbatch
 
-    module 'IKMB'
-    module 'Plink/1.7' // Achtung, 1.9 gibt hier andere Ergebnisse aus!
+
 
 """
+    module load IKMB
+    module load Plink/1.7
 awk '{print \$1, \$2, \$7 }' "${individuals_annotation}" | grep -v "familyID" >cluster_file
 plink --noweb --bfile "${new File(input_bim.toString()).getBaseName()}" --missing --out missingness_perbatch --missing-phenotype 0 --allow-no-sex --within cluster_file
 SNPQCI_extract_missingness_perbatch.py missingness_perbatch.lmiss ${params.geno_batch} "$individuals_annotation" missingness-excludes-perbatch
@@ -326,10 +334,11 @@ process exclude_bad_variants {
     output:
     file "${params.collection_name}_QCI.{bim,bed,fam}" into draw_definetti_after
 
-    module 'IKMB'
-    module 'Plink/1.7'
+
 
 """
+    module load IKMB
+    module load Plink/1.7
 (tail -n +2 "$excludes_whole" | cut -f1; cat "$excludes_perbatch"; cat "$missingness_excludes_entire"; cat "$missingness_excludes_perbatch") | sort -n >variant-excludes
 plink --noweb --bfile "${new File(input_bim.toString()).getBaseName()}" --exclude variant-excludes --make-bed --out ${params.collection_name}_QCI
 """
@@ -350,10 +359,11 @@ process draw_definetti_after_QCI {
     file prefix+"_{cases,controls,cases_controls}_DeFinetti.jpg"
 //    file prefix+"_cases_DeFinetti.jpg"
 
-    module 'IKMB'
-    module 'Plink/1.7'
+
 
 """
+    module load IKMB
+    module load Plink/1.7
 plink --noweb --bfile "${new File(new_plink[0].toString()).getBaseName()}" --hardy --out ${prefix} --hwe 0.0 --extract "$autosomes"
 R --slave --args ${prefix}.hwe ${prefix}_controls_DeFinetti ${prefix}_cases_DeFinetti ${prefix}_cases_controls_DeFinetti <"$definetti_r"
 """

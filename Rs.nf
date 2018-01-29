@@ -1,10 +1,5 @@
 // -*- mode:groovy -*-
 
-/*
- Author: Jan Kässens <j.kaessens@ikmb.uni-kiel.de>
-*/
-
-
 def ChipDefinitions = this.class.classLoader.parseClass(new File("config/ChipDefinitions.groovy"))
 
 // Set default output directory, overwritten by --output=<dir>
@@ -16,22 +11,24 @@ input_files_ann = Channel.create()
 //input_files = Channel.create()
 to_flipfile = Channel.create()
 
-// Move input files (basename given via --input PLINK) into first-stage channel
-//Channel.fromFilePairs(params.input + "*.{bim,bed,fam}", size:3, flat: true).separate(input_files_flip, input_files_ann, to_flipfile) { a -> [a, a, a[1]] }
-Channel.fromFilePairs(params.input + "*.{bim,bed,fam}", size:3, flat: true).separate(input_files_flip, input_files_ann, to_flipfile) { a -> [a, a, a[1]] }
+// Prepare input file pairs from batches
+Channel.fromFilePairs(params.input + ".{bim,bed,fam}", size:3, flat: true).separate(input_files_flip, input_files_ann, to_flipfile) { a -> [a, a, a] }
 
 /*
- Transform a chip-specific annotations file into a format that is easier to pr bbocess by the following stages.
+ Transform a chip-specific annotations file into a format that is easier to process by the following stages.
  */
 process generate_annotations {
-    echo true
+    input:
+    // Process results without inputs will not get cached, so force caching of results by providing a predictable dummy parameter
+    val dummy from Channel.from(1);
 
     output:
-    file 'annotations.list' into annotations, to_translate_ann
+    file 'annotations.list' into to_flipfile_ann, to_translate_ann
 
 
-    def annotation_file = file(params.annotation_dir+'/'+params.switch_to_chip_build+'/'+ChipDefinitions.Producer(params.chip_producer)+'/'+ChipDefinitions.SNPAnnotations(params.chip_version)).toAbsolutePath()
+    def annotation_file = ANNOTATION_DIR + "/" + params.switch_to_chip_build+'/'+ChipDefinitions.Producer(params.chip_producer)+'/'+ChipDefinitions.SNPAnnotations(params.chip_version)
 
+    tag { params.disease_data_set_prefix_orig }
 """
 echo -n Generating annotations.list from ${annotation_file}
 if [ "${params.chip_version}" == "Immunochip" ]; then
@@ -51,25 +48,21 @@ process generate_flipfile {
 //    echo true
 
     input:
-    file ann from annotations
-    file bim from to_flipfile
+    file ann from to_flipfile_ann
+    file ds from to_flipfile
 
     output:
     file 'flipfile' into to_plink_flip
 
-    module 'perl5.22.0'
- //   memory '128 MB'
-//    cpus 1
-
-    def source = file(params.annotation_dir+'/'+params.switch_to_chip_build+'/'+ChipDefinitions.Producer(params.chip_producer)+'/'+ChipDefinitions.StrandInfo(params.chip_strand_info)).toAbsolutePath()
-
+    def source = file(ANNOTATION_DIR+'/'+params.switch_to_chip_build+'/'+ChipDefinitions.Producer(params.chip_producer)+'/'+ChipDefinitions.StrandInfo(params.chip_strand_info)).toAbsolutePath()
+    tag { params.disease_data_set_prefix_orig }
 """
 if [ -e $source ]; then
   echo Using ${source} as flipfile
   cp $source flipfile
 else
   echo Generating flipfile from ${ann}
-  generate_flipfile.pl $bim $ann >flipfile
+  generate_flipfile.pl ${ds[0].baseName}.bim $ann >flipfile
 fi
 """
 }
@@ -87,13 +80,13 @@ process plink_flip {
     output:
     file "${pl[1].baseName}_flipped.{bed,fam}" into to_plink_exclude_plink
     file "${pl[1].baseName}_flipped.bim" into to_translate_bim
-
-    module 'IKMB'
-    module 'Plink/1.9'
-//    cpus 1
-//    memory '6 GB'
+    
+    tag { params.disease_data_set_prefix_orig }
+    
 shell:
 '''
+module load IKMB
+module load Plink/1.9
 echo Flipping strands for !{pl}
 plink --bed !{pl[1]} --bim !{pl[2]} --fam !{pl[3]} --flip !{flip} --threads 1 --memory 6144 --make-bed --out !{pl[1].baseName}_flipped --allow-no-sex
 '''
@@ -103,16 +96,14 @@ plink --bed !{pl[1]} --bim !{pl[2]} --fam !{pl[3]} --flip !{flip} --threads 1 --
  Translate Immunochop IDs to Rs names
  */
 process translate_ids {
-    echo true
-
     input:
     file bim from to_translate_bim
     file ann from to_translate_ann
 
     output:
     file "${bim.baseName}_translated.bim" into to_find_duplicates, to_find_nn, to_exclude_bim
-
-    module 'perl5.22.0'
+    
+    tag { params.disease_data_set_prefix_orig }
 
 """
 echo Translating SNP names for ${params.chip_version}
@@ -130,9 +121,7 @@ process find_duplicates {
     output:
     file 'duplicates' into to_merge_exclude_duplicates
 
-//    cpus 1
-//    memory '128 MB'
-
+    tag { params.disease_data_set_prefix_orig }
 """
 cut -f 2 $bim | sort | uniq -d >duplicates
 """
@@ -148,9 +137,7 @@ process find_nn {
     output:
     file 'nn' into to_merge_exclude_nn
 
-//    cpus 1
-//    memory '128 MB'
-
+    tag { params.disease_data_set_prefix_orig }
 """
 grep -P "\\tN\\tN" $bim | cut -f2 >nn
 """
@@ -167,16 +154,14 @@ process merge_exclude_list {
     output:
     file 'exclude' into to_plink_exclude_list
 
-//    cpus 1
-//    memory '128 MB'
-
-    def source = params.annotation_dir+'/'+params.switch_to_chip_build+'/'+ChipDefinitions.Producer(params.chip_producer)+'/'+ChipDefinitions.RsExclude(params.chip_version)
-    println "Using chip exclude list $source"
-
+    def source = ANNOTATION_DIR+'/'+params.switch_to_chip_build+'/'+ChipDefinitions.Producer(params.chip_producer)+'/'+ChipDefinitions.RsExclude(params.chip_version)
+    tag { params.disease_data_set_prefix_orig }
 """
 if [ -e $source ]; then
+  echo "Using pre-built exclude list $source"
   cat $duplicates $nn $source >exclude
 else
+  echo "No pre-built exclude list found, using only duplicates and NNs"
   cat $duplicates $nn >exclude
 fi
 """
@@ -186,8 +171,7 @@ fi
  Apply an exclude list to the translated Plink data set
  */
 process plink_exclude {
-//    echo true
-    publishDir params.output ?: '.', mode: 'move', overwrite: true
+    publishDir params.output ?: '.', mode: 'copy'
 
     input:
     file exclude from to_plink_exclude_list
@@ -195,15 +179,17 @@ process plink_exclude {
     file bim from to_exclude_bim
 
     output:
-    file "${params.collection_name}_QC-Rs.{bim,bed,fam,log}"
+    file "${params.target_name}.{bim,bed,fam,log}"
 
+    tag { params.disease_data_set_prefix_orig }
     // Note that Plink 1.07 only excludes the first of duplicates, while 1.9+ removes all duplicates
-    module 'IKMB'
-    module 'Plink/1.9'
 
-"""
+
+"""    
+module load 'IKMB'
+module load 'Plink/1.9'
 echo Excluding SNP list ${exclude} from ${plink} ${bim}
-plink  --bed ${plink[0]} --bim $bim --fam ${plink[1]} --exclude $exclude --make-bed --out ${params.collection_name}_QC-Rs --allow-no-sex
+plink  --bed ${plink[0]} --bim $bim --fam ${plink[1]} --exclude $exclude --make-bed --out ${params.target_name} --allow-no-sex
 """
 }
 

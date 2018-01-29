@@ -69,8 +69,6 @@ process apply_precalc_remove_list {
     output:
     file "manually-removed.{bed,bim,fam}" into for_det_miss_het, for_calc_pi_hat
 
-    module "IKMB"
-    module "Plink/1.9"
 
     script:
     base = plink[0].baseName
@@ -78,11 +76,17 @@ process apply_precalc_remove_list {
 
     if(params.individuals_remove_manually == '' || params.individuals_remove_manually == 'nothing.txt') {
         """
+        module load "IKMB"
+        module load "Plink/1.9"
+
         # generates manually-removed.{bim,bed,fam,log,nosex,hh}
         plink --bfile ${base} --make-bed --out manually-removed --allow-no-sex
         """
     } else {
         """
+        module load "IKMB"
+        module load "Plink/1.9"
+
         plink --bfile ${base} --remove ${remove_list} --make-bed --out manually-removed --allow-no-sex
         """
     }
@@ -102,15 +106,17 @@ process determine_miss_het {
     file prefix+"miss.outlier.txt" into for_calc_pi_hat_outliers, for_remove_bad_samples_miss, for_prune_wr_miss
     file prefix+"het.het.outlier.txt" into for_remove_bad_samples_het
 
-    publishDir params.output ?: '.', mode: 'copy', overwrite: true
+    publishDir params.output ?: '.', mode: 'copy'
 
     //cpus {4 * task.attempt}
 
-    module "IKMB"
-    module "Plink/1.7"
+
 
 shell:
 '''
+    module load "IKMB"
+    module load "Plink/1.7"
+    
 # generates  miss.{hh,imiss,lmiss,log,nosex}
 plink --noweb --bfile "!{new File(dataset[0].toString()).getBaseName()}" --out !{prefix}miss --missing&
 # generates het.{het,hh,log,nosex}
@@ -137,7 +143,7 @@ perl -ne 'chomp;next if $.==1; @s=split /\\s+/;print "$s[1]\\t$s[2]\\n" if $s[6]
 }
 
 process prune {
-    publishDir params.output ?: '.', mode: 'copy', overwrite: true
+    publishDir params.output ?: '.', mode: 'copy'
     time 3.h
 
     input:
@@ -149,8 +155,7 @@ process prune {
     output:
         set file(prefix+'pruned.bed'), file(prefix+'pruned.bim'), file(prefix+'pruned.fam') into for_calc_imiss,for_detect_duplicates,for_calc_imiss_ibs,for_ibs_merge_and_verify_ds,for_merge_hapmap,for_pca_convert_pruned,for_second_pca_eigen,for_second_pca_flashpca,for_second_pca_flashpca_1kg
 
-    module "IKMB"
-    module "Plink/1.7"
+
 
     script:
         base = dataset[0].baseName
@@ -158,17 +163,19 @@ process prune {
 
     if (params.PCA_SNPList != "" && params.PCA_SNPList != "nofileexists") {
 """
+    module load "IKMB"
+    module load "Plink/1.7"
 echo Using PCA SNP List file and sample outliers for variant selection
 plink --noweb --bfile "${base}" --extract "$params.PCA_SNPList" --remove  "$outliers" --make-bed --out pruned
 """
     } else {
 """
+    module load "IKMB"
+    module load "Plink/1.9"
 echo Generating PCA SNP List file for variant selection
-module switch Plink/1.7 Plink/1.9
 plink --bfile "${base}" --indep-pairwise 50 5 0.2 --out _prune
 plink --bfile "${base}" --extract _prune.prune.in --maf 0.05 --remove "$outliers" --make-bed --out intermediate
 python -c 'from SampleQCI_helpers import *; write_snps_autosomes_noLDRegions_noATandGC_noIndels("${bim}", "include_variants")'
-# module switch Plink/1.9 Plink/1.7
 plink --noweb --bfile intermediate --extract include_variants --make-bed --out "${prefix}pruned"
 """
     }
@@ -176,8 +183,7 @@ plink --noweb --bfile intermediate --extract include_variants --make-bed --out "
 
 process calc_imiss {
     cpus 1
-    module "IKMB"
-    module "Plink/1.7"
+
 
     input:
     file dataset from for_calc_imiss
@@ -189,18 +195,19 @@ process calc_imiss {
     script:
         base = dataset[0].baseName
 """
+    module load "IKMB"
+    module load "Plink/1.7"
 plink --noweb --bfile "${base}" --missing --out ${prefix}miss
 """
 }
 
-final calc_imiss_job_count = 50
+final calc_imiss_job_count = 5
 
 calc_imiss_job_ids = Channel.from(1..calc_imiss_job_count) // plink expects 1-based job indices
 process calc_imiss_IBS {
     cpus 1
     memory 3.GB
-    module "IKMB"
-    module "Plink/1.9"
+
 
     input:
     file dataset from for_calc_imiss_ibs
@@ -212,6 +219,8 @@ process calc_imiss_IBS {
     file "*.part.genome.*" into for_ibs_merge_and_verify
 
 """
+    module load "IKMB"
+    module load "Plink/1.9"
 plink --bfile ${dataset[0].baseName} --genome --parallel ${job} ${calc_imiss_job_count} --threads 1 --memory 3000 --out ${dataset[0].baseName}.part
 """
 }
@@ -229,7 +238,8 @@ process ibs_merge_and_verify {
     shell:
 //        sorted_chunks = chunks.sort({ a, b -> a.toString() <=> b.toString() })
 '''
-
+    module load "IKMB"
+    module load "Plink/1.9"
 #IFS=' '
 #UNSORTED_CHUNKS='!{chunks}'
 
@@ -288,8 +298,7 @@ fi
 process merge_dataset_with_hapmap {
 //  cpus { 8 * 1 }
 
-    module "IKMB"
-    module "Plink/1.9"
+
 
     input:
     file pruned from for_merge_hapmap
@@ -309,12 +318,16 @@ process merge_dataset_with_hapmap {
     if (params.PCA_SNPexcludeList != "" && params.PCA_SNPexcludeList != "nofileexists") {
         snpexclude = BATCH_DIR + "/" + params.PCA_SNPexcludeList
         """
+        module load "IKMB"
+        module load "Plink/1.9"
         plink --bfile "${base_pruned}" --extract "${hapmap}.bim" --exclude "${snpexclude}" --make-bed --out pruned_tmp --allow-no-sex
         plink --bfile "${hapmap}" --extract "${bim_pruned}" --exclude "${snpexclude}" --make-bed --out hapmap_tmp --allow-no-sex
         plink --bfile pruned_tmp --bmerge hapmap_tmp --out ${prefix}pruned_hapmap --allow-no-sex
         """
     } else {
         """
+        module load "IKMB"
+        module load "Plink/1.9"
         plink --bfile "${base_pruned}" --extract "${hapmap}.bim" --make-bed --out pruned_tmp --allow-no-sex
         plink --bfile "${hapmap}" --extract "${bim_pruned}" --make-bed --out hapmap_tmp --allow-no-sex
         plink --bfile pruned_tmp --bmerge hapmap_tmp --out ${prefix}pruned_hapmap --allow-no-sex
@@ -324,9 +337,7 @@ process merge_dataset_with_hapmap {
 
 
 process pca_convert {
-  module "IKMB"
-  module "Plink/1.9"
-  module "Eigensoft"
+
 
   input:
   file pruned_hapmap from for_pca_convert_pruned_hapmap
@@ -343,10 +354,12 @@ process pca_convert {
   script:
   base_pruned = pruned[0].baseName
   base_hapmap = pruned_hapmap[0].baseName
-  plink_pca = pruned[0].baseName + "_" + String.valueOf(params.numof_pc) + "PC"
 """
-  python -c 'from SampleQCI_helpers import *; pca_convert ("${base_pruned}", "${prefix}eigenstrat-parameters", "${annotations}", "${plink_pca}")'
-  python -c 'from SampleQCI_helpers import *; pca_convert ("${base_hapmap}", "${prefix}eigenstrat-parameters-all", "${annotations}", "${plink_pca}")'
+  module load "IKMB"
+  module load "Plink/1.9"
+  module load "Eigensoft"
+  python -c 'from SampleQCI_helpers import *; pca_convert ("${base_pruned}", "${prefix}eigenstrat-parameters", "${annotations}")'
+  python -c 'from SampleQCI_helpers import *; pca_convert ("${base_hapmap}", "${prefix}eigenstrat-parameters-all", "${annotations}")'
 """
 }
 
@@ -354,10 +367,8 @@ process pca_convert {
 //projection_on_populations_hapmap  =     file(script_dir + '/' + params.projection_on_populations_hapmap)
 
 process pca_run {
-         publishDir params.output ?: '.', mode: 'copy', overwrite: true   
-    module "IKMB"
-    module "Plink/1.9"
-    module "Eigensoft/4.2"
+         publishDir params.output ?: '.', mode: 'copy'   
+
 
     input:
     file pruned_hapmap from for_pca_run_pruned_hapmap
@@ -375,6 +386,9 @@ process pca_run {
     draw_without = SCRIPT_DIR + "/draw_evec_withoutProjection.r"
     projection_on_populations_hapmap = BATCH_DIR + "/" + params.projection_on_populations_hapmap
 """
+    module load "IKMB"
+    module load "Plink/1.9"
+    module load "Eigensoft/4.2"
 python -c 'from SampleQCI_helpers import *; pca_run("${base_pruned}", ${sigma_threshold}, "${projection_on_populations_hapmap}", ${params.numof_pc}, 1, "${draw_eigenstrat}", "${draw_without}")'
 """
 }
@@ -403,14 +417,12 @@ fi
 }
 
 process flashpca2_pruned {
-     publishDir params.output ?: '.', mode: 'copy', overwrite: true   
+     publishDir params.output ?: '.', mode: 'copy'   
     cpus 2
     memory 8.GB
 //    when params.program_for_second_PCA == "FLASHPCA2"
 
-    module "IKMB"
-    module "FlashPCA"
-    module "Plink/1.7"
+
 
     input:
     file pruned from for_second_pca_flashpca
@@ -431,6 +443,9 @@ process flashpca2_pruned {
 
     individuals_annotation = BATCH_DIR + "/" + params.individuals_annotation
 """
+    module load "IKMB"
+    module load "FlashPCA"
+    module load "Plink/1.7"
   flashpca2 -d ${params.numof_pc} --bfile "${base_pruned}" --outval "${base_pruned}_eigenvalues_flashpca2" --outvec "${base_pruned}_eigenvectors_flashpca2" --outpc "${base_pruned}_pcs_flashpca2" --outpve "${base_pruned}_pve_flashpca2" --numthreads 2 --outload "${base_pruned}_loadings_flashpca2" --outmeansd "${base_pruned}_meansd_flashpca2"
   echo Adding batch info | ts
   python -c 'from SampleQCI_helpers import *; addbatchinfo_10PCs("${base_pruned}_pcs_flashpca2", "${base_pruned}_eigenvalues_flashpca2", "${plink_pca}.pca.evec", "${plink_pca}.eval", "${individuals_annotation}", "${params.preQCIMDS_1kG_sample}")'
@@ -444,14 +459,12 @@ process flashpca2_pruned {
 } 
 
 process flashpca2_pruned_1kG {
-        publishDir params.output ?: '.', mode: 'copy', overwrite: true
+        publishDir params.output ?: '.', mode: 'copy'
     memory 8.GB
     cpus 2
 //    when params.program_for_second_PCA == "FLASHPCA2"
 
-    module "IKMB"
-    module "FlashPCA"
-    module "Plink/1.9"
+
 
     input:
     file pruned from for_second_pca_flashpca_1kg
@@ -476,7 +489,9 @@ process flashpca2_pruned_1kG {
 
     individuals_annotation = BATCH_DIR + "/" + params.individuals_annotation
 """
-
+    module load "IKMB"
+    module load "FlashPCA"
+    module load "Plink/1.9"
 if [ "${params.program_for_second_PCA}" == "FLASHPCA2" ]; then
 echo Merge with 1kG
 python -c 'from SampleQCI_helpers import *; merge__new_plink_collection_pruned__1kG("${base_pruned}", "${base_pruned_1kG}", "${PCA_SNPexcludeList}", "${params.preQCIMDS_1kG}")'
@@ -501,15 +516,15 @@ fi
 }
 
 process detect_duplicates_related {
-        publishDir params.output ?: '.', mode: 'copy', overwrite: true
+        publishDir params.output ?: '.', mode: 'copy'
     input:
     file pruned from for_detect_duplicates
     file ibs from for_detect_duplicates_genome
     file miss from for_detect_duplicates_miss
 
     output:
-    file "${pruned[0].baseName}_flag_relatives.txt" into for_prune_related_rel
-    file "${pruned[0].baseName}_duplicates.txt" into for_remove_bad_samples_duplicates
+    file "${params.collection_name}_SampleQCI_final_flag_relatives.txt" into for_prune_related_rel
+    file "${params.collection_name}_SampleQCI_final_duplicates.txt" into for_remove_bad_samples_duplicates
 
     shell:
     plot_script = SCRIPT_DIR + "/IBD-plot-genomefile.r"
@@ -517,12 +532,12 @@ process detect_duplicates_related {
     threshold_relatives = params.max_ibd_threshold_relatives
 
 '''
-python -c 'from SampleQCI_helpers import *; detect_duplicates_related_individuals_by_pihat("!{pruned[0].baseName}", "!{ibs}", "!{miss}", "!{threshold_duplicates}", "!{threshold_relatives}", "!{plot_script}", "!{pruned[0].baseName}_flag_relatives.txt", "!{pruned[0].baseName}_duplicates.txt", "${params.batch_mode}")'
+python -c 'from SampleQCI_helpers import *; detect_duplicates_related_individuals_by_pihat("!{pruned[0].baseName}", "!{ibs}", "!{miss}", "!{threshold_duplicates}", "!{threshold_relatives}", "!{plot_script}", "!{params.collection_name}_SampleQCI_final_flag_relatives.txt", "!{params.collection_name}_SampleQCI_final_duplicates.txt", "${params.batch_mode}")'
 '''
 }
 
 process remove_bad_samples {
-    publishDir params.output ?: '.', mode: 'copy', overwrite: true
+    publishDir params.output ?: '.', mode: 'copy'
 
     input:
     file pruned from for_remove_bad_samples
@@ -537,13 +552,14 @@ process remove_bad_samples {
     file "${params.collection_name}_SampleQCI_final.log" into for_tracy_widom_stats_log
     file "remove-samples" into for_pca_without_projection_removelist
 
-    module 'IKMB'
-    module 'Plink/1.7'
+
 
     shell:
     target_basename = params.collection_name + "_SampleQCI_final"
     remove_manually = BATCH_DIR + "/${params.individuals_remove_manually}"
 '''
+    module load 'IKMB'
+    module load 'Plink/1.7'
 touch remove-samples
 
 # pre-calculated remove list for individuals
@@ -573,6 +589,7 @@ plink --noweb --bfile !{pruned[0].baseName} --remove remove-samples --make-bed -
 }
 
 process extract_qced_samples {
+	publishDir params.output ?: '.', mode: 'copy'
     input:
     file dataset from for_extract_qced_samples_ds
     file evec from for_extract_qced_samples_evec // 0 is .evec, 1 is .country.evec
@@ -597,7 +614,7 @@ python -c 'from SampleQCI_helpers import *; extract_QCsamples_from_pc_file("!{ev
 }
 
 process draw_histograms {
-        publishDir params.output ?: '.', mode: 'copy', overwrite: true
+        publishDir params.output ?: '.', mode: 'copy'
     input:
     file dataset from for_draw_histograms
 //    file eval from for_draw_histograms_eval // 0 is without and 1 is with country
@@ -628,9 +645,8 @@ fi
 }
 
 process tracy_widom_stats {
-    publishDir params.output ?: '.', mode: 'copy', overwrite: true
-    module 'IKMB'
-    module 'Eigensoft/4.2'
+    publishDir params.output ?: '.', mode: 'copy'
+
 
     input:
     file logfile from for_tracy_widom_stats_log
@@ -642,6 +658,8 @@ process tracy_widom_stats {
 
     shell:
 '''
+    module load 'IKMB'
+    module load 'Eigensoft/4.2'
 NUM_CASES=$(grep -P 'After.*\\d+.cases' !{logfile} | cut -d' ' -f3)
 NUM_CONTROLS=$(grep -P 'After .*\\d+.controls' !{logfile} | cut -d' ' -f5)
 echo Cases: $NUM_CASES, controls: $NUM_CONTROLS
@@ -670,12 +688,10 @@ fi
 }
 
 process pca_without_projection {
-    publishDir params.output ?: '.', mode: 'copy', overwrite: true
+    publishDir params.output ?: '.', mode: 'copy'
 
     cpus 4
-    module 'IKMB'
-    module 'Plink/1.7'
-    module 'FlashPCA'
+
 
     input:
     file pruned_1kg from for_pca_without_projection
@@ -692,6 +708,9 @@ process pca_without_projection {
     individuals_annotation = BATCH_DIR + "/${params.individuals_annotation}"
     pcaplot_1KG = SCRIPT_DIR + "/pcaplot_1KG_v2.R"
 '''
+    module load 'IKMB'
+    module load 'Plink/1.7'
+    module load 'FlashPCA'
 plink --noweb \
       --bfile "!{pruned_1kg[0].baseName}" \
       --remove "!{remove_list}" \
@@ -726,8 +745,8 @@ R --slave --args "!{kg_pca}.country" "!{params.preQCIMDS_1kG_sample}" <"!{pcaplo
 
 // SampleQCI_parallel_part3 starts here
 process prune_related {
-    module "IKMB"
-    module "Plink/1.7"
+    publishDir params.output ?: '.', mode: 'copy'
+
 
     input:
 
@@ -744,6 +763,8 @@ process prune_related {
     shell:
     individuals_annotation = BATCH_DIR + "/${params.individuals_annotation}"
 '''
+    module load "IKMB"
+    module load "Plink/1.7"
 plink --noweb --bfile "!{dataset[0].baseName}" --remove !{relatives} --make-bed --out "!{dataset[0].baseName}_withoutRelatives"
 
 python -c 'from SampleQCI_helpers import *; extract_QCsamples_from_pc_file("!{evec[0]}", "!{dataset[0].baseName}_withoutRelatives.pca.evec", "!{dataset[2]}")'
@@ -761,8 +782,7 @@ process prune_outliers_without_related {
     output:
     set file("${dataset[0].baseName}_pruned.bed"), file("${dataset[0].baseName}_pruned.bim"), file("${dataset[0].baseName}_pruned.fam") into for_calc_imiss_wr, for_calc_imiss_IBS_wr, for_ibs_merge_and_verify_wr_ds
 
-    module "IKMB"
-    module "Plink/1.7"
+
 
     script:
     base = dataset[0].baseName
@@ -771,17 +791,19 @@ process prune_outliers_without_related {
 
     if (params.PCA_SNPList != "" && params.PCA_SNPList != "nofileexists") {
 """
+    module load "IKMB"
+    module load "Plink/1.7"
 echo Using PCA SNP List file and sample outliers for variant selection
 plink --noweb --bfile "${base}" --extract "$params.PCA_SNPList" --remove  "$miss_outliers" --make-bed --out ${target}
 """
     } else {
 """
+    module load "IKMB"
+    module load "Plink/1.9"
 echo Generating PCA SNP List file for variant selection
-module switch Plink/1.7 Plink/1.9
 plink --bfile "${base}" --indep-pairwise 50 5 0.2 --out _prune
 plink --bfile "${base}" --extract _prune.prune.in --maf 0.05 --remove "$miss_outliers" --make-bed --out intermediate
 python -c 'from SampleQCI_helpers import *; write_snps_autosomes_noLDRegions_noATandGC_noIndels("${bim}", "include_variants")'
-# module switch Plink/1.9 Plink/1.7
 plink --noweb --bfile intermediate --extract include_variants --make-bed --out "${target}"
 """
     }
@@ -792,8 +814,7 @@ calc_imiss_job_ids_wr = Channel.from(1..calc_imiss_job_count) // plink expects 1
 process calc_imiss_IBS_wr {
     cpus 1
     memory 3.GB
-    module "IKMB"
-    module "Plink/1.9"
+
 
     input:
     file dataset from for_calc_imiss_IBS_wr
@@ -805,14 +826,15 @@ process calc_imiss_IBS_wr {
     file "*.part.genome.*" into for_ibs_merge_and_verify_wr
 
 """
+    module load "IKMB"
+    module load "Plink/1.9"
 plink --bfile ${dataset[0].baseName} --genome --parallel ${job} ${calc_imiss_job_count} --threads 1 --memory 3000 --out ${dataset[0].baseName}.part
 """
 }
 
 process calc_imiss_wr {
     cpus 1
-    module "IKMB"
-    module "Plink/1.7"
+
 
     input:
         file dataset from for_calc_imiss_wr
@@ -822,12 +844,14 @@ process calc_imiss_wr {
 
     script:
 """
+    module load "IKMB"
+    module load "Plink/1.7"
 plink --noweb --bfile "${dataset[0].baseName}" --missing --out ${dataset[0].baseName}_miss
 """
 }
 
 process ibs_merge_and_verify_wr {
-    publishDir params.output ?: '.', mode: 'copy', overwrite: true
+    publishDir params.output ?: '.', mode: 'copy'
     input:
     file chunks from for_ibs_merge_and_verify_wr.collect()
     file dataset from for_ibs_merge_and_verify_wr_ds

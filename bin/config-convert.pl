@@ -50,7 +50,7 @@ say "// -*- mode:groovy -*-";
 say "// Exporting section $ARGV[1]...";
 say "params {";
 my ($k, $v);
-while(my ($k, $v) = each $sections{$ARGV[1]}) {
+while(my ($k, $v) = each %{$sections{$ARGV[1]}}) {
     say "  $k = \"$v\"";
 }
 say "}";
