@@ -7,6 +7,8 @@ use constant OUT_SAMPLEQC => './out-SampleQC';
 use constant OUT_SNPQCII => './out-SNPQCII';
 
 use 5.20.0;
+use Getopt::Long;
+use Pod::Usage;
 use strict;
 use warnings;
 
@@ -54,18 +56,19 @@ sub pause {
     <STDIN>;
 }
 
-if (@ARGV == 0) {
-    say STDERR "Syntax: run-qc <config> [--pause]";
-    say STDERR "\tExample: run-qc config/tutorial.config --pause";
-    exit(1);
-}
+# Parse command-line arguments
+my $opt_pause = 0;
+my $opt_output = "./";
+my $opt_help = 0;
+GetOptions("pause" => \$opt_pause,
+           "help|?" => \$opt_help,
+           "output" => \$opt_output);
+pod2usage(1) if $opt_help;
+pod2usage(1) if @ARGV == 0;
 
-my $pause = 0;
+$opt_output =~ s!/*$!/!; # Add trailing slash, if not already done
 
-if (@ARGV == 2 && $ARGV[1] == "--pause") {
-    $pause = 1;
-}
-
+# Do some rudimentary parsing of the Nextflow config and variable substitution
 my %config = parse_config($ARGV[0]);
 update_env_paths(\%config);
 
@@ -84,17 +87,19 @@ sub run_rs {
         my @cmd = ("nextflow");
         push @cmd, '-c';
         push @cmd, "$config{BATCH_DIR}/$batch.config";
-        push @cmd, '-c';
-        push @cmd, $ARGV[0];
+        for my $c (@ARGV) {
+            push @cmd, '-c';
+            push @cmd, $c;
+        }
         push @cmd, 'run';
         push @cmd, 'Rs.nf';
         push @cmd, '--input';
         push @cmd, "$config{BATCH_DIR}/$batch/orig_files/$batchconf{disease_data_set_prefix_orig}";
         push @cmd, '--output';
-        push @cmd, OUT_RS;
+        push @cmd, $opt_output . OUT_RS;
         push @cmd, '-resume';
         push @cmd, '-with-report';
-        push @cmd, OUT_RS . "/Rs-$batch.report.html";
+        push @cmd, $opt_output . OUT_RS . "/Rs-$batch.report.html";
 
         say "Processing batch $batch...";
         say "Calling @cmd";
@@ -113,17 +118,20 @@ sub run_snpqci {
 
 
     my @cmd = ("nextflow");
-    push @cmd, '-c';
-    push @cmd, $ARGV[0];
+    for my $c (@ARGV) {
+        push @cmd, '-c';
+        push @cmd, $c;
+    }
+
     push @cmd, 'run';
     push @cmd, 'SNPQCI.nf';
     push @cmd, '--rs_dir';
     push @cmd, OUT_RS;
     push @cmd, '--output';
-    push @cmd, OUT_SNPQCI;
+    push @cmd, $opt_output . OUT_SNPQCI;
     push @cmd, '-resume';
     push @cmd, '-with-report';
-    push @cmd, OUT_SNPQCI . '/SNPQCI-report.html';
+    push @cmd, $opt_output . OUT_SNPQCI . '/SNPQCI-report.html';
 
     say "Calling @cmd";
     system(@cmd);
@@ -140,17 +148,20 @@ sub run_sampleqc {
 
 
     my @cmd = ("nextflow");
-    push @cmd, '-c';
-    push @cmd, $ARGV[0];
+    for my $c (@ARGV) {
+        push @cmd, '-c';
+        push @cmd, $c;
+    }
+
     push @cmd, 'run';
     push @cmd, 'SampleQCI.nf';
     push @cmd, '--input';
     push @cmd, OUT_SNPQCI . "/$config{collection_name}_QCI";
     push @cmd, '--output';
-    push @cmd, OUT_SAMPLEQC;
+    push @cmd, $opt_output . OUT_SAMPLEQC;
     push @cmd, '-resume';
     push @cmd, '-with-report';
-    push @cmd, OUT_SAMPLEQC . '/SampleQC-report.html';
+    push @cmd, $opt_output . OUT_SAMPLEQC . '/SampleQC-report.html';
 
     say "Calling @cmd";
     system(@cmd);
@@ -167,8 +178,11 @@ sub run_snpqcii {
 
 
     my @cmd = ("nextflow");
-    push @cmd, '-c';
-    push @cmd, $ARGV[0];
+    for my $c (@ARGV) {
+        push @cmd, '-c';
+        push @cmd, $c;
+    }
+
     push @cmd, 'run';
     push @cmd, 'SNPQCII.nf';
     push @cmd, '--input';
@@ -177,24 +191,49 @@ sub run_snpqcii {
     push @cmd, OUT_SAMPLEQC . "/$config{collection_name}_SampleQCI_final_withoutRelatives";
 
     push @cmd, '--output';
-    push @cmd, OUT_SNPQCII;
+    push @cmd, $opt_output . OUT_SNPQCII;
     push @cmd, '-resume';
     push @cmd, '-with-report';
-    push @cmd, OUT_SNPQCII . '/SNPQCII-report.html';
+    push @cmd, $opt_output . OUT_SNPQCII . '/SNPQCII-report.html';
 
     say "Calling @cmd";
     system(@cmd);
 
-    say "Stage 4 completed. Output files have been copied to " . OUT_SNPQCII;
-    say "The final QC'ed dataset can now be found in " . OUT_SNPQCII . "/$config{disease_data_set_prefix_release}.{bed.bim,fam,log,...}";
+    say "Stage 4 completed. Output files have been copied to " . $opt_output . OUT_SNPQCII;
+    say "The final QC'ed dataset can now be found in " . $opt_output . OUT_SNPQCII . "/$config{disease_data_set_prefix_release}.{bed.bim,fam,log,...}";
 }
 
 
 
 run_rs;
-pause if $pause;
+pause if $opt_pause;
 run_snpqci;
-pause if $pause;
+pause if $opt_pause;
 run_sampleqc;
-pause if $pause;
+pause if $opt_pause;
 run_snpqcii;
+
+# Documentation starts here
+__END__
+
+=head1 NAME
+
+run-qc - Launch the GWAS QC Pipeline
+
+=head1 SYNOPSIS
+
+run-qc [options] <config1> [<config2> [<confign>]]
+
+ Options:
+   --pause          stop after each pipeline stage and wait for the user to
+                    press <ENTER>
+   --help|-?        show his help message
+   --output=<dir>   put generated files into the specified dir instead of the
+                    current working directory
+
+ Arguments:
+   The only non-option arguments run-qc accepts are configuration file names.
+   These files will be passed to Nextflow in this order, using the '-c'
+   option. If the parameters defined within the config files clash, the
+   first parameter definition takes precedence.
+   

@@ -1,5 +1,7 @@
 BootStrap: docker
-From: ubuntu:17.10
+# Note that 17.04 is the last ubuntu version compatible with the 2.6.32 kernel
+# series running on the RZ cluster nodes. 
+From: ubuntu:16.04
 #OSVersion: zesty
 #MirrorURL: ftp://ftp.rz.uni-kiel.de/pub2/linux/ubuntu/
 

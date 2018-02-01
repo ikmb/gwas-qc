@@ -80,21 +80,21 @@ process apply_precalc_remove_list {
         module load "Plink/1.9"
 
         # generates manually-removed.{bim,bed,fam,log,nosex,hh}
-        plink --bfile ${base} --make-bed --out manually-removed --allow-no-sex
+        plink --bfile ${base} --make-bed --out manually-removed --allow-no-sex --memory ${task.memory.toMega()} 
         """
     } else {
         """
         module load "IKMB"
         module load "Plink/1.9"
 
-        plink --bfile ${base} --remove ${remove_list} --make-bed --out manually-removed --allow-no-sex
+        plink --bfile ${base} --remove ${remove_list} --make-bed --out manually-removed --allow-no-sex --memory ${task.memory.toMega()} 
         """
     }
 }
 
 
 process determine_miss_het {
-    cpus 4
+//    cpus 4
 
     input:
         file dataset from for_det_miss_het
@@ -173,8 +173,8 @@ plink --noweb --bfile "${base}" --extract "$params.PCA_SNPList" --remove  "$outl
     module load "IKMB"
     module load "Plink/1.9"
 echo Generating PCA SNP List file for variant selection
-plink --bfile "${base}" --indep-pairwise 50 5 0.2 --out _prune
-plink --bfile "${base}" --extract _prune.prune.in --maf 0.05 --remove "$outliers" --make-bed --out intermediate
+plink --bfile "${base}" --indep-pairwise 50 5 0.2 --out _prune --memory ${task.memory.toMega()} 
+plink --bfile "${base}" --extract _prune.prune.in --maf 0.05 --remove "$outliers" --make-bed --out intermediate --memory ${task.memory.toMega()} 
 python -c 'from SampleQCI_helpers import *; write_snps_autosomes_noLDRegions_noATandGC_noIndels("${bim}", "include_variants")'
 plink --noweb --bfile intermediate --extract include_variants --make-bed --out "${prefix}pruned"
 """
@@ -182,9 +182,6 @@ plink --noweb --bfile intermediate --extract include_variants --make-bed --out "
 }
 
 process calc_imiss {
-    cpus 1
-
-
     input:
     file dataset from for_calc_imiss
 
@@ -205,10 +202,6 @@ final calc_imiss_job_count = 5
 
 calc_imiss_job_ids = Channel.from(1..calc_imiss_job_count) // plink expects 1-based job indices
 process calc_imiss_IBS {
-    cpus 1
-    memory 3.GB
-
-
     input:
     file dataset from for_calc_imiss_ibs
     each job from calc_imiss_job_ids
@@ -219,9 +212,10 @@ process calc_imiss_IBS {
     file "*.part.genome.*" into for_ibs_merge_and_verify
 
 """
-    module load "IKMB"
-    module load "Plink/1.9"
-plink --bfile ${dataset[0].baseName} --genome --parallel ${job} ${calc_imiss_job_count} --threads 1 --memory 3000 --out ${dataset[0].baseName}.part
+module load "IKMB"
+module load "Plink/1.9"
+
+plink --bfile ${dataset[0].baseName} --genome --parallel ${job} ${calc_imiss_job_count} --threads 1 --memory ${task.memory.toMega()} --out ${dataset[0].baseName}.part
 """
 }
 
@@ -296,10 +290,6 @@ fi
  */
 
 process merge_dataset_with_hapmap {
-//  cpus { 8 * 1 }
-
-
-
     input:
     file pruned from for_merge_hapmap
 
@@ -320,17 +310,17 @@ process merge_dataset_with_hapmap {
         """
         module load "IKMB"
         module load "Plink/1.9"
-        plink --bfile "${base_pruned}" --extract "${hapmap}.bim" --exclude "${snpexclude}" --make-bed --out pruned_tmp --allow-no-sex
-        plink --bfile "${hapmap}" --extract "${bim_pruned}" --exclude "${snpexclude}" --make-bed --out hapmap_tmp --allow-no-sex
-        plink --bfile pruned_tmp --bmerge hapmap_tmp --out ${prefix}pruned_hapmap --allow-no-sex
+        plink --bfile "${base_pruned}" --extract "${hapmap}.bim" --exclude "${snpexclude}" --make-bed --out pruned_tmp --allow-no-sex --memory ${task.memory.toMega()} 
+        plink --bfile "${hapmap}" --extract "${bim_pruned}" --exclude "${snpexclude}" --make-bed --out hapmap_tmp --allow-no-sex --memory ${task.memory.toMega()} 
+        plink --bfile pruned_tmp --bmerge hapmap_tmp --out ${prefix}pruned_hapmap --allow-no-sex --memory ${task.memory.toMega()} 
         """
     } else {
         """
         module load "IKMB"
         module load "Plink/1.9"
-        plink --bfile "${base_pruned}" --extract "${hapmap}.bim" --make-bed --out pruned_tmp --allow-no-sex
-        plink --bfile "${hapmap}" --extract "${bim_pruned}" --make-bed --out hapmap_tmp --allow-no-sex
-        plink --bfile pruned_tmp --bmerge hapmap_tmp --out ${prefix}pruned_hapmap --allow-no-sex
+        plink --bfile "${base_pruned}" --extract "${hapmap}.bim" --make-bed --out pruned_tmp --allow-no-sex --memory ${task.memory.toMega()} 
+        plink --bfile "${hapmap}" --extract "${bim_pruned}" --make-bed --out hapmap_tmp --allow-no-sex --memory ${task.memory.toMega()} 
+        plink --bfile pruned_tmp --bmerge hapmap_tmp --out ${prefix}pruned_hapmap --allow-no-sex --memory ${task.memory.toMega()} 
         """
     }
 }
@@ -418,8 +408,6 @@ fi
 
 process flashpca2_pruned {
      publishDir params.output ?: '.', mode: 'copy'   
-    cpus 2
-    memory 8.GB
 //    when params.program_for_second_PCA == "FLASHPCA2"
 
 
@@ -460,11 +448,6 @@ process flashpca2_pruned {
 
 process flashpca2_pruned_1kG {
         publishDir params.output ?: '.', mode: 'copy'
-    memory 8.GB
-    cpus 2
-//    when params.program_for_second_PCA == "FLASHPCA2"
-
-
 
     input:
     file pruned from for_second_pca_flashpca_1kg
@@ -689,10 +672,7 @@ fi
 
 process pca_without_projection {
     publishDir params.output ?: '.', mode: 'copy'
-
-    cpus 4
-
-
+    
     input:
     file pruned_1kg from for_pca_without_projection
     file remove_list from for_pca_without_projection_removelist
@@ -726,7 +706,7 @@ flashpca2 -d !{params.numof_pc} \
          --outpve !{kg_out}_pve_flashpca2 \
          --outload !{kg_out}_loadings_flashpca2 \
          --outmeansd !{kg_out}_meansd_flashpca2 \
-         --numthreads 4
+         --numthreads !{task.cpus}
 
 
 echo Adding batch info
@@ -812,9 +792,6 @@ plink --noweb --bfile intermediate --extract include_variants --make-bed --out "
 
 calc_imiss_job_ids_wr = Channel.from(1..calc_imiss_job_count) // plink expects 1-based job indices
 process calc_imiss_IBS_wr {
-    cpus 1
-    memory 3.GB
-
 
     input:
     file dataset from for_calc_imiss_IBS_wr
@@ -828,13 +805,11 @@ process calc_imiss_IBS_wr {
 """
     module load "IKMB"
     module load "Plink/1.9"
-plink --bfile ${dataset[0].baseName} --genome --parallel ${job} ${calc_imiss_job_count} --threads 1 --memory 3000 --out ${dataset[0].baseName}.part
+plink --bfile ${dataset[0].baseName} --genome --parallel ${job} ${calc_imiss_job_count} --threads 1 --memory ${task.memory.toMega()} --out ${dataset[0].baseName}.part
 """
 }
 
 process calc_imiss_wr {
-    cpus 1
-
 
     input:
         file dataset from for_calc_imiss_wr

@@ -328,9 +328,6 @@ plink --noweb --bfile after-correlated-remove --extract include-variants --make-
 
 process flashpca_pruned {
     publishDir params.output ?: '.', mode: 'copy', overwrite: true
-//    cpus 4
-//    memory 64.GB // echt jetzt?
-//    time 3.h
 
     input:
 
@@ -367,11 +364,11 @@ echo Dataset for flashpca: !{dataset}
     --outval !{prefix}_eigenvalues_flashpca2 \
     --outvec !{prefix}_eigenvectors_flashpca2 \
     --outpc  !{prefix}_pcs_flashpca2 \
-    --numthreads 15 \
+    --numthreads !{task.cpus} \
     --outload !{prefix}_loadings_flashpca2 \
     --outmeansd !{prefix}_meansfd_flashpca2 \
-    --memory 6000
-#    --memory 64000
+    --memory !{task.memory.toMega()}
+
 
 echo Adding batch info | ts
 python -c 'from SampleQCI_helpers import *; addbatchinfo_10PCs("!{prefix}_pcs_flashpca2", "!{prefix}_eigenvalues_flashpca2", "!{prefix}.pca.evec", "!{prefix}.eval", "!{annotation}", "!{params.preQCIMDS_1kG_sample}")'
@@ -479,7 +476,7 @@ fi
 
 
 process merge_pruned_with_1kg {
-//    memory 6.GB
+
     input:
 
     file dataset_pruned_staged from for_merge_1kg_pruned
@@ -508,9 +505,6 @@ python -c 'from SampleQCI_helpers import *; merge__new_plink_collection_pruned__
 }
 
 process flashpca_1kg {
-//    cpus 4
-//    memory 64.GB // echt jetzt?
-//    time 3.h
 
     input:
 
@@ -542,10 +536,10 @@ flashpca2 -d 2000 --bfile "!{dataset.bed.baseName}" \
     --outval !{prefix}_eigenvalues_flashpca2 \
     --outvec !{prefix}_eigenvectors_flashpca2 \
     --outpc  !{prefix}_pcs_flashpca2 \
-    --numthreads 15 \
+    --numthreads !{task.cpus} \
     --outload !{prefix}_loadings_flashpca2 \
     --outmeansd !{prefix}_meansfd_flashpca2 \
-    --memory 6000
+    --memory !{task.memory.toMega()}
 #    --memory 64000
 
 echo Adding batch info | ts
@@ -920,7 +914,6 @@ process eigenstrat_convert {
 }
 
 process eigenstrat_run {
-    cpus 4
     publishDir params.output ?: '.', mode: 'copy'   
 
 
@@ -946,7 +939,7 @@ process eigenstrat_run {
     module load "IKMB"
     module load "Plink/1.9"
     module load "Eigensoft/4.2"
-python -c 'from SampleQCI_helpers import *; pca_run("!{base_pruned}", !{sigma_threshold}, "!{projection_on_populations_hapmap}", !{params.numof_pc}, 4, "!{draw_eigenstrat}", "!{draw_without}")'
+python -c 'from SampleQCI_helpers import *; pca_run("!{base_pruned}", !{sigma_threshold}, "!{projection_on_populations_hapmap}", !{params.numof_pc}, !{task.cpus}, "!{draw_eigenstrat}", "!{draw_without}")'
 '''
 }
 
