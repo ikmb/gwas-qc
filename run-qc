@@ -12,7 +12,7 @@ use Pod::Usage;
 use strict;
 use warnings;
 
-use autodie qw(:all);
+#use autodie qw(:all);
 
 # Trim leading and trailing whitespace from argument
 sub trim {
@@ -32,7 +32,7 @@ sub strip_quotes {
 sub parse_config {
     my %c;
     my $f = shift; # file
-    open my $conf, "<", $f or die($!);
+    open my $conf, "<", $f or die("Failed to open $f: $!");
     while(<$conf>) {
         if (/^(.+)=(.+)$/) {
             my $key = trim($1);
@@ -62,7 +62,7 @@ my $opt_output = "./";
 my $opt_help = 0;
 GetOptions("pause" => \$opt_pause,
            "help|?" => \$opt_help,
-           "output" => \$opt_output);
+           "output=s" => \$opt_output);
 pod2usage(1) if $opt_help;
 pod2usage(1) if @ARGV == 0;
 
