@@ -76,6 +76,7 @@ echo "Installing R packages"
    echo "if('plotrix' %in% rownames(installed.packages()) == FALSE) {install.packages('plotrix', repo='$CRAN_MIRROR')}" >>/tmp/packages.r
    echo 'source("https://bioconductor.org/biocLite.R")' >>/tmp/packages.r
    echo 'biocLite("SNPRelate")' >>/tmp/packages.r
+   echo 'biocLite("snpStats")' >>/tmp/packages.r
    Rscript /tmp/packages.r
 
 echo "Installing modules"
