@@ -126,7 +126,7 @@ sub run_snpqci {
     push @cmd, 'run';
     push @cmd, 'SNPQCI.nf';
     push @cmd, '--rs_dir';
-    push @cmd, OUT_RS;
+    push @cmd, $opt_output . OUT_RS;
     push @cmd, '--output';
     push @cmd, $opt_output . OUT_SNPQCI;
     push @cmd, '-resume';
