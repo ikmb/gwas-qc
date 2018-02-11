@@ -14,6 +14,9 @@ getCanonicalFileType = { name ->
         case ~/.*_flag.relatives.txt/:
             result = "relatives"
             break
+        case ~/.*_flag.relatives.doubleID.txt/:
+            result = "relatives_doubleID"
+            break
         case ~/.*annotation.txt/:
             result = "annotation"
             break
@@ -357,14 +360,16 @@ process convert_dosages {
 
 input:
 each chromosome from Channel.from(params.first_chr .. params.last_chr)
+file ds_imp_staged from Channel.from(ds_imp_input).collect()
+file ds_release_staged from Channel.from(ds_input).collect()
 
 output:
 file "$plink_target"
 
 shell:
-chrname = ds_imp  // vorsicht: join(Imputation_orig_dir, str(i)+"."+disease_data_set_suffix_release_imputed +".gz") 
-flag_relatives_doubleid // disease_data_set_prefix_release + "_flag.relatives.doubleID.txt",
-multiallelic_exclude 
+chrname = mapFileList(ds_imp_staged).gz.getParent() + "/${chromosome}.${params.disease_data_set_suffix_release_imputed}.gz" // TODO: should be more robust
+flag_relatives_doubleid = ds_release.relatives_doubleID // TODO Wo gibt es diese datei?
+multiallelic_exclude = 
 target // plink_dosage + rsq0.4.chr + chr + .rs 
 plink_target // plink_dosage + rsq0.4.chr + chr 
 rs2chrpos = SCRIPT_DIR+"/awk_rs2CHRPOS_bimfiles.awk"
