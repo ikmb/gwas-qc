@@ -156,7 +156,7 @@ sub run_sampleqc {
     push @cmd, 'run';
     push @cmd, 'SampleQCI.nf';
     push @cmd, '--input';
-    push @cmd, OUT_SNPQCI . "/$config{collection_name}_QCI";
+    push @cmd, $opt_output . OUT_SNPQCI . "/$config{collection_name}_QCI";
     push @cmd, '--output';
     push @cmd, $opt_output . OUT_SAMPLEQC;
     push @cmd, '-resume';
@@ -186,9 +186,9 @@ sub run_snpqcii {
     push @cmd, 'run';
     push @cmd, 'SNPQCII.nf';
     push @cmd, '--input';
-    push @cmd, OUT_SAMPLEQC . "/$config{collection_name}_SampleQCI_final";
+    push @cmd, $opt_output . OUT_SAMPLEQC . "/$config{collection_name}_SampleQCI_final";
     push @cmd, '--input_wr';
-    push @cmd, OUT_SAMPLEQC . "/$config{collection_name}_SampleQCI_final_withoutRelatives";
+    push @cmd, $opt_output . OUT_SAMPLEQC . "/$config{collection_name}_SampleQCI_final_withoutRelatives";
 
     push @cmd, '--output';
     push @cmd, $opt_output . OUT_SNPQCII;
