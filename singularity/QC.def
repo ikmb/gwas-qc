@@ -68,6 +68,9 @@ mkdir -p /work_zfs/sukmb388
 chmod 777 /work_zfs/sukmb388
 mkdir -p /home/sukmb388
 chmod 777 /home/sukmb388
+mkdir -p /ifs
+chmod 777 /ifs
+
 
 echo "Installing R packages"
    echo "if('Rserve' %in% rownames(installed.packages()) == FALSE) {install.packages('Rserve', repo='$CRAN_MIRROR')}" >/tmp/packages.r

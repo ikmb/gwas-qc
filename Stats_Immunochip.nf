@@ -35,6 +35,9 @@ getCanonicalFileType = { name ->
         case ~/.*PLINKdosage.gz.*/:
             result = "PLINKdosage_gz"
             break
+        case ~/.*dat.pca.evec.*/:
+            result = "dat_pca_evec"
+            break
         // catches bim,bed,fam,log,eval,evec and all the other "simple" types
         default:
             result = filename.drop(filename.lastIndexOf('.')+1) // if the last '.' is on index 10, drop the first 11 characters, leaving the rest
@@ -53,7 +56,11 @@ mapFileList = { fn -> fn.collectEntries {
 ds_stats_input = ["${params.input_stats}.fam", 
                   "${params.input_stats}_annotation.txt"
                   ].collect { fileExists(file(it)) }
-ds_input = ["${params.input}.bed", "${params.input}.bim", "${params.input}.fam", "${params.input}_flag.relatives.txt"].collect { fileExists(file(it)) }
+ds_input = ["${params.input}.bed", 
+            "${params.input}.bim", 
+            "${params.input}.fam", 
+            "${params.input}.dat.pca.evec",
+            "${params.input}_flag.relatives.txt"].collect { fileExists(file(it)) }
 ds_imp_input = ["${params.input_imp}.map", 
                 "${params.input_imp}.gz", 
                 "${params.input_imp}.PLINKdosage.map",
@@ -61,7 +68,7 @@ ds_imp_input = ["${params.input_imp}.map",
                 ].collect { fileExists(file(it)) }
 
 process extract_genotyped_variants {
-//	cpus 16
+	cpus 4
 	
 	input:
 	file ds_stats_staged from Channel.from(ds_stats_input).collect()
@@ -69,7 +76,8 @@ process extract_genotyped_variants {
 	
 	output:
 	file "${target}.fam" into for_plink_dosage_logistic
-	file "${target}.{bim,bed,fam,log}" into for_plink_dosage_logistic_ds
+	file "${target}.{bim,bed,fam,log}" into for_plink_dosage_logistic_ds, for_qq_manhattan_ds
+	
     shell:
     ds_stats = mapFileList(ds_stats_staged)
     ds = mapFileList(ds_staged)
@@ -81,7 +89,7 @@ module load Plink/1.9
 
 gawk '{ print $1, $2, $6 }' "!{ds.fam}" >"!{ds.fam}.single-id.pheno"
 plink --bfile "!{ds.bim.baseName}" \
-	  --threads 16 \
+	  --threads 4 \
 	  --remove "!{ds.relatives}" \
  	  --pheno "!{ds.fam}.single-id.pheno" \
 	  --make-bed --allow-no-sex \
@@ -101,7 +109,7 @@ params.last_chr = 22
 // Steps 1.1 and 1.2: per-chromosome dosage and logistic calculations,
 // results will be merged in merge_log_dos_results
 process plink_dosage_logistic {
-//    cpus 16
+    cpus 4
     tag "chr$chromosome"
     
     input:
@@ -109,31 +117,34 @@ process plink_dosage_logistic {
     file (fam:"new_fam") from for_plink_dosage_logistic
 	file ds_stats_staged from for_plink_dosage_logistic_ds
 	file ds_imp_staged from Channel.from(ds_imp_input).collect()
+	file ds_release_staged from Channel.from(ds_input).collect()
     
     output:
-    file "${target}_chr${chromosome}.assoc.dosage" into merge_log_dos_results_dosage
+//    file "${target}_chr${chromosome}.assoc.dosage" into merge_log_dos_results_dosage
+    file "${dosage_target}" into merge_log_dos_results_dosage
     file "${log_prefix}.assoc.logistic" into merge_log_dos_results_logistic
     
     shell:
     ds_stats = mapFileList(ds_stats_staged)
     ds_imp = mapFileList(ds_imp_staged)
+    ds_release = mapFileList(ds_release_staged)
     covar_name = "PC${params.numofPCs}"
     if(params.numofPCs > 1) {
-        covar_name = "PC1-${params.numofPCs}"
+        covar_name = "PC1-PC${params.numofPCs}"
     }
     target = "${params.disease_data_set_prefix_release_statistics}.imputed"
     dosage_src = "${target}_chr${chromosome}.assoc.dosage"
     dosage_target = "${target}_chr${params.first_chr}-${params.last_chr}.assoc.dosage.${chromosome}"
-    log_prefix = "${params.disease_data_set_prefix_release_statistics}.genotyped.${chromosome}"
+    log_prefix = "${params.disease_data_set_prefix_release_statistics}.genotyped.chr${chromosome}"
 '''
 module load IKMB
 module load Plink/1.9
 
-plink --threads 16 \
+plink --threads 4 \
       --fam "!{fam}" \
       --map "!{ds_imp.PLINKdosage_map}" \
       --dosage "!{ds_imp.PLINKdosage_gz}" skip0=2 skip1=0 skip2=1 format=3 case-control-freqs \
-      --covar "!{params.disease_data_set_prefix_release_statistics}.dat.pca.evec" \
+      --covar "!{ds_release.dat_pca_evec}" \
       --covar-name "!{covar_name}" \
       --allow-no-sex \
       --ci 0.95 \
@@ -142,18 +153,20 @@ plink --threads 16 \
 # Remove NAs
 gawk '{ OFS="\t"; print $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11 }' < "!{dosage_src}" | grep -v "NA" > "!{dosage_target}"
 
-plink --threads 16 \
-      --bfile "!{params.disease_data_set_prefix_release_statistics}" \
-      --logistic hide-covar
-      --covar "!{params.disease_data_set_prefix_release_statistics}.dat.pca.evec" \
+plink --threads 4 \
+      --bfile "!{ds_stats.bim.baseName}" \
+      --fam new_fam \
+      --logistic hide-covar \
+      --covar "!{ds_release.dat_pca_evec}" \
       --covar-name "!{covar_name}" \
       --allow-no-sex \
       --ci 0.95 \
       --chr !{chromosome} \
       --out "!{log_prefix}_tmp1"
 
-plink --threads 16 \
-      --bfile "!{params.disease_data_set_prefix_release_statistics}" \
+plink --threads 4 \
+      --bfile "!{ds_stats.bim.baseName}" \
+      --fam new_fam \
       --assoc \
       --allow-no-sex \
       --ci 0.95 \
@@ -177,8 +190,8 @@ process merge_log_dos_results {
     file log_files from merge_log_dos_results_logistic.collect()
    
     output:
-    file "${log_target}"
-    file "${dos_target}"
+    file "${log_target}" into for_extract_rsq_variants_log
+    file "${dos_target}" into for_extract_rsq_variants_dos
     
     shell: 
     log_target = "${params.disease_data_set_prefix_release_statistics}.imputed_chr${params.first_chr}-${params.last_chr}.assoc.logistic"
@@ -186,7 +199,7 @@ process merge_log_dos_results {
 '''
 for chr in {!{params.first_chr}..!{params.last_chr}}
 do
-    LOGFILE="!{params.disease_data_set_prefix_release_statistics}.imputed_chr${chr}.assoc.logistic"
+    LOGFILE="!{params.disease_data_set_prefix_release_statistics}.genotyped.chr${chr}.assoc.logistic"
     DOSAGEFILE="!{params.disease_data_set_prefix_release_statistics}.imputed_chr!{params.first_chr}-!{params.last_chr}.assoc.dosage.${chr}"
     
     # Add header line only on the first result file
@@ -202,22 +215,41 @@ done
 '''
 }
 
-/*
+
 process extract_rsq_variants {
+    input:
+    file dosage from for_extract_rsq_variants_dos
+    file logistic from for_extract_rsq_variants_log
+    
+    output:
+    file "${rsq4}" into for_l95u95_rsq4
+    file "${rsq4}.locuszoom" into for_l95u95_rsq4lz
+    file "${rsq8}" into for_l95u95_rsqs8
+    file "${rsq8}.locuszoom" into for_l95u95_rsq8lz
+    
+shell:
+    rsq4 = "${params.disease_data_set_prefix_release_statistics}.genotyped.imputed_chr${params.first_chr}-${params.last_chr}.assoc.rsq0.4"
+    rsq8 = "${params.disease_data_set_prefix_release_statistics}.genotyped.imputed_chr${params.first_chr}-${params.last_chr}.assoc.rsq0.8"
 '''
-python -c 'from Stats_Immunochip import *; extract_Rsq_variants(\
-    assoc_logistic_input= \
-    assoc_dosage_input= \
-    assoc_merge_output_rsq0_4 = \
-    assoc_merge_output_rsq0_8 = )'
+python -c 'from Stats_helpers import *; extract_Rsq_variants(\
+    assoc_logistic_input="!{logistic}", \
+    assoc_dosage_input="!{dosage}", \
+    assoc_merge_output_rsq0_4="!{rsq4}", \
+    assoc_merge_output_rsq0_8="!{rsq8}" )'
 '''
 }
 
 process addL95_U95 {
 
 input:
+    file rsq04    from for_l95u95_rsq4
+    file rsq04_lz from for_l95u95_rsq4lz
+    file rsq08    from for_l95u95_rsqs8
+    file rsq08_lz from for_l95u95_rsq8lz
 
 output:
+    file rsq04  into for_qq_manhattan_rsq04
+    file rsq08  into for_qq_manhattan_rsq08
 
 shell:
 pval2qchisq = SCRIPT_DIR + "/pval2qchisq_2.r"
@@ -245,23 +277,35 @@ process qq_manhattan {
 cpus 2
 
 input:
-file ds_stats_staged from Channel.from(ds_stats_input).collect()
+file ds_staged from for_qq_manhattan_ds
+file rsq04 from for_qq_manhattan_rsq04
+file rsq08 from for_qq_manhattan_rsq08
+
+file qqman from Channel.from(file(PYTHONPATH + "/qqman_dev1.r"))
+file qqman2 from Channel.from(file(PYTHONPATH + "/qqman_dev2.r"))
+
 
 
 shell:
-ds_stats = mapFileList(ds_stats_staged)
-logfile = ds_stats.log
-manhattan = SCRIPT_DIR + "/manhattan.r"
-manhattan2 = SCRIPT_DIR + "/manhattan2.r"
-qqplotp = SCRIPT_DIR + "/qqplotP.r"
-qqplotp2 = SCRIPT_DIR + "/qqplotP_v2.r"
-pval2chisq = SCRIPT_DIR + "/qqplot_assoc_pval2CHISQ.r"
-rsq04=
-rsq08=
+ds = mapFileList(ds_staged)
+logfile = ds.log
+manhattan = PYTHONPATH + "/manhattan.r"
+manhattan2 = PYTHONPATH + "/manhattan2.r"
+qqplotp = PYTHONPATH + "/qqplotP.r"
+qqplotp2 = PYTHONPATH + "/qqplotP_v2.r"
+//qqman = SCRIPT_DIR + "/qqman_dev1.r"
+//qqman2 = SCRIPT_DIR + "/qqman_dev2.r"
+pval2chisq = PYTHONPATH + "/qqplot_assoc_pval2CHISQ.r"
+rsq04_null = "${rsq04}_null"
+rsq08_null = "${rsq08}_null"
+rsq04_noxMHC = "${rsq04}_noxMHC"
+rsq08_noxMHC = "${rsq08}_noxMHC"
+null_variants = ANNOTATION_DIR + "/QQplots/" + params.QQplot_null_variants
+snpexclude = BATCH_DIR + "/" + params.QQplot_SNPexcludeList
 
 '''
-NUM_CASES=$(grep -P 'After.*\\d+.cases' !{logfile} | cut -d' ' -f3)
-NUM_CONTROLS=$(grep -P 'After .*\\d+.controls' !{logfile} | cut -d' ' -f5)
+NUM_CASES=$(grep -P '\\d+ are cases' !{logfile} | cut -d' ' -f4)
+NUM_CONTROLS=$(grep -P '\\d+ are controls' !{logfile} | cut -d' ' -f8)
 
 # ------------------- #
 # -- null variants -- #
@@ -269,20 +313,22 @@ NUM_CONTROLS=$(grep -P 'After .*\\d+.controls' !{logfile} | cut -d' ' -f5)
 # Too few null variants available for QQplots because only high density
 # regions and MHC/KIR were extracted here
 
-python -c 'from Stats_Immunochip import *; extractQQplot_null_variants("!{rsq04}", "!{rsq04}_null")'
-python -c 'from Stats_Immunochip import *; qqplot_null(file_PLINK_null="!{rsq04}_null", numof_cases=$NUM_CASES, numof_controls=$NUM_CONTROLS, qq)'
-python -c 'from Stats_Immunochip import *; extractQQplot_null_variants("!{rsq08}", "!{rsq08}_null")'
-python -c 'from Stats_Immunochip import *; qqplot_null(file_PLINK_null="!{rsq08}_null", numof_cases=$NUM_CASES, numof_controls=$NUM_CONTROLS)'
+# qqplotp, qqplotp2, pval2chisq, snpexclude
+
+python -c "from Stats_helpers import *; extractQQplot_null_variants('!{null_variants}', '!{rsq04}', '!{rsq04}_null')"
+python -c "from Stats_helpers import *; qqplot_null(file_PLINK_null='!{rsq04}_null', numof_cases=$NUM_CASES, numof_controls=$NUM_CONTROLS, qqplotp='!{qqplotp}', qqplotp2='!{qqplotp2}', pval2chisq='!{pval2chisq}', snpexclude='!{snpexclude}', collection_name='!{params.collection_name}',qqman='!{qqman}',qqman2='!{qqman2}')"
+python -c "from Stats_helpers import *; extractQQplot_null_variants('!{null_variants}', '!{rsq08}', '!{rsq08}_null')"
+python -c "from Stats_helpers import *; qqplot_null(file_PLINK_null='!{rsq08}_null', numof_cases=$NUM_CASES, numof_controls=$NUM_CONTROLS, qqplotp='!{qqplotp}', qqplotp2='!{qqplotp2}', pval2chisq='!{pval2chisq}', snpexclude='!{snpexclude}', collection_name='!{params.collection_name}',qqman='!{qqman}',qqman2='!{qqman2}')"
 
 # ---------------------------- #
 # -- filter for non-xMHC    -- #
 # -- xMHC: chr6, [25,34[ Mb -- #
 # ---------------------------- #
 
-gawk '{ if (!($1 == 6 && ($3 >= 25000000 && $3 < 34000000))) print }' rsq04 >rsq04_noxMHC
-gawk '{ if (!($1 == 6 && ($3 >= 25000000 && $3 < 34000000))) print }' rsq08 >rsq08_noxMHC
-python -c 'from Stats_Immunochip import*; qqplot_xMHC_noxMHc("!{rsq04}", "!{rsq04}_noxMHC", $NUM_CASES, $NUM_CONTROLS)'
-python -c 'from Stats_Immunochip import*; qqplot_xMHC_noxMHc("!{rsq08}", "!{rsq08}_noxMHC", $NUM_CASES, $NUM_CONTROLS)'
+gawk '{ if (!($1 == 6 && ($3 >= 25000000 && $3 < 34000000))) print }' !{rsq04} >!{rsq04_noxMHC}
+gawk '{ if (!($1 == 6 && ($3 >= 25000000 && $3 < 34000000))) print }' !{rsq08} >!{rsq08_noxMHC}
+python -c "from Stats_helpers import*; qqplot_xMHC_noxMHC('!{rsq04}', '!{rsq04}_noxMHC', $NUM_CASES, $NUM_CONTROLS, qqplotp='!{qqplotp}', qqplotp2='!{qqplotp2}', pval2chisq='!{pval2chisq}', snpexclude='!{snpexclude}', collection_name='!{params.collection_name}',qqman='!{qqman}',qqman2='!{qqman2}')"
+python -c "from Stats_helpers import*; qqplot_xMHC_noxMHC('!{rsq08}', '!{rsq08}_noxMHC', $NUM_CASES, $NUM_CONTROLS, qqplotp='!{qqplotp}', qqplotp2='!{qqplotp2}', pval2chisq='!{pval2chisq}', snpexclude='!{snpexclude}', collection_name='!{params.collection_name}',qqman='!{qqman}',qqman2='!{qqman2}')"
 
 # -------------------------------- #
 # -- manhattan plot for chr1-22 -- #
@@ -338,7 +384,7 @@ plink --bfile "${NEWTARG}" --exclude "!{multiallelic_exclude}" --out "!{plink_ta
 '''
 }
 
-
+/*
 process merge_dosages {
     input:
     file dosages from for_merge_disages.collect()

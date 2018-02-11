@@ -4,6 +4,8 @@ import sys
 import re
 import os
 
+import decimal
+
 from os.path import *
 #import string
 
@@ -30,11 +32,11 @@ from all_common import Command
 from eigenstrat_classes import PackedPed
 
 
-def extractQQplot_null_variants(assoc_input, assoc_output):
+def extractQQplot_null_variants(qqplot_null_variants, assoc_input, assoc_output):
     """ extract null variants from assoc file """
 
     try:
-        fh_r = file(QQplot_null_variants, "r")
+        fh_r = file(qqplot_null_variants, "r")
     except IOError, e:
       print e
       sys.exit(1)
@@ -210,11 +212,11 @@ def extract_Rsq_variants(assoc_logistic_input, assoc_dosage_input, assoc_merge_o
     fh_w2.close()
 
 
-def excludeQQplot_variants(assoc_input, assoc_output):
+def excludeQQplot_variants(assoc_input, assoc_output, snpexclude):
     """ exclude specific regions from assoc null file """
 
     try:
-        fh_r = file(QQplot_SNPexcludeList, "r")
+        fh_r = file(snpexclude, "r")
     except IOError, e:
       print e
       sys.exit(1)
@@ -262,7 +264,7 @@ def excludeQQplot_variants(assoc_input, assoc_output):
     fh_w.close()
 
 
-def qqplot_xMHC_noxMHC(file_PLINK, file_PLINK_noxMHC, numof_cases, numof_controls, qqplotp, qqplotp2, pval2chisq, snpexclude):
+def qqplot_xMHC_noxMHC(file_PLINK, file_PLINK_noxMHC, numof_cases, numof_controls, qqplotp, qqplotp2, pval2chisq, snpexclude, collection_name, qqman, qqman2):
     """ extract variants based on Rsq value """
 
     # ---------------------------- #
@@ -322,13 +324,15 @@ def qqplot_xMHC_noxMHC(file_PLINK, file_PLINK_noxMHC, numof_cases, numof_control
         collection_name,\
         qqplotp2))
 
-    if QQplot_SNPexcludeList_exists:
+    if snpexclude:
     
         excludeQQplot_variants(assoc_input=file_PLINK, \
-                               assoc_output=file_PLINK + "_excludeRegions")
+                               assoc_output=file_PLINK + "_excludeRegions",\
+                               snpexclude=snpexclude)
     
         excludeQQplot_variants(assoc_input=file_PLINK_noxMHC, \
-                               assoc_output=file_PLINK_noxMHC + "_excludeRegions")
+                               assoc_output=file_PLINK_noxMHC + "_excludeRegions",\
+                               snpexclude=snpexclude)
     
         # ---------------------------- #
         # -- filtered for non-xMHC  -- #
@@ -391,25 +395,27 @@ def qqplot_xMHC_noxMHC(file_PLINK, file_PLINK_noxMHC, numof_cases, numof_control
 
 
 
-def qqplot_null(file_PLINK_null, numof_cases, numof_controls, qqplotp, qqplotp2, pval2chisq, snpexclude):
+def qqplot_null(file_PLINK_null, numof_cases, numof_controls, qqplotp, qqplotp2, pval2chisq, snpexclude, collection_name, qqman, qqman2):
     """ extract null variants """
 
     # use normal qqplot scripts instead of null qqplot scripts because usage of
     # ld pruned variants as null SNPs
     print "\n    qq-plotpval for null SNVs from association results ...\n\n"
-    os.system("R --no-save --args %s %s %s %s < %s" \
+    os.system("R --no-save --args %s %s %s %s %s < %s" \
         %(file_PLINK_null,\
         str(numof_cases),\
         str(numof_controls),\
         collection_name,\
+        qqman,\
         qqplotp))
 
     print "\n    qq-plotpval for null SNVs from association results ...\n\n"
-    os.system("R --no-save --args %s %s %s %s < %s" \
+    os.system("R --no-save --args %s %s %s %s %s < %s" \
         %(file_PLINK_null,\
         str(numof_cases),\
         str(numof_controls),\
         collection_name,\
+        qqman2,\
         qqplotp2))
     
     print "\n    qq-plot for null SNVs from association results ...\n\n"
@@ -423,22 +429,25 @@ def qqplot_null(file_PLINK_null, numof_cases, numof_controls, qqplotp, qqplotp2,
     if snpexclude:
     
         excludeQQplot_variants(assoc_input=file_PLINK_null, \
-                               assoc_output=file_PLINK_null + "_excludeRegions")
+                               assoc_output=file_PLINK_null + "_excludeRegions", \
+                               snpexclude=snpexclude)
     
         print "\n    qq-plotpval for null SNVs with specific regions excluded from association results ...\n\n"
-        os.system("R --no-save --args %s %s %s %s < %s" \
+        os.system("R --no-save --args %s %s %s %s %s < %s" \
             %(file_PLINK_null + "_excludeRegions",\
             str(numof_cases),\
             str(numof_controls),\
             collection_name,\
+            qqman,\
             qqplotp))
 
-        os.system("R --no-save --args %s %s %s %s < %s" \
+        os.system("R --no-save --args %s %s %s %s %s < %s" \
             %(file_PLINK_null + "_excludeRegions",\
             str(numof_cases),\
             str(numof_controls),\
             collection_name,\
-            qqplot2))
+            qqman2,\
+            qqplotp2))
 
 
 def generateHitSpecfile(chromosome, pos, snp, GWAS_regions, file_HitSpec):
