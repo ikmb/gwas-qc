@@ -220,17 +220,20 @@ plink --bfile ${dataset[0].baseName} --genome --parallel ${job} ${calc_imiss_job
 }
 
 process ibs_merge_and_verify {
+publishDir params.output ?: '.', mode: 'copy'  
     input:
     file chunks from for_ibs_merge_and_verify.collect()
     file dataset from for_ibs_merge_and_verify_ds
 
     output:
     file "${dataset[0].baseName}_IBS.genome" into for_detect_duplicates_genome
+    file "*.png"
 
 
 
     shell:
 //        sorted_chunks = chunks.sort({ a, b -> a.toString() <=> b.toString() })
+    ibdplot = SCRIPT_DIR + "/IBD-plot-genomefile.r"
 '''
     module load "IKMB"
     module load "Plink/1.9"
@@ -274,8 +277,11 @@ if [ $LINES_MERGED -ne $LINES_ORIG ]; then
     exit 1
 else
     echo Check passed, genome files do have the expected number of pairwise estimates.
-    exit 0
 fi
+
+gawk '{ print $7, $8 }' $OUTFILE >$OUTFILE.Z0.Z1
+R --slave --args $OUTFILE.Z0.Z1 < !{ibdplot}
+
 '''
 }
 
@@ -368,6 +374,7 @@ process pca_run {
 
     output:
         file "*.png"
+        file "*.pdf"
 
     script:
     base_pruned = pruned_hapmap[0].baseName
@@ -384,6 +391,7 @@ python -c 'from SampleQCI_helpers import *; pca_run("${base_pruned}", ${sigma_th
 }
 
 process second_pca_eigenstrat {
+    publishDir params.output ?: '.', mode: 'copy' 
 //    when params.program_for_second_PCA == "EIGENSTRAT"
 
     input:
@@ -392,6 +400,7 @@ process second_pca_eigenstrat {
 
     output:
     file "${pruned[0].baseName}_${params.numof_pc}PC.outlier.txt" into for_remove_bad_samples_eigenstrat
+//    file "*.png"
 
     script:
     sigma_threshold = 6.0
@@ -421,6 +430,7 @@ process flashpca2_pruned {
     set file("${target}.pca.evec"), file( "${target}.country.pca.evec") into for_extract_qced_samples_evec
     set file("${target}.eval"), file("${target}.country.eval") into for_tracy_widom_stats_eval
     file "*.png"
+//    file "*.pdf"
 
     script:
     base_pruned = pruned[0].baseName
@@ -456,6 +466,7 @@ process flashpca2_pruned_1kG {
     file "${pruned[0].baseName}_1kG_${params.numof_pc}PC.fail-pca-1KG-qc.txt" into for_remove_bad_samples_flashpca
     set file("${pruned[0].baseName}_1kG.bed"), file("${pruned[0].baseName}_1kG.bim"), file("${pruned[0].baseName}_1kG.fam") into for_pca_without_projection
     file "*.pdf"
+//    file "*.png"
 
     script:
     base_pruned = pruned[0].baseName
