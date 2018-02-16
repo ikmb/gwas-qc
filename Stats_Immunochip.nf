@@ -365,18 +365,26 @@ file ds_release_staged from Channel.from(ds_input).collect()
 
 output:
 file "$plink_target"
+file "$target.{bim,bed,fam,log}"
+
 
 shell:
 chrname = mapFileList(ds_imp_staged).gz.getParent() + "/${chromosome}.${params.disease_data_set_suffix_release_imputed}.gz" // TODO: should be more robust
+ds_release = mapFileList(ds_release_staged)
 flag_relatives_doubleid = ds_release.relatives_doubleID // TODO Wo gibt es diese datei?
-multiallelic_exclude = 
+multiallelic_exclude = params.Multiallelic_SNPexcludeList
 target // plink_dosage + rsq0.4.chr + chr + .rs 
 plink_target // plink_dosage + rsq0.4.chr + chr 
 rs2chrpos = SCRIPT_DIR+"/awk_rs2CHRPOS_bimfiles.awk"
 '''
 module load Plink/1.9
 
-plink --vcf "!{chrname}" --double-id --remove "!{flag_relatives_doubleid}" --keep "!{ds_stats.ped}" --exclude "!{multialellic_exclude}" --out "!{target}" --allow-no-sex --make-bed --threads 16
+if [ -e "!{multiallelic_exclude}" ]; then
+    plink --vcf "!{chrname}" --double-id --remove "!{flag_relatives_doubleid}" --keep "!{ds_stats.ped}" --exclude "!{multialellic_exclude}" --out "!{target}" --allow-no-sex --make-bed --threads 16
+else
+    plink --vcf "!{chrname}" --double-id --remove "!{flag_relatives_doubleid}" --keep "!{ds_stats.ped}" --out "!{target}" --allow-no-sex --make-bed --threads 16
+fi
+
 
 NEWTARG="!{target.fam.baseName}.tmp"
 cp "!{target.fam}" "${NEWTARG}.fam"
@@ -392,7 +400,7 @@ plink --bfile "${NEWTARG}" --exclude "!{multiallelic_exclude}" --out "!{plink_ta
 /*
 process merge_dosages {
     input:
-    file dosages from for_merge_disages.collect()
+    file dosages from for_merge_dosages.collect()
    
     output:
     
