@@ -939,6 +939,10 @@ process eigenstrat_run {
     module load "IKMB"
     module load "Plink/1.9"
     module load "Eigensoft/4.2"
+export TMPDIR="$(pwd)"
+export TEMPDIR="$(pwd)"
+export TEMP="$(pwd)"
+
 python -c 'from SampleQCI_helpers import *; pca_run("!{base_pruned}", !{sigma_threshold}, "!{projection_on_populations_hapmap}", !{params.numof_pc}, !{task.cpus}, "!{draw_eigenstrat}", "!{draw_without}")'
 '''
 }
