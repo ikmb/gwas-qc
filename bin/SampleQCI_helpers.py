@@ -551,6 +551,76 @@ def addbatchinfo_10PCs(evec_file, eval_file, new_evec_file, new_eval_file, indiv
     os.system("cp %s %s" % (eval_file, new_eval_file))
 
 
+def addphenoinfo_10PCs(evec_file, eval_file, new_evec_file, new_eval_file, individuals_annotation, preQCIMDS_1kG_sample):
+    """ add batch information to final evec file """
+
+    id2pheno = {}
+
+    try:
+        fh1 = file(individuals_annotation, "r")
+    except IOError, e:
+        print e
+        sys.exit(1)
+
+    line = fh1.readline().rstrip('\n')
+    line = fh1.readline().rstrip('\n')
+    while line:
+        list     = re.split("\s+", line)
+        indivID = list[1]
+        pheno   = list[8]
+        id2pheno[indivID] = pheno
+        line = fh1.readline().rstrip('\n')
+    fh1.close()
+
+    try:
+        fh1 = file(preQCIMDS_1kG_sample, "r")
+    except IOError, e:
+        print e
+        sys.exit(1)
+
+    line = fh1.readline().rstrip('\n')
+    line = fh1.readline().rstrip('\n')
+    while line:
+        list     = re.split("\s+", line)
+        indivID = list[0]
+        pheno   = list[1]
+        id2pheno[indivID] = pheno
+        line = fh1.readline().rstrip('\n')
+    fh1.close()
+
+    try:
+        fh2 = file(evec_file, "r")
+        fh3 = file(new_evec_file, "w")
+    except IOError, e:
+        print e
+        sys.exit(1)
+
+    line = fh2.readline().rstrip('\n')
+    fh3.writelines(line + "\tbatch\n")
+    line = fh2.readline().rstrip('\n')
+    while line:
+        list = re.split("\s+", line)
+        id = list[1]
+        fh3.writelines(list[0] + "\t" +
+                       list[1] + "\t" +
+                       list[2] + "\t" +
+                       list[3] + "\t" +
+                       list[4] + "\t" +
+                       list[5] + "\t" +
+                       list[6] + "\t" +
+                       list[7] + "\t" +
+                       list[8] + "\t" +
+                       list[9] + "\t" +
+                       list[10] + "\t" +
+                       list[11] + "\t" +
+                       id2pheno[id] + "\n")
+        line = fh2.readline().rstrip('\n')
+
+    fh2.close()
+    fh3.close()
+
+    os.system("cp %s %s" % (eval_file, new_eval_file))
+
 
 def addcountryinfo_10PCs(evec_file, eval_file, new_evec_file, new_eval_file, ind_annotation_file, preQCIMDS_1kG_sample):
     """ add country information to final evec file """

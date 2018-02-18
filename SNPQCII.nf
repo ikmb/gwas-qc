@@ -326,6 +326,7 @@ plink --noweb --bfile after-correlated-remove --extract include-variants --make-
     }
 }
 
+// TODO: generates a very long header
 process flashpca_pruned {
     publishDir params.output ?: '.', mode: 'copy', overwrite: true
 
@@ -360,7 +361,7 @@ process flashpca_pruned {
     module load "FlashPCA/2.0"
     module load "Eigensoft/4.2"
 echo Dataset for flashpca: !{dataset}
-    flashpca2 -d 2000 --bfile "!{dataset.bed.baseName}" \
+    flashpca2 -d 1000 --bfile "!{dataset.bed.baseName}" \
     --outval !{prefix}_eigenvalues_flashpca2 \
     --outvec !{prefix}_eigenvectors_flashpca2 \
     --outpc  !{prefix}_pcs_flashpca2 \
@@ -371,7 +372,7 @@ echo Dataset for flashpca: !{dataset}
 
 
 echo Adding batch info | ts
-python -c 'from SampleQCI_helpers import *; addbatchinfo_10PCs("!{prefix}_pcs_flashpca2", "!{prefix}_eigenvalues_flashpca2", "!{prefix}.pca.evec", "!{prefix}.eval", "!{annotation}", "!{params.preQCIMDS_1kG_sample}")'
+python -c 'from SampleQCI_helpers import *; addphenoinfo_10PCs("!{prefix}_pcs_flashpca2", "!{prefix}_eigenvalues_flashpca2", "!{prefix}.pca.evec", "!{prefix}.eval", "!{annotation}", "!{params.preQCIMDS_1kG_sample}")'
 
 echo Drawing FLASHPCA2 eigenvectors for set with batch info | ts
 R --slave --args "!{dataset.bed.baseName}" "!{params.preQCIMDS_1kG_sample}" <"!{draw_evec_FLASHPCA2}"
@@ -454,7 +455,7 @@ NUM_SAMPLES=$(($NUM_CASES + $NUM_CONTROLS))
 NUM_SNPS=$(grep -P 'After.*\\d+.SNPs' !{dataset.log} | cut -d' ' -f8)
 echo Samples: $NUM_SAMPLES, markers: $NUM_SNPS
 
-head -n 2000 !{pca.eval} >eval.tw
+head -n 1000 !{pca.eval} >eval.tw
 
 if [ "!{params.projection_on_populations_CON_only}" == "True" ]; then
     if [ "$NUM_CONTROLS" -gt "$NUM_SNPS" ]; then
@@ -532,7 +533,7 @@ process flashpca_1kg {
         module load "IKMB"
     module load "FlashPCA/2.0"
     module load "Eigensoft/4.2"
-flashpca2 -d 2000 --bfile "!{dataset.bed.baseName}" \
+flashpca2 -d 1000 --bfile "!{dataset.bed.baseName}" \
     --outval !{prefix}_eigenvalues_flashpca2 \
     --outvec !{prefix}_eigenvectors_flashpca2 \
     --outpc  !{prefix}_pcs_flashpca2 \
@@ -543,7 +544,7 @@ flashpca2 -d 2000 --bfile "!{dataset.bed.baseName}" \
 #    --memory 64000
 
 echo Adding batch info | ts
-python -c 'from SampleQCI_helpers import *; addbatchinfo_10PCs("!{prefix}_pcs_flashpca2", "!{prefix}_eigenvalues_flashpca2", "!{prefix}.pca.evec", "!{prefix}.eval", "!{annotation}", "!{params.preQCIMDS_1kG_sample}")'
+python -c 'from SampleQCI_helpers import *; addphenoinfo_10PCs("!{prefix}_pcs_flashpca2", "!{prefix}_eigenvalues_flashpca2", "!{prefix}.pca.evec", "!{prefix}.eval", "!{annotation}", "!{params.preQCIMDS_1kG_sample}")'
 
 echo Drawing FLASHPCA2 eigenvectors for set with batch info | ts
 R --slave --args "!{dataset.bed.baseName}" "!{params.preQCIMDS_1kG_sample}" <"!{draw_evec_FLASHPCA2}"
@@ -746,8 +747,13 @@ python -c 'from SNPQC_helpers import *; extract_QCsamples_annotationfile_relativ
 }
 
 // part 4
+// TODO: nochmal überlegen, ob diese ganze SNPRelate-Sache überhaupt noch sinnvoll ist
 
 process prune_snprelate {
+    when:
+    params.run_final_snprelate == true
+
+
     input:
     file ds_staged from for_snprelate_prune
     
@@ -780,6 +786,9 @@ plink --noweb --bfile after-correlated-remove --extract include-variants --make-
 }
 
 process run_snprelate {
+    when:
+    params.run_final_snprelate == true
+
     input:
     file ds_pruned_staged from for_snprelate
     file ds_final_staged from for_snprelate_ann
@@ -816,6 +825,9 @@ python -c 'from SNPQC_helpers import *; addbatchinfo_32PCAs(\
 }
 
 process draw_final_pca_histograms {
+    when:
+    params.run_final_snprelate == true
+
     publishDir params.output ?: '.', mode: 'copy', overwrite: true
     cpus 2
     
@@ -844,6 +856,9 @@ fi
 
 
 process twstats_final_pruned_snprelate {
+    when:
+    params.run_final_snprelate == true
+
     publishDir params.output ?: '.', mode: 'copy', overwrite: true
 
     input:
@@ -894,6 +909,9 @@ fi
 }
 
 process eigenstrat_convert {
+    when:
+    params.run_final_snprelate == true
+
     input:
     file ds_final_pruned_staged from for_eigenstrat_convert_ds
     file ds_final_staged from for_eigenstrat_convert_ann
@@ -914,6 +932,9 @@ process eigenstrat_convert {
 }
 
 process eigenstrat_run {
+    when:
+    params.run_final_snprelate == true
+
     publishDir params.output ?: '.', mode: 'copy'   
 
 
@@ -948,6 +969,9 @@ python -c 'from SampleQCI_helpers import *; pca_run("!{base_pruned}", !{sigma_th
 }
 
 process determine_eigenstrat_outliers {
+    when:
+    params.run_final_snprelate == true
+
     input:
     file ds_final_pruned_staged from for_det_eigenstrat_outliers
     file logfile from for_det_eigenstrat_outliers_log
@@ -969,6 +993,9 @@ determine_pca_outlier(log="!{logfile}", fam_file="!{ds.fam}", outlier_file="!{ou
 
 
 process twstats_final_pruned_eigenstrat {
+    when:
+    params.run_final_snprelate == true
+
     publishDir params.output ?: '.', mode: 'copy', overwrite: true
 
     input:
