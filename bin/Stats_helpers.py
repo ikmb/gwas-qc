@@ -3,7 +3,6 @@
 import sys
 import re
 import os
-
 import decimal
 
 from os.path import *
@@ -22,13 +21,13 @@ from os.path import *
 #sys.path.append(os.path.join(os.path.dirname[0], "../../all_scripts"))
 sys.path.append(os.environ['PYLIB_DIR'] + "/all_scripts")
 sys.path.append(os.environ['PYLIB_DIR'] + "/lib")
-from all_common import Command
+#from all_common import Command
 
 # import my lib
 # sys.path.append(join(sys.path[0], "../lib"))
 # sys.path.append(os.environ['PYLIB_DIR'] + "/lib")
 
-#from plink_classes import PackedPed
+from plink_classes import Clump
 from eigenstrat_classes import PackedPed
 
 
@@ -450,7 +449,83 @@ def qqplot_null(file_PLINK_null, numof_cases, numof_controls, qqplotp, qqplotp2,
             qqplotp2))
 
 
-def generateHitSpecfile(chromosome, pos, snp, GWAS_regions, file_HitSpec):
+def PLINK_clumping(rsq4, rsq8, file_PLINK_geno_imp_rsq0_4, file_PLINK_geno_imp_rsq0_8, clumpr2, clumpp1, clumpp2, clumpkb):
+    """ run clumping from PLINK association program """
+   
+#    file_PLINK_geno_imp              = file_prefix_PLINK + ".genotyped.imputed"
+#    file_PLINK_geno_imp_rsq0_4       = file_PLINK_geno_imp +"_chr1-22.assoc.rsq0.4.locuszoom"
+#    file_PLINK_geno_imp_rsq0_8       = file_PLINK_geno_imp +"_chr1-22.assoc.rsq0.8.locuszoom"
+    
+    # --------------------- #
+    # -- clumping rsq0.4 -- #
+    # --------------------- #
+    print "\n    do clumping with PLINK ...\n\n"
+    os.system("plink --bfile %s --out %s_clump --clump %s --clump-r2 %s --clump-p1 %s --clump-p2 %s --clump-kb %s --allow-no-sex --threads 16"\
+#        %(file_PLINK_geno_imp +".rsq0.4.chr1-22.locuszoom",\
+        %(rsq4,\
+        file_PLINK_geno_imp_rsq0_4,\
+        file_PLINK_geno_imp_rsq0_4,\
+        clumpr2,\
+        clumpp1,\
+        clumpp2,\
+        clumpkb))
+      
+    print "\n    filter clumps with supporting snps ...\n\n"
+    clump = Clump(clump_file=file_PLINK_geno_imp_rsq0_4 + "_clump.clumped",\
+                  write_file=file_PLINK_geno_imp_rsq0_4 + "_clump.clumped_all")
+    clump.write_snps_typed_noChr23() # these snps are all typed
+    del clump
+    clump = Clump(clump_file=file_PLINK_geno_imp_rsq0_4 + "_clump.clumped_all",\
+                  write_file=file_PLINK_geno_imp_rsq0_4 + "_clump.clumped_groups")
+    clump.write_supported_snps_from_altered_file()
+    del clump    
+      
+    # ---------------------------- #
+    # -- filter for non-xMHC    -- #
+    # -- xMHC: chr6, [25,34[ Mb -- #
+    # ---------------------------- #
+    
+    os.system("gawk '{ if (!($1 == 6 && ($4 >= 25000000 && $4 < 34000000))) print }' %s_clump.clumped_all > %s_clump.clumped_all.noXMHC"\
+              %(file_PLINK_geno_imp_rsq0_4, file_PLINK_geno_imp_rsq0_4))
+    os.system("gawk '{ if (!($1 == 6 && ($4 >= 25000000 && $4 < 34000000))) print }' %s_clump.clumped_groups > %s_clump.clumped_groups.noXMHC"\
+              %(file_PLINK_geno_imp_rsq0_4, file_PLINK_geno_imp_rsq0_4))
+
+    # --------------------------------------------------------- #
+    # -- clumping                                            -- #
+    # -- rsq0.8                                              -- #
+    # --------------------------------------------------------- #
+    print "\n    do clumping with PLINK ...\n\n"
+
+    os.system("plink --bfile %s --out %s_clump --clump %s --clump-r2 %s --clump-p1 %s --clump-p2 %s --clump-kb %s --allow-no-sex --threads 16"\
+#        %(file_PLINK_geno_imp +".rsq0.8.chr1-22.locuszoom",\
+        %(rsq8,\
+        file_PLINK_geno_imp_rsq0_8,\
+        file_PLINK_geno_imp_rsq0_8,\
+        clumpr2,\
+        clumpp1,\
+        clumpp2,\
+        clumpkb))
+    print "\n    filter clumps with supporting snps ...\n\n"
+    clump = Clump(clump_file=file_PLINK_geno_imp_rsq0_8 + "_clump.clumped",\
+                  write_file=file_PLINK_geno_imp_rsq0_8 + "_clump.clumped_all")
+    clump.write_snps_typed_noChr23() # these snps are all typed
+    del clump
+    clump = Clump(clump_file=file_PLINK_geno_imp_rsq0_8 + "_clump.clumped_all",\
+                  write_file=file_PLINK_geno_imp_rsq0_8 + "_clump.clumped_groups")
+    clump.write_supported_snps_from_altered_file()
+    del clump    
+     
+    # ---------------------------- #
+    # -- filter for non-xMHC    -- #
+    # -- xMHC: chr6, [25,34[ Mb -- #
+    # ---------------------------- #
+    
+    os.system("gawk '{ if (!($1 == 6 && ($4 >= 25000000 && $4 < 34000000))) print }' %s_clump.clumped_all > %s_clump.clumped_all.noXMHC"\
+              %(file_PLINK_geno_imp_rsq0_8, file_PLINK_geno_imp_rsq0_8))
+    os.system("gawk '{ if (!($1 == 6 && ($4 >= 25000000 && $4 < 34000000))) print }' %s_clump.clumped_groups > %s_clump.clumped_groups.noXMHC"\
+              %(file_PLINK_geno_imp_rsq0_8, file_PLINK_geno_imp_rsq0_8))
+
+def generateHitSpecfile(chromosome, pos, snp, GWAS_regions, file_HitSpec, QQplot_SNPexcludeList, disease_data_set_prefix_release_statistics):
     """ """ 
     try:
         fh_w = open(file_HitSpec, "w")
@@ -474,6 +549,9 @@ def generateHitSpecfile(chromosome, pos, snp, GWAS_regions, file_HitSpec):
     #phenos       = list[5]
     
     m2zargs      = "title=\""+ basename(disease_data_set_prefix_release_statistics) +" "+ snp +"\""
+    
+    QQplot_SNPexcludeList_exists = os.path.isfile(QQplot_SNPexcludeList)
+
     
     # -- highlight known GWAS region if in plotting region -- #
     if QQplot_SNPexcludeList_exists:
@@ -746,4 +824,122 @@ def run_locuszoom(chromosome, file_PLINK_assoc, file_HitSpec, file_CredibleSets,
     fh_r3.close()
 
 
+
+
+def extract_known_GWAS_regions(QQplot_SNPexcludeList):
+    """ extract known GWAS region from file """
+
+    try:
+        fh_r = file(QQplot_SNPexcludeList, "r")
+    except IOError, e:
+      print e
+      sys.exit(1)
+    
+    GWAS_regions = []
+    line = fh_r.readline().rstrip('\n')
+    while line:
+        list = re.split("\s+",line)
+        chr    = int(list[0])
+        left   = int(list[1])
+        right  = int(list[2])
+        GWAS_regions.append((chr, left, right))
+        line = fh_r.readline().rstrip('\n')
+    
+    fh_r.close()
+
+    return GWAS_regions
+
+
+
+
+def locuszoom_run(snp_colnr, file_suffix, file_PLINK_assoc, file_PLINK, numoftophits, QQplot_SNPexcludeList, name):
+    """ do the plotting """
+   
+    # ----------------------------------------------------------- #
+    # -- get numoftophits top snp_ids from clumped groups file -- #
+    # ----------------------------------------------------------- #
+ 
+    # this list has the correct order of SNPs how they appear in the clump file
+    snp_tophits = []
+    # clump rs : chr, rs_lead, pos, p_value, SP2
+    snp_hash = {}
+    #snp_tophits_sp2_hash = {}
+
+    # if clumped groups or clumped all file
+    if file_suffix == "_clump.clumped_all" or file_suffix == "_clump.clumped_groups" or \
+       file_suffix == "_clump.clumped_all.noXMHC" or file_suffix == "_clump.clumped_groups.noXMHC":
+        clump = Clump(clump_file=file_PLINK_assoc + file_suffix)
+        clump.map()
+        
+        snp_tophits = clump.rs_get_typed_imputed_tophits(numoftophits=numoftophits)
+        snp_hash = clump.rs_get_all_typed_imputed_tophits_hash(numoftophits=numoftophits)
+        #snp_tophits_sp2_hash = clump.rs_sp2_get_typed_imputed_tophits_hash(numoftophits=numoftophits)
+        
+        clump.free_map() ; del clump
+
+    # ------------------------------------------------------- #
+    # -- create new output directory for association plots -- #
+    # ------------------------------------------------------- #
+    
+    plot_dir = ""
+
+    # ---------------------------------------------------------------------- #
+    # -- extract known GWAS region if file exists with known GWAS regions -- #
+    # ---------------------------------------------------------------------- #
+    
+    QQplot_SNPexcludeList_exists = os.path.isfile(QQplot_SNPexcludeList)
+    
+    GWAS_regions = []
+    if QQplot_SNPexcludeList_exists:
+        GWAS_regions = extract_known_GWAS_regions(QQplot_SNPexcludeList) 
+ 
+    # ----------------------- #
+    # -- Locuszoom per SNP -- #
+    # ----------------------- #
+    string = ""
+    for snp in snp_tophits:
+        
+        chromosome = snp_hash[snp][0]
+        pos  = snp_hash[snp][2]
+        pval = snp_hash[snp][3]
+        #sp2  = snp_hash[snp][4]
+        
+        # generate hitspec file for Locuszoom plotting 
+        file_HitSpec = join(plot_dir, snp +".hitspec.csv")
+        generateHitSpecfile(chromosome=chromosome, pos=pos, snp=snp, GWAS_regions=GWAS_regions, file_HitSpec=file_HitSpec, QQplot_SNPexcludeList=QQplot_SNPexcludeList, disease_data_set_prefix_release_statistics=name)
+        
+        # generate credibleSets file for displaying different disease subsets
+        file_CredibleSets = join(plot_dir, snp +".credibleSets.csv")
+        #####generateCredibleSets(chromosome=chromosome, pos=pos, snp=snp, sp2=sp2, pval=pval, file_CredibleSets=file_CredibleSets)
+        generateCredibleSets(chromosome=chromosome, pos=pos, snp=snp, pval=pval, file_CredibleSets=file_CredibleSets)
+        
+        # generate denoteMarker file for displaying SNV IDs in plot
+        file_DenoteMarker = join(plot_dir, snp +".denoteMarker.csv")
+        generateDenoteMarker(chromosome=chromosome, pos=pos, snp=snp, file_DenoteMarker=file_DenoteMarker)
+       
+        # calculate LD on my own for --ld option in Locuszoom
+        os.system("plink --bfile %s --r2 --ld-window-r2 0.0 --ld-snp %s --ld-window 1000000 --ld-window-kb 1000 --out %s_ld --allow-no-sex" %(file_PLINK, snp, join(plot_dir, snp)))
+        os.system("echo \"snp1 snp2 dprime rsquare\" > %s_ld.ld.csv" %(join(plot_dir, snp)))
+        if (snp == chromosome+":"+pos):
+            os.system("awk '{ print \"chr\"$3, $6, \"0\", $7 }' %s_ld.ld | tail -n +2 >> %s_ld.ld.csv" %(join(plot_dir, snp), join(plot_dir, snp)))
+        elif (snp[0:3] == "imm" or snp[0:3] == "seq"):
+            os.system("awk '{ print \"chr\"$1\":\"$2, $6, \"0\", $7 }' %s_ld.ld | tail -n +2 >> %s_ld.ld.csv" %(join(plot_dir, snp), join(plot_dir, snp)))
+        else:
+            os.system("awk '{ print $3, $6, \"0\", $7 }' %s_ld.ld | tail -n +2 >> %s_ld.ld.csv" %(join(plot_dir, snp), join(plot_dir, snp)))
+ 
+        # run locuszoom
+        run_locuszoom(chromosome, file_PLINK_assoc, file_HitSpec, file_CredibleSets, file_DenoteMarker, join(plot_dir, snp +".locuszoom"), join(plot_dir, snp+"_ld.ld.csv"))
+        if (snp == chromosome+":"+pos):
+            string += " %s" %(join(plot_dir, snp +".locuszoom_chr" +chromosome+ "_" +pos+ ".pdf"))
+        elif (snp[0:3] == "imm" or snp[0:3] == "seq"):
+            string += " %s" %(join(plot_dir, snp +".locuszoom_chr" +chromosome+ "_" +pos+ ".pdf"))
+        else:
+            string += " %s" %(join(plot_dir, snp +".locuszoom_" +snp+ ".pdf"))
+ 
+    print "\n    merging single pdf regional association plots into one final pdf  ...\n\n"
+    print "\n\n    OutputFile: "+ file_PLINK_assoc + file_suffix + ".pdf" +"  ...\n\n"
+    print "\n\n    String    : "+ string +"  ...\n\n"
+    os.system("gs -dBATCH -dNOPAUSE -q -sDEVICE=pdfwrite -sOutputFile=%s %s"\
+              %(file_PLINK_assoc + file_suffix + ".pdf",\
+                string))
 

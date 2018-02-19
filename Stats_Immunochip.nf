@@ -80,8 +80,8 @@ process extract_genotyped_variants {
 	file ds_staged from Channel.from(ds_input).collect()
 	
 	output:
-	file "${target}_fid_iid.fam" into for_plink_dosage_logistic_fam, for_cleanup_dataset_fam
-	file "${target}.{bim,bed,fam,log}" into for_plink_dosage_logistic_ds, for_qq_manhattan_ds, for_convert_dosages_stats, for_merge_dosages_stats, for_cleanup_dataset_stats
+	file "${target}_fid_iid.fam" into for_plink_dosage_logistic_fam, for_cleanup_dataset_fam, for_merge_dosages_fam, for_clumping_fam
+	file "${target}.{bim,bed,fam,log}" into for_plink_dosage_logistic_ds, for_qq_manhattan_ds, for_convert_dosages_stats, for_merge_dosages_stats, for_cleanup_dataset_stats, for_clumping_ds
 	file "${target}.fam.double-id.pheno" into for_merge_dosages_pheno
 	file "${target}.fam.double-id.gender" into for_merge_dosages_gender
 	
@@ -265,6 +265,8 @@ input:
 output:
     file rsq04  into for_qq_manhattan_rsq04
     file rsq08  into for_qq_manhattan_rsq08, for_merge_dosages_rsq08
+    file rsq04_lz into for_clumping_rsq04, for_lz_lz04
+    file rsq08_lz into for_clumping_rsq08
 
 shell:
 pval2qchisq = SCRIPT_DIR + "/pval2qchisq_2.r"
@@ -431,6 +433,7 @@ process merge_dosages {
     file ds_stats_staged from for_merge_dosages_stats
     file pheno from for_merge_dosages_pheno
     file gender from for_merge_dosages_gender
+    file (fam: "${params.disease_data_set_prefix_release_statistics}.fam") from for_merge_dosages_fam
    
     output:
     file "$target.{bim,bed,fam,log}" into for_cleanup_dataset_rsq04
@@ -460,10 +463,10 @@ done
 plink --bfile "!{dosage_basename}.chr!{params.first_chr}" --merge-list merge-list --make-bed --out "!{target}_tmp" --allow-no-sex --threads 16
 plink --bfile "!{target}_tmp" --pheno "!{pheno}" --update-sex "!{gender}" --make-bed --out "!{target}" --allow-no-sex --threads 16
 gawk '{ print $2 }' "!{rsq08}" | tail -n +2 >"!{dosage_basename}.rsq0.8.rs.txt"
-plink --bfile "!{rsq04.bim.baseName}" --extract "!{dosage_basename}.rsq0.8.rs.txt" --make-bed --out "!{rsq08_target_name}" --allow-no-sex --threads 16
+plink --bfile "!{target}" --extract "!{dosage_basename}.rsq0.8.rs.txt" --make-bed --out "!{rsq08_target_name}" --allow-no-sex --threads 16
 
 # Check number of individuals pre and post imputation
-COUNT1=$(wc -l "!{ds_stats.fam}" | cut -d" " -f 1)
+COUNT1=$(wc -l "!{fam}" | cut -d" " -f 1)
 COUNT2=$(wc -l "!{rsq04.fam}" | cut -d" " -f 1)
 if [ "$COUNT1" -ne "$COUNT2" ]; then
     (>&2 echo "Abort: different number of individuals in fam file pre versus post imputation.")
@@ -484,25 +487,20 @@ publishDir params.output ?: '.', mode: 'copy', overwrite: true
     file rsq08_staged from for_cleanup_dataset_rsq08
     file (fam: "${params.disease_data_set_prefix_release_statistics}.fam") from for_cleanup_dataset_fam
     file ds_stats_staged from for_cleanup_dataset_stats
-
-    
-    // TODO this is an ugly hack. ds_stats_staged does not pull in the FAM file
-    // because in the source folder, it's a link to the outside. Obviously,
-    // it cannot stage links to links. The below line pulls the whole set of
-    // outside stats, only "overwriting" those that have not been staged by
-    // ds_stats_staged, namely, the FAM file. Ugh. Could probably be solved
-    // by staging the stats as COPY not as LINK in extract_genotyped_*
-//    file ds_stats_staged_fam_dummy from Channel.from(ds_stats_input).collect()
-    
     
     output:
-    file "${rsq4.bim.baseName}.{bim,bed,fam,log}" into for_definetti_rsq04
-    file "${rsq8.bim.baseName}.{bim,bed,fam,log}" into for_definetti_rsq08
-    
-shell:
-ds_stats = mapFileList(ds_stats_staged)
-rsq4 = mapFileList(rsq04_staged)
-rsq8 = mapFileList(rsq08_staged)
+//    file "${rsq4base}.{bim,bed,fam,log}" into for_definetti_rsq04
+    set file("${rsq4base}.bim"), file("${rsq4base}.bed"), file ("${rsq4base}.fam"), file ("${rsq4base}.log") into for_definetti_rsq04
+    set file("${rsq8base}.bim"), file("${rsq8base}.bed"), file ("${rsq8base}.fam"), file ("${rsq8base}.log") into for_definetti_rsq08
+//    file "${rsq8base}.{bim,bed,fam,log}" into for_definetti_rsq08
+    set file("${rsq4.bim.baseName}.locuszoom.bim"),file("${rsq4.bim.baseName}.locuszoom.bed"),file("${rsq4.bim.baseName}.locuszoom.fam"),file("${rsq4.bim.baseName}.locuszoom.log") into for_clump_rsq04_ds, for_lz_rsq04
+    set file("${rsq8.bim.baseName}.locuszoom.bim"),file("${rsq8.bim.baseName}.locuszoom.bed"),file("${rsq8.bim.baseName}.locuszoom.fam"),file("${rsq8.bim.baseName}.locuszoom.log") into for_clump_rsq08_ds
+    shell:
+    ds_stats = mapFileList(ds_stats_staged)
+    rsq4 = mapFileList(rsq04_staged)
+    rsq8 = mapFileList(rsq08_staged)
+    rsq4base = rsq4.bim.baseName
+    rsq8base = rsq8.bim.baseName
 '''
 module load Plink/1.9
 echo "DS_STATS: !{ds_stats}"
@@ -526,11 +524,11 @@ plink --bfile "!{rsq4.bim.baseName}_tmp2" --freq --out "!{rsq4.bim.baseName}_tmp
 gawk '{ if ($5 == 0) print $2 }' "!{rsq4.bim.baseName}_tmp2_freq.frq" > "!{rsq4.bim.baseName}.excluded.monomorphic"
 
 # final version without duplicate genotyped and imputed SNPs - exclude imputed SNPs which are already genotyped
-plink --bfile "!{rsq4.bim.baseName}_tmp2" --exclude "!{rsq4.bim.baseName}.excluded.monomorphic" --make-bed --out "!{rsq4.bim.baseName}.excluded.monomorphic" &
-plink --bfile "!{rsq8.bim.baseName}_tmp2" --exclude "!{rsq4.bim.baseName}.excluded.monomorphic" --make-bed --out "!{rsq8.bim.baseName}.excluded.monomorphic" &
+plink --bfile "!{rsq4.bim.baseName}_tmp2" --exclude "!{rsq4.bim.baseName}.excluded.monomorphic" --make-bed --out "!{rsq4.bim.baseName}_tmp3" &
+plink --bfile "!{rsq8.bim.baseName}_tmp2" --exclude "!{rsq4.bim.baseName}.excluded.monomorphic" --make-bed --out "!{rsq8.bim.baseName}_tmp3" &
 wait
-plink --bfile "!{rsq4.bim.baseName}_tmp3" --not-chr 0 --make-bed --out "!{rsq4}" --allow-no-sex &
-plink --bfile "!{rsq8.bim.baseName}_tmp3" --not-chr 0 --make-bed --out "!{rsq8}" --allow-no-sex &
+plink --bfile "!{rsq4.bim.baseName}_tmp3" --not-chr 0 --make-bed --out "!{rsq4.bim.baseName}" --allow-no-sex &
+plink --bfile "!{rsq8.bim.baseName}_tmp3" --not-chr 0 --make-bed --out "!{rsq8.bim.baseName}" --allow-no-sex &
 wait
 
 # another final version without duplicate genotyped and imputed SNPs - 
@@ -554,50 +552,93 @@ wait
 process definetti_plots {
 publishDir params.output ?: '.', mode: 'copy', overwrite: true
     input:
-    file rsq04 from for_definetti_rsq04
-    file rsq08 from for_definetti_rsq08
+    file rsq04_staged from for_definetti_rsq04
+    file rsq08_staged from for_definetti_rsq08
     
     output:
     file "*.jpg"
     
 shell:
+rsq04base = mapFileList(rsq04_staged).bim.baseName
+rsq08base = mapFileList(rsq08_staged).bim.baseName
 definetti = SCRIPT_DIR + "/DeFinetti_hardy.r"
 '''
 module load Plink/1.9
 
-plink --bfile "!{rsq04}" --hardy --out "!{rsq04}_hardy" --hwe 0.0 --threads 4
-R --slave --args "!{rsq04}_hardy.hwe" "!{rsq04}_controls_DeFinetti" "!{rsq04}_cases_DeFinetti" "!{rsq04}_cases_controls_DeFinetti" <"!{definetti}
-plink --bfile "!{rsq08}" --hardy --out "!{rsq08}_hardy" --hwe 0.0 --threads 4
-R --slave --args "!{rsq08}_hardy.hwe" "!{rsq08}_controls_DeFinetti" "!{rsq08}_cases_DeFinetti" "!{rsq08}_cases_controls_DeFinetti" <"!{definetti}
+plink --bfile "!{rsq04base}" --hardy --out "!{rsq04base}_hardy" --hwe 0.0 --threads 4
+R --slave --args "!{rsq04base}_hardy.hwe" "!{rsq04base}_controls_DeFinetti" "!{rsq04base}_cases_DeFinetti" "!{rsq04base}_cases_controls_DeFinetti" <"!{definetti}"
+
+plink --bfile "!{rsq08base}" --hardy --out "!{rsq08base}_hardy" --hwe 0.0 --threads 4
+R --slave --args "!{rsq08base}_hardy.hwe" "!{rsq08base}_controls_DeFinetti" "!{rsq08base}_cases_DeFinetti" "!{rsq08base}_cases_controls_DeFinetti" <"!{definetti}"
 '''
 }
 
-/*
+
 process plink_clumping {
 input:
-    rsq4_lz
-    rsq8_lz
+    file ds_imp_staged from for_clumping_ds
+    file ds_imp_fam from Channel.from(ds_stats_input).collect()
+    file rsq4_lz from for_clumping_rsq04
+    file rsq8_lz from for_clumping_rsq08
+    file rsq4_staged from for_clump_rsq04_ds
+    file rsq8_staged from for_clump_rsq08_ds
+    
+    // python -c 'from Stats_Immunochip import *; PLINK_clumping("!{imp.fam.baseName}", "!{rsq4_lz}", "!{rsq8_lz}")'
+    
+output:
+    file "${rsq4_lz}_clump.clumped*" into for_lz_clump04
+    
+    
 shell:
+imp = mapFileList(ds_imp_staged)
+rsq4 = mapFileList(rsq4_staged)
+rsq8 = mapFileList(rsq8_staged)
+// clumpr2, clumpp1, clumpp2, clumpkb
 '''
-python -c 'from Stats_Immunochip import *; PLINK_clumping("!{imp.bim.baseName}", "!{rsq4_lz.bim.baseName}", "!{rsq8_lz.bim.baseName}")'
+module load Plink/1.9
+python -c 'from Stats_helpers import *; PLINK_clumping("!{rsq4.bim.baseName}", "!{rsq8.bim.baseName}", "!{rsq4_lz}", "!{rsq8_lz}", !{params.clumpr2}, !{params.clumpp1}, !{params.clumpp2}, !{params.clumpkb})'
 '''
 }
+
 
 // TODO: This could be parallelized over SNPs (split/merge approach) 
 process locuszoom {
-    
+
+input: 
+file rsq4_clump  from for_lz_clump04
+file rsq4_lz     from for_lz_lz04
+file rsq4_staged from for_lz_rsq04
+
+output:
+file "*.pdf"
+
 shell:
+rsq4 = mapFileList(rsq4_staged)
 '''
-python -c 'from Stats_Immunochip import *; \
+module load Plink/1.9
+//module load LocusZoom/1.3
+export TEMPDIR="."
+export TMPDIR="."
+
+export PATH="/opt/locuszoom-1.3/bin:$PATH"
+export PYTHONPATH="$PYTHONPATH:/opt/locuszoom-1.3/src:/opt/locuszoom-1.3/bin"
+
+echo "PATH: $PATH"
+echo "PYLIB_DIR: $PYLIB_DIR"
+echo "PYTHONPATH: $PYTHONPATH"
+
+//export PYTHONPATH=$PYLIB_DIR:$PYTHONPATH
+//export PYLIB_DIR=$PYTHONPATH
+
+python -c 'from Stats_helpers import *; \
     locuszoom_run(snp_colnr=2, \
     file_suffix="_clump.clumped_all.noXMHC", \
-    file_PLINK_assoc="!{rsq4_assoc}", \
-    file_PLINK="!{rsq4}")'
+    file_PLINK_assoc="!{rsq4_lz}", \
+    file_PLINK="!{rsq4.bim.baseName}", \
+    numoftophits=!{params.numoftophits},\
+    QQplot_SNPexcludeList="!{params.QQplot_SNPexcludeList}",\
+    name="!{params.disease_data_set_prefix_release_statistics}"\
+    )'
 '''
 }
-
-
-*/
-
-
 

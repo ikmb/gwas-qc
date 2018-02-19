@@ -60,6 +60,19 @@ echo "Installing FlashPCA2"
   ln -s flashpca_x86-64 flashpca2
   rm -f flashpca_x86-64.gz
 
+echo "Installing LocusZoom 1.3"
+  cd /opt
+  wget -nc https://statgen.sph.umich.edu/locuszoom/download/locuszoom_1.3_srconly.tgz
+  tar xaf locuszoom_1.3_srconly.tgz
+  mv locuszoom locuszoom-1.3
+  chmod 777 -R locuszoom-1.3
+
+echo "Installing LocusZoom 1.4"
+  cd /opt
+  wget -nc https://statgen.sph.umich.edu/locuszoom/download/locuszoom_1.4_srconly.tgz
+  tar xaf locuszoom_1.4_srconly.tgz
+  mv locuszoom locuszoom-1.4
+  chmod 777 -R locuszoom-1.4
 
 # Make bind mount points
 mkdir -p /scratch
@@ -77,6 +90,7 @@ echo "Installing R packages"
    echo "if('hwde' %in% rownames(installed.packages()) == FALSE) {install.packages('hwde', repo='$CRAN_MIRROR')}" >>/tmp/packages.r
    echo "if('sm' %in% rownames(installed.packages()) == FALSE) {install.packages('sm', repo='$CRAN_MIRROR')}" >>/tmp/packages.r
    echo "if('plotrix' %in% rownames(installed.packages()) == FALSE) {install.packages('plotrix', repo='$CRAN_MIRROR')}" >>/tmp/packages.r
+   echo "if('gridExtra' %in% rownames(installed.packages()) == FALSE) {install.packages('gridExtra', repo='$CRAN_MIRROR')}" >>/tmp/packages.r
    echo 'source("https://bioconductor.org/biocLite.R")' >>/tmp/packages.r
    echo 'biocLite("SNPRelate")' >>/tmp/packages.r
    echo 'biocLite("snpStats")' >>/tmp/packages.r
