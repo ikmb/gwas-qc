@@ -28,6 +28,8 @@ echo "Installing LocusZoom 1.3"
    tar xaf locuszoom_1.3_nold.tgz
    rm locuszoom_1.3_nold.tgz
    mv locuszoom locuszoom-1.3
+   chown -R root:root locuszoom-1.3
+   chmod -R 0755 locuszoom-1.3
 
 echo "Installing Plink 1.07"
    cd /opt
