@@ -3,6 +3,7 @@ From: baseimage.img
 
 %files
 EIG4.2.tar.xz /opt/
+locuszoom_1.3_nold.tgz /opt/
 
 %post -c /bin/bash
 
@@ -20,6 +21,13 @@ rm /bin/sh
 ln -s /bin/bash /bin/sh
 
 locale-gen en_US en_US.UTF-8 de_DE.UTF-8 de_DE
+
+echo "Installing LocusZoom 1.3"
+   cd /opt
+   # is copied in %files section
+   tar xaf locuszoom_1.3_nold.tgz
+   rm locuszoom_1.3_nold.tgz
+   mv locuszoom locuszoom-1.3
 
 echo "Installing Plink 1.07"
    cd /opt
@@ -59,20 +67,6 @@ echo "Installing FlashPCA2"
   chmod a+x flashpca_x86-64 
   ln -s flashpca_x86-64 flashpca2
   rm -f flashpca_x86-64.gz
-
-echo "Installing LocusZoom 1.3"
-  cd /opt
-  wget -nc https://statgen.sph.umich.edu/locuszoom/download/locuszoom_1.3_srconly.tgz
-  tar xaf locuszoom_1.3_srconly.tgz
-  mv locuszoom locuszoom-1.3
-  chmod 777 -R locuszoom-1.3
-
-echo "Installing LocusZoom 1.4"
-  cd /opt
-  wget -nc https://statgen.sph.umich.edu/locuszoom/download/locuszoom_1.4_srconly.tgz
-  tar xaf locuszoom_1.4_srconly.tgz
-  mv locuszoom locuszoom-1.4
-  chmod 777 -R locuszoom-1.4
 
 # Make bind mount points
 mkdir -p /scratch

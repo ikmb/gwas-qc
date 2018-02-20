@@ -769,7 +769,7 @@ def run_locuszoom(chromosome, file_PLINK_assoc, file_HitSpec, file_CredibleSets,
                 fh_w1_tmp.close()
                 fh_w2_tmp.close()
                 fh_w3_tmp.close()
-                os.system("locuszoom --metal=%s --markercol SNP --pvalcol P --ld %s --build hg19 --hitspec=%s fineMap=\"%s\" --denote-markers-file %s --gwas-cat whole-cat_significant-only --plotonly --no-date --prefix %s" %(file_PLINK_assoc, file_PLINK_ld, file_HitSpec +".tmp", file_CredibleSets +".tmp", file_DenoteMarker +".tmp", prefix_out))
+                os.system("/opt/locuszoom-1.3/bin/locuszoom --metal=%s --markercol SNP --pvalcol P --ld %s --build hg19 --hitspec=%s fineMap=\"%s\" --denote-markers-file %s --gwas-cat whole-cat_significant-only --plotonly --no-date --prefix %s" %(file_PLINK_assoc, file_PLINK_ld, file_HitSpec +".tmp", file_CredibleSets +".tmp", file_DenoteMarker +".tmp", prefix_out))
                 #os.system("locuszoom --metal=%s --markercol SNP --pvalcol P --ld-vcf %s --build hg19 --hitspec=%s fineMap=\"%s\" --denote-markers-file %s --gwas-cat whole-cat_significant-only --plotonly --no-date --prefix %s" %(file_PLINK_assoc, join(Imputation_orig_dir, str(chromosome)+"."+disease_data_set_suffix_release_imputed +".gz"), file_HitSpec +".tmp", file_CredibleSets +".tmp", file_DenoteMarker +".tmp", prefix_out))
                 # vcf file tabixed from filtered PLINK data does not work, don't know why, but LD cannot be calculated by Locuszoom
                 #os.system("locuszoom --metal=%s --markercol SNP --pvalcol P --ld-vcf %s --build hg19 --hitspec=%s fineMap=\"%s\" --denote-markers-file %s --gwas-cat whole-cat_significant-only --plotonly --no-date --prefix %s" %(file_PLINK_assoc, file_PLINK_rsq0_4, file_HitSpec +".tmp", file_CredibleSets +".tmp", file_DenoteMarker +".tmp", prefix_out))
@@ -803,7 +803,7 @@ def run_locuszoom(chromosome, file_PLINK_assoc, file_HitSpec, file_CredibleSets,
     fh_w1_tmp.close()
     fh_w2_tmp.close()
     fh_w3_tmp.close()
-    os.system("locuszoom --metal=%s --markercol SNP --pvalcol P --ld %s --build hg19 --hitspec=%s fineMap=\"%s\" --denote-markers-file %s --gwas-cat whole-cat_significant-only --plotonly --no-date --prefix %s" %(file_PLINK_assoc, file_PLINK_ld, file_HitSpec +".tmp", file_CredibleSets +".tmp", file_DenoteMarker +".tmp", prefix_out))
+    os.system("/opt/locuszoom-1.3/bin/locuszoom --metal=%s --markercol SNP --pvalcol P --ld %s --build hg19 --hitspec=%s fineMap=\"%s\" --denote-markers-file %s --gwas-cat whole-cat_significant-only --plotonly --no-date --prefix %s" %(file_PLINK_assoc, file_PLINK_ld, file_HitSpec +".tmp", file_CredibleSets +".tmp", file_DenoteMarker +".tmp", prefix_out))
     #os.system("locuszoom --metal=%s --markercol SNP --pvalcol P --ld-vcf %s --build hg19 --hitspec=%s fineMap=\"%s\" --denote-markers-file %s --gwas-cat whole-cat_significant-only --plotonly --no-date --prefix %s" %(file_PLINK_assoc, join(Imputation_orig_dir, str(chromosome)+"."+disease_data_set_suffix_release_imputed +".gz"), file_HitSpec +".tmp", file_CredibleSets +".tmp", file_DenoteMarker +".tmp", prefix_out))
     # vcf file tabixed from filtered PLINK data does not work, don't know why, but LD cannot be calculated by Locuszoom
     #os.system("locuszoom --metal=%s --markercol SNP --pvalcol P --ld-vcf %s --build hg19 --hitspec=%s fineMap=\"%s\" --denote-markers-file %s --gwas-cat whole-cat_significant-only --plotonly --no-date --prefix %s" %(file_PLINK_assoc, file_PLINK_rsq0_4, file_HitSpec +".tmp", file_CredibleSets +".tmp", file_DenoteMarker +".tmp", prefix_out))

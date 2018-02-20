@@ -603,6 +603,7 @@ python -c 'from Stats_helpers import *; PLINK_clumping("!{rsq4.bim.baseName}", "
 
 // TODO: This could be parallelized over SNPs (split/merge approach) 
 process locuszoom {
+publishDir params.output ?: '.', mode: 'copy', overwrite: true
 
 input: 
 file rsq4_clump  from for_lz_clump04
@@ -616,19 +617,19 @@ shell:
 rsq4 = mapFileList(rsq4_staged)
 '''
 module load Plink/1.9
-//module load LocusZoom/1.3
+#module load LocusZoom/1.3
 export TEMPDIR="."
 export TMPDIR="."
 
-export PATH="/opt/locuszoom-1.3/bin:$PATH"
+#export PATH="/opt/locuszoom-1.3/bin:$PATH"
 export PYTHONPATH="$PYTHONPATH:/opt/locuszoom-1.3/src:/opt/locuszoom-1.3/bin"
 
-echo "PATH: $PATH"
-echo "PYLIB_DIR: $PYLIB_DIR"
-echo "PYTHONPATH: $PYTHONPATH"
+#echo "PATH: $PATH"
+#echo "PYLIB_DIR: $PYLIB_DIR"
+#echo "PYTHONPATH: $PYTHONPATH"
 
-//export PYTHONPATH=$PYLIB_DIR:$PYTHONPATH
-//export PYLIB_DIR=$PYTHONPATH
+#export PYTHONPATH=$PYLIB_DIR:$PYTHONPATH
+#export PYLIB_DIR=$PYTHONPATH
 
 python -c 'from Stats_helpers import *; \
     locuszoom_run(snp_colnr=2, \
