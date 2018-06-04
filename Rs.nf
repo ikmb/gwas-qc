@@ -8,7 +8,6 @@ params.output = "."
 // Set up channels between processe
 input_files_flip = Channel.create()
 input_files_ann = Channel.create()
-//input_files = Channel.create()
 to_flipfile = Channel.create()
 
 // Prepare input file pairs from batches
@@ -59,10 +58,10 @@ process generate_flipfile {
 """
 if [ -e $source ]; then
   echo Using ${source} as flipfile
-  cp $source flipfile
+  cp "$source" flipfile
 else
   echo Generating flipfile from ${ann}
-  generate_flipfile.pl ${ds[0].baseName}.bim $ann >flipfile
+  generate_flipfile.pl "${ds[0].baseName}.bim" "$ann" >flipfile
 fi
 """
 }
@@ -80,18 +79,18 @@ process plink_flip {
     output:
     file "${pl[1].baseName}_flipped.{bed,fam}" into to_plink_exclude_plink
     file "${pl[1].baseName}_flipped.bim" into to_translate_bim
-    
+
     tag { params.disease_data_set_prefix_orig }
-    
+
 shell:
 '''
 module load IKMB
 module load Plink/1.9
-echo Flipping strands for !{pl}
-plink --bed !{pl[1]} --bim !{pl[2]} --fam !{pl[3]} --flip !{flip} --threads 1 --memory 6144 --make-bed --out !{pl[1].baseName}_flipped --allow-no-sex
+echo Flipping strands for "!{pl}"
+plink --bed "!{pl[1]}" --bim "!{pl[2]}" --fam "!{pl[3]}" --flip "!{flip}" --threads 1 --memory 6144 --make-bed --out "!{pl[1].baseName}_flipped" --allow-no-sex
 '''
 }
-// 
+//
 /*
  Translate Immunochop IDs to Rs names
  */
@@ -101,71 +100,49 @@ process translate_ids {
     file ann from to_translate_ann
 
     output:
-    file "${bim.baseName}_translated.bim" into to_find_duplicates, to_find_nn, to_exclude_bim
-    
+    file "${bim.baseName}_translated.bim" into to_find_duplicates_nn, to_exclude_bim
+
     tag { params.disease_data_set_prefix_orig }
 
 """
 echo Translating SNP names for ${params.chip_version}
-translate_ichip_to_rs.pl ${params.chip_version} $bim $ann ${params.chip_build} ${params.switch_to_chip_build} >${bim.baseName}_translated.bim
+translate_ichip_to_rs.pl ${params.chip_version} "$bim" "$ann" ${params.chip_build} ${params.switch_to_chip_build} >"${bim.baseName}_translated.bim"
 """
 }
 
 /*
  Create a list of duplicate SNPs now that all SNPs have standardized Rs names
  */
-process find_duplicates {
+process find_duplicates_nn {
     input:
-    file bim from to_find_duplicates
-
-    output:
-    file 'duplicates' into to_merge_exclude_duplicates
-
-    tag { params.disease_data_set_prefix_orig }
-"""
-cut -f 2 $bim | sort | uniq -d >duplicates
-"""
-}
-
-/*
- Create a list of NN SNPs
- */
-process find_nn {
-    input:
-    file bim from to_find_nn
-
-    output:
-    file 'nn' into to_merge_exclude_nn
-
-    tag { params.disease_data_set_prefix_orig }
-"""
-grep -P "\\tN\\tN" $bim | cut -f2 >nn
-"""
-}
-
-/*
- Merge duplicates, NNs and, if available, a chip-specific exclude file into a single file
- */
-process merge_exclude_list {
-    input:
-    file duplicates from to_merge_exclude_duplicates
-    file nn from to_merge_exclude_nn
+    file bim from to_find_duplicates_nn
 
     output:
     file 'exclude' into to_plink_exclude_list
 
-    def source = ANNOTATION_DIR+'/'+params.switch_to_chip_build+'/'+ChipDefinitions.Producer(params.chip_producer)+'/'+ChipDefinitions.RsExclude(params.chip_version)
     tag { params.disease_data_set_prefix_orig }
-"""
-if [ -e $source ]; then
-  echo "Using pre-built exclude list $source"
-  cat $duplicates $nn $source >exclude
+
+    shell:
+    source = ANNOTATION_DIR+'/'+params.switch_to_chip_build+'/'+ChipDefinitions.Producer(params.chip_producer)+'/'+ChipDefinitions.RsExclude(params.chip_version)
+'''
+#!/bin/bash
+cut -f 2 "!{bim}" | sort | uniq -d >duplicates
+echo Found $(wc -l < duplicates) duplicate variants
+
+grep -P "\\tN\\tN" "!{bim}" | cut -f2 >nns
+echo Found $(wc -l < nns) N/N variants
+
+if [ -e "!{source}" ]; then
+  echo Found $(wc -l < "!{source}") variants in chip exclude list "!{source}"
+  cat duplicates nns "!{source}" >exclude
 else
-  echo "No pre-built exclude list found, using only duplicates and NNs"
-  cat $duplicates $nn >exclude
+  echo Chip exclude list "${source}" not accessible - skipping
+  cat duplicates nns >exclude
 fi
-"""
+
+'''
 }
+
 
 /*
  Apply an exclude list to the translated Plink data set
@@ -185,11 +162,10 @@ process plink_exclude {
     // Note that Plink 1.07 only excludes the first of duplicates, while 1.9+ removes all duplicates
 
 
-"""    
+"""
 module load 'IKMB'
 module load 'Plink/1.9'
 echo Excluding SNP list ${exclude} from ${plink} ${bim}
 plink  --bed ${plink[0]} --bim $bim --fam ${plink[1]} --exclude $exclude --make-bed --out ${params.target_name} --allow-no-sex
 """
 }
-
