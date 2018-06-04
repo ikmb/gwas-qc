@@ -1,18 +1,26 @@
 #!/usr/bin/env perl
 # -*- mode:perl -*-
 
+# QC Pipeline launch script
+#
+# 2018, Jan Kässens <j.kaessens@ikmb.uni-kiel.de>
+
 use constant OUT_RS => './out-Rs';
 use constant OUT_SNPQCI => './out-SNPQCI';
 use constant OUT_SAMPLEQC => './out-SampleQC';
 use constant OUT_SNPQCII => './out-SNPQCII';
 
+# TODO Check if nextflow is installed and accessible
+use constant NXF_BIN => 'nextflow'; # expect it to be in $PATH
+
+# bare minimum of packages, RZ cluster is not exactly flexible
 use 5.20.0;
 use Getopt::Long;
 use Pod::Usage;
 use strict;
 use warnings;
 
-#use autodie qw(:all);
+use autodie qw(:all); # no stable signal or error handling, yet
 
 # Trim leading and trailing whitespace from argument
 sub trim {
@@ -29,6 +37,7 @@ sub strip_quotes {
 }
 
 # Returns a hash table that is parsed from the given config file name
+# Expects config file path as argument
 sub parse_config {
     my %c;
     my $f = shift; # file
@@ -44,16 +53,28 @@ sub parse_config {
 }
 
 # updates the relevant ENV paths via restricted variable substitution
+# Expects config hash reference as argument
 sub update_env_paths {
     my $c = shift;
 
     $c->{'BATCH_DIR'} =~ s/\$\{env.BIND_DIR\}/$c->{BIND_DIR}/;
 }
 
-# Wait for a key press
+# Wait for the user to 
 sub pause {
-    say "\nPress enter to continue...";
-    <STDIN>;
+    my $line = "";
+    do {
+        say "\nType NEXT (in upper-case letters) and press Enter to continue...";
+        $line = <STDIN>;    
+    } while($line ne "NEXT\n");
+}
+
+# Call the Nextflow executable. Currently only used for output filtering.
+# Expects list of command slices (as is used in execv or system) as argument
+sub call_nextflow {
+    my @args = @_;
+    my $cmdline = "@args | grep -v 'WARN: The config file defines settings for an unknown process'";
+    system($cmdline);
 }
 
 # Parse command-line arguments
@@ -66,7 +87,7 @@ GetOptions("pause" => \$opt_pause,
 pod2usage(1) if $opt_help;
 pod2usage(1) if @ARGV == 0;
 
-$opt_output =~ s!/*$!/!; # Add trailing slash, if not already done
+$opt_output =~ s!/*$!/!; # Add trailing slash to output path, if not already done
 
 # Do some rudimentary parsing of the Nextflow config and variable substitution
 my %config = parse_config($ARGV[0]);
@@ -103,7 +124,7 @@ sub run_rs {
 
         say "Processing batch $batch...";
         say "Calling @cmd";
-        system(@cmd);
+        call_nextflow(@cmd);
     }
 
     say "Stage 1 completed. Output files have been copied to " . OUT_RS;
@@ -134,7 +155,7 @@ sub run_snpqci {
     push @cmd, $opt_output . OUT_SNPQCI . '/SNPQCI-report.html';
 
     say "Calling @cmd";
-    system(@cmd);
+    call_nextflow(@cmd);
 
     say "Stage 2 completed. Output files have been copied to " . OUT_SNPQCI;
 }
@@ -164,7 +185,7 @@ sub run_sampleqc {
     push @cmd, $opt_output . OUT_SAMPLEQC . '/SampleQC-report.html';
 
     say "Calling @cmd";
-    system(@cmd);
+    call_nextflow(@cmd);
 
     say "Stage 3 completed. Output files have been copied to " . OUT_SAMPLEQC;
 }
@@ -197,13 +218,13 @@ sub run_snpqcii {
     push @cmd, $opt_output . OUT_SNPQCII . '/SNPQCII-report.html';
 
     say "Calling @cmd";
-    system(@cmd);
+    call_nextflow(@cmd);
 
     say "Stage 4 completed. Output files have been copied to " . $opt_output . OUT_SNPQCII;
     say "The final QC'ed dataset can now be found in " . $opt_output . OUT_SNPQCII . "/$config{disease_data_set_prefix_release}.{bed.bim,fam,log,...}";
 }
 
-
+# TODO Should do some error handling here, i.e. catch IPC exceptions. Needs IPC::System::Simple support, though
 
 run_rs;
 pause if $opt_pause;
@@ -236,4 +257,7 @@ run-qc [options] <config1> [<config2> [<confign>]]
    These files will be passed to Nextflow in this order, using the '-c'
    option. If the parameters defined within the config files clash, the
    first parameter definition takes precedence.
+ 
+ Notes:
+   This script expects the nextflow executable to be within the $PATH.
    

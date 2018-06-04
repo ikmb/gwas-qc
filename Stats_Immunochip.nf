@@ -122,7 +122,7 @@ process plink_dosage_logistic {
     each chromosome from Channel.from(params.first_chr .. params.last_chr)
     file (fam:"new_fam") from for_plink_dosage_logistic_fam
 	file ds_stats_staged from for_plink_dosage_logistic_ds
-	file ds_imp_staged from Channel.from(ds_imp_input).collect()
+//	file ds_imp_staged from Channel.from(ds_imp_input).collect()
 	file ds_release_staged from Channel.from(ds_input).collect()
 	file ds_stats_orig_staged from Channel.from(ds_stats_input).collect()
     
@@ -133,7 +133,7 @@ process plink_dosage_logistic {
     
     shell:
     ds_stats = mapFileList(ds_stats_staged)
-    ds_imp = mapFileList(ds_imp_staged)
+    //ds_imp = mapFileList(ds_imp_staged)
     ds_release = mapFileList(ds_release_staged)
     ds_stats_orig = mapFileList(ds_stats_orig_staged)
     evec = "$BIND_DIR/QCed/${params.disease_data_set_prefix_release}.dat.pca.evec"
@@ -146,6 +146,7 @@ process plink_dosage_logistic {
     dosage_src = "${target}_chr${chromosome}.assoc.dosage"
     dosage_target = "${target}_chr${params.first_chr}-${params.last_chr}.assoc.dosage.${chromosome}"
     log_prefix = "${params.disease_data_set_prefix_release_statistics}.genotyped.chr${chromosome}"
+    imp_prefix = IMPUTATION_DIR + chromosome + "." + params.disease_data_set_suffix_release_imputed
 '''
 module load IKMB
 module load Plink/1.9
@@ -154,8 +155,8 @@ echo "DS_STATS: !{ds_stats}"
 
 plink --threads 4 \
       --fam "!{fam}" \
-      --map "!{ds_imp.PLINKdosage_map}" \
-      --dosage "!{ds_imp.PLINKdosage_gz}" skip0=2 skip1=0 skip2=1 format=3 case-control-freqs \
+      --map "!{imp_prefix.PLINKdosage.map}" \
+      --dosage "!{imp_prefix.PLINKdosage.gz}" skip0=2 skip1=0 skip2=1 format=3 case-control-freqs \
       --covar "!{ds_release.dat_pca_evec}" \
       --covar-name "!{covar_name}" \
       --allow-no-sex \
@@ -381,7 +382,7 @@ tag "chr$chromosome"
 
 input:
 each chromosome from Channel.from(params.first_chr .. params.last_chr)
-file ds_imp_staged from Channel.from(ds_imp_input).collect()
+//file ds_imp_staged from Channel.from(ds_imp_input).collect()
 file ds_release_staged from Channel.from(ds_input).collect()
 file ds_stats_staged from for_convert_dosages_stats
 file ds_stats_orig_staged from Channel.from(ds_stats_input).collect()
