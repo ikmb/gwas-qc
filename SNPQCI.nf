@@ -7,7 +7,7 @@
 def ChipDefinitions = this.class.classLoader.parseClass(new File("config/ChipDefinitions.groovy"))
 
 // initialize configuration
-params.output = "."
+params.snpqci_dir = "."
 //input_basename = params.input
 hwe_template_script = file(params.hwe_template)
 
@@ -23,24 +23,7 @@ println "Autosomes: " + ANNOTATION_DIR + "/" + params.chip_build + "/" + ChipDef
 to_calc_hwe_script = Channel.create()
 to_calc_hwe = Channel.create()
 
-//input_bim = file(params.input + ".bim")
-//input_bed = file(params.input + ".bed")
-//input_fam = file(params.input + ".fam")
-
-// verify inputs
-/* not working well with singularity containers as they are started with the processes, not right here
-assert file(hwe_template_script).exists() : "Could not find HWE template script: $hwe_template_script"
-assert file(individuals_annotation).exists() : "Could not find individuals annotation file: $individuals_annotation"
-assert file(autosomes).exists() : "Could not find autosome annotation file: $autosomes"
-assert file(definetti_r).exists() : "Could not find DeFinetti plotting script: $definetti_r"
-*/
-
 process merge_batches {
-    //publishDir params.output ?: '.', mode: 'copy', overwrite: true
-    //input:
-    //file input_bim
-    //file input_bed
-    //file input_fam
 
     output:
     file "${params.collection_name}_Rs.bim" into merged_bim, to_split_bim, to_hwe_bim, to_verify_bim, to_exclude_bim, to_miss_bim, to_miss_batch_bim
@@ -94,7 +77,7 @@ BASE="!{rsdir}/${PREFIXES[0]}"
 process generate_hwe_diagrams {
   memory 8192.MB
   cpus 1
-  publishDir params.output ?: '.', mode: 'copy', overwrite: true
+  publishDir params.snpqci_dir ?: '.', mode: 'copy', overwrite: true
 
   input:
     //file plink from to_hwe_diagram
@@ -255,7 +238,7 @@ Additionally, FDR values are ploted for both lists
 */
 process exclude_lists_for_failed_hwe {
 
-    publishDir params.output ?: '.', mode: 'copy'
+    publishDir params.snpqci_dir ?: '.', mode: 'copy'
 
     input:
     file hwe_result from excl_failed_hwe
@@ -320,7 +303,7 @@ SNPQCI_extract_missingness_perbatch.py missingness_perbatch.lmiss ${params.geno_
 }
 
 process exclude_bad_variants {
-    publishDir params.output ?: '.', mode: 'copy'
+    publishDir params.snpqci_dir ?: '.', mode: 'copy'
 
     input:
     file input_bim from to_exclude_bim
@@ -345,7 +328,7 @@ plink --noweb --bfile "${new File(input_bim.toString()).getBaseName()}" --exclud
 }
 
 process draw_definetti_after_QCI {
-    publishDir params.output ?: '.', mode: 'copy'
+    publishDir params.snpqci_dir ?: '.', mode: 'copy'
 
     def prefix = "${params.collection_name}_entire_collection"
 

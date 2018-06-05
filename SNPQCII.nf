@@ -55,7 +55,7 @@ mapFileList = { fn -> fn.collectEntries {
 
 
 // initialize configuration
-params.output = "."
+params.qc_dir = "."
 params.PCA_SNPList = ""
 
 // match auto-generated "no file exists" to actual not-existing files
@@ -70,14 +70,18 @@ if (params.PCA_SNPexcludeList == "nofileexists") {
 params.projection_on_populations_CON_only = "False"
 
 // original, "final" SampleQCI dataset
-SampleQCI_final = ["${params.input}.bed", 
-                   "${params.input}.bim", 
-                   "${params.input}.fam", 
-                   "${params.input}_flag_relatives.txt", 
-                   "${params.input}_annotation.txt"].collect { fileExists(file(it)) }
+SampleQCI_final = ["${params.sampleqci_dir}/${params.collection_name}_SampleQCI_final.bed", 
+                   "${params.sampleqci_dir}/${params.collection_name}_SampleQCI_final.bim", 
+                   "${params.sampleqci_dir}/${params.collection_name}_SampleQCI_final.fam", 
+                   "${params.sampleqci_dir}/${params.collection_name}_SampleQCI_final_flag_relatives.txt", 
+                   "${params.sampleqci_dir}/${params.collection_name}_SampleQCI_final_annotation.txt"].collect { fileExists(file(it)) }
 
 // based on "original" but without relatives
-SampleQCI_final_wr = ["${params.input_wr}.bed", "${params.input_wr}.bim", "${params.input_wr}.fam", "${params.input_wr}.annotation.txt", "${params.input_wr}.pca.evec" ].collect { fileExists(file(it)) }
+SampleQCI_final_wr = ["${params.sampleqci_dir}/${params.collection_name}_SampleQCI_final_withoutRelatives.bed", 
+                      "${params.sampleqci_dir}/${params.collection_name}_SampleQCI_final_withoutRelatives.bim", 
+                      "${params.sampleqci_dir}/${params.collection_name}_SampleQCI_final_withoutRelatives.fam", 
+                      "${params.sampleqci_dir}/${params.collection_name}_SampleQCI_final_withoutRelatives.annotation.txt", 
+                      "${params.sampleqci_dir}/${params.collection_name}_SampleQCI_final_withoutRelatives.pca.evec" ].collect { fileExists(file(it)) }
 
 /*
  The number of markers that the HF test will be performed on at once.
@@ -196,7 +200,7 @@ fi
 // SNP_QCII_CON_PS_AS_CD_UC_PSC_parallel_part2.py starts here
 
 process hf_test_merge {
-        publishDir params.output ?: '.', mode: 'copy', overwrite: true
+        publishDir params.qc_dir ?: '.', mode: 'copy', overwrite: true
 
     input:
 
@@ -258,7 +262,7 @@ touch hf-excludes
 
 
 process exclude_variants {
-    publishDir params.output ?: '.', mode: 'copy', overwrite: true
+    publishDir params.qc_dir ?: '.', mode: 'copy', overwrite: true
 
     input:
 
@@ -328,7 +332,7 @@ plink --noweb --bfile after-correlated-remove --extract include-variants --make-
 
 // TODO: generates a very long header
 process flashpca_pruned {
-    publishDir params.output ?: '.', mode: 'copy', overwrite: true
+    publishDir params.qc_dir ?: '.', mode: 'copy', overwrite: true
 
     input:
 
@@ -387,7 +391,7 @@ R --slave --args "!{dataset.bed.baseName}.country" "!{params.preQCIMDS_1kG_sampl
 
 
 process draw_histograms_pruned {
-    publishDir params.output ?: '.', mode: 'copy', overwrite: true
+    publishDir params.qc_dir ?: '.', mode: 'copy', overwrite: true
 
     input:
 
@@ -425,7 +429,7 @@ fi
 }
 
 process tracy_widom_stats {
-    publishDir params.output ?: '.', mode: 'copy', overwrite: true
+    publishDir params.qc_dir ?: '.', mode: 'copy', overwrite: true
 
 
     input:
@@ -559,7 +563,7 @@ R --slave --args "!{dataset.bed.baseName}.country" "!{params.preQCIMDS_1kG_sampl
 }
 
 process pca_plot_1kg {
-    publishDir params.output ?: '.', mode: 'copy', overwrite: true
+    publishDir params.qc_dir ?: '.', mode: 'copy', overwrite: true
     input:
 
     file pcaresults_staged from for_pca_plot_1kg_pcaresults
@@ -713,7 +717,7 @@ fi
 }
 
 process final_cleaning {
-    publishDir params.output ?: '.', mode: 'copy', overwrite: true
+    publishDir params.qc_dir ?: '.', mode: 'copy', overwrite: true
     input:
 
     file dataset_staged from for_final_cleaning
@@ -828,7 +832,7 @@ process draw_final_pca_histograms {
     when:
     params.run_final_snprelate == true
 
-    publishDir params.output ?: '.', mode: 'copy', overwrite: true
+    publishDir params.qc_dir ?: '.', mode: 'copy', overwrite: true
     cpus 2
     
     input:
@@ -859,7 +863,7 @@ process twstats_final_pruned_snprelate {
     when:
     params.run_final_snprelate == true
 
-    publishDir params.output ?: '.', mode: 'copy', overwrite: true
+    publishDir params.qc_dir ?: '.', mode: 'copy', overwrite: true
 
     input:
 
@@ -935,7 +939,7 @@ process eigenstrat_run {
     when:
     params.run_final_snprelate == true
 
-    publishDir params.output ?: '.', mode: 'copy'   
+    publishDir params.qc_dir ?: '.', mode: 'copy'   
 
 
     input:
@@ -996,7 +1000,7 @@ process twstats_final_pruned_eigenstrat {
     when:
     params.run_final_snprelate == true
 
-    publishDir params.output ?: '.', mode: 'copy', overwrite: true
+    publishDir params.qc_dir ?: '.', mode: 'copy', overwrite: true
 
     input:
 
@@ -1047,7 +1051,7 @@ fi
 
 
 process plot_maf {
-    publishDir params.output ?: '.', mode: 'copy'
+    publishDir params.qc_dir ?: '.', mode: 'copy'
     
     input:
     file ds_staged from for_plot_maf

@@ -13,7 +13,7 @@ fileExists = { fn ->
 }
 
 // initialize configuration
-params.output = "."
+params.sampleqci_dir = "."
 params.PCA_SNPList = ""
 
 // match auto-generated "no file exists" to actual not-existing files
@@ -31,13 +31,13 @@ script_dir = file(SCRIPT_DIR)
 batch_dir = file(BATCH_DIR)
 
 input_ch = Channel.create()
-Channel.fromFilePairs("${params.input}.{bed,bim,fam}", size: 3, flat: true) { file -> file.baseName } \
+Channel.fromFilePairs("${params.snpqci_dir}/${params.collection_name}_QCI.{bed,bim,fam}", size: 3, flat: true) { file -> file.baseName } \
     .ifEmpty{ error "Could not find Plink input dataset" } \
     .map { a -> [fileExists(a[1]), fileExists(a[2]), fileExists(a[3])] }
     .separate (input_ch) { a -> [a] }
 
 for_remove_bad_samples = Channel.create()
-Channel.fromFilePairs("${params.input}.{bed,bim,fam}", size: 3, flat: true) { file -> file.baseName } \
+Channel.fromFilePairs("${params.snpqci_dir}/${params.collection_name}_QCI.{bed,bim,fam}", size: 3, flat: true) { file -> file.baseName } \
     .ifEmpty{ error "Could not find Plink input dataset" } \
     .map { a -> [fileExists(a[1]), fileExists(a[2]), fileExists(a[3])] }
     .separate (for_remove_bad_samples) { a -> [a] }
@@ -106,7 +106,7 @@ process determine_miss_het {
     file prefix+"miss.outlier.txt" into for_calc_pi_hat_outliers, for_remove_bad_samples_miss, for_prune_wr_miss
     file prefix+"het.het.outlier.txt" into for_remove_bad_samples_het
 
-    publishDir params.output ?: '.', mode: 'copy'
+    publishDir params.sampleqci_dir ?: '.', mode: 'copy'
 
     //cpus {4 * task.attempt}
 
@@ -143,7 +143,7 @@ perl -ne 'chomp;next if $.==1; @s=split /\\s+/;print "$s[1]\\t$s[2]\\n" if $s[6]
 }
 
 process prune {
-    publishDir params.output ?: '.', mode: 'copy'
+    publishDir params.sampleqci_dir ?: '.', mode: 'copy'
     time 3.h
 
     input:
@@ -220,7 +220,7 @@ plink --bfile ${dataset[0].baseName} --genome --parallel ${job} ${calc_imiss_job
 }
 
 process ibs_merge_and_verify {
-publishDir params.output ?: '.', mode: 'copy'  
+publishDir params.sampleqci_dir ?: '.', mode: 'copy'  
     input:
     file chunks from for_ibs_merge_and_verify.collect()
     file dataset from for_ibs_merge_and_verify_ds
@@ -363,7 +363,7 @@ process pca_convert {
 //projection_on_populations_hapmap  =     file(script_dir + '/' + params.projection_on_populations_hapmap)
 
 process pca_run {
-         publishDir params.output ?: '.', mode: 'copy'   
+         publishDir params.sampleqci_dir ?: '.', mode: 'copy'   
 
 
     input:
@@ -394,7 +394,7 @@ python -c 'from SampleQCI_helpers import *; pca_run("${base_pruned}", ${sigma_th
 }
 
 process second_pca_eigenstrat {
-    publishDir params.output ?: '.', mode: 'copy' 
+    publishDir params.sampleqci_dir ?: '.', mode: 'copy' 
 //    when params.program_for_second_PCA == "EIGENSTRAT"
 
     input:
@@ -419,7 +419,7 @@ fi
 }
 
 process flashpca2_pruned {
-     publishDir params.output ?: '.', mode: 'copy'   
+     publishDir params.sampleqci_dir ?: '.', mode: 'copy'   
 //    when params.program_for_second_PCA == "FLASHPCA2"
 
 
@@ -460,7 +460,7 @@ process flashpca2_pruned {
 } 
 
 process flashpca2_pruned_1kG {
-        publishDir params.output ?: '.', mode: 'copy'
+        publishDir params.sampleqci_dir ?: '.', mode: 'copy'
 
     input:
     file pruned from for_second_pca_flashpca_1kg
@@ -513,7 +513,7 @@ fi
 }
 
 process detect_duplicates_related {
-        publishDir params.output ?: '.', mode: 'copy'
+        publishDir params.sampleqci_dir ?: '.', mode: 'copy'
     input:
     file pruned from for_detect_duplicates
     file ibs from for_detect_duplicates_genome
@@ -534,7 +534,7 @@ python -c 'from SampleQCI_helpers import *; detect_duplicates_related_individual
 }
 
 process remove_bad_samples {
-    publishDir params.output ?: '.', mode: 'copy'
+    publishDir params.sampleqci_dir ?: '.', mode: 'copy'
 
     input:
     file pruned from for_remove_bad_samples
@@ -586,7 +586,7 @@ plink --noweb --bfile !{pruned[0].baseName} --remove remove-samples --make-bed -
 }
 
 process extract_qced_samples {
-	publishDir params.output ?: '.', mode: 'copy'
+	publishDir params.sampleqci_dir ?: '.', mode: 'copy'
     input:
     file dataset from for_extract_qced_samples_ds
     file evec from for_extract_qced_samples_evec // 0 is .evec, 1 is .country.evec
@@ -611,7 +611,7 @@ python -c 'from SampleQCI_helpers import *; extract_QCsamples_from_pc_file("!{ev
 }
 
 process draw_histograms {
-        publishDir params.output ?: '.', mode: 'copy'
+        publishDir params.sampleqci_dir ?: '.', mode: 'copy'
     input:
     file dataset from for_draw_histograms
 //    file eval from for_draw_histograms_eval // 0 is without and 1 is with country
@@ -642,7 +642,7 @@ fi
 }
 
 process tracy_widom_stats {
-    publishDir params.output ?: '.', mode: 'copy'
+    publishDir params.sampleqci_dir ?: '.', mode: 'copy'
 
 
     input:
@@ -685,7 +685,7 @@ fi
 }
 
 process pca_without_projection {
-    publishDir params.output ?: '.', mode: 'copy'
+    publishDir params.sampleqci_dir ?: '.', mode: 'copy'
     
     input:
     file pruned_1kg from for_pca_without_projection
@@ -739,7 +739,7 @@ R --slave --args "!{kg_pca}.country" "!{params.preQCIMDS_1kG_sample}" <"!{pcaplo
 
 // SampleQCI_parallel_part3 starts here
 process prune_related {
-    publishDir params.output ?: '.', mode: 'copy'
+    publishDir params.sampleqci_dir ?: '.', mode: 'copy'
 
 
     input:
@@ -840,7 +840,7 @@ plink --noweb --bfile "${dataset[0].baseName}" --missing --out ${dataset[0].base
 }
 
 process ibs_merge_and_verify_wr {
-    publishDir params.output ?: '.', mode: 'copy'
+    publishDir params.sampleqci_dir ?: '.', mode: 'copy'
     input:
     file chunks from for_ibs_merge_and_verify_wr.collect()
     file dataset from for_ibs_merge_and_verify_wr_ds

@@ -1,11 +1,12 @@
 // -*- mode:groovy -*-
 
+// If you need to add a new chip definition, take a look into the ChipDefinitions.groovy file
 def ChipDefinitions = this.class.classLoader.parseClass(new File("config/ChipDefinitions.groovy"))
 
 // Set default output directory, overwritten by --output=<dir>
 params.output = "."
 
-// Set up channels between processe
+// Set up channels between processels
 input_files_flip = Channel.create()
 input_files_ann = Channel.create()
 to_flipfile = Channel.create()
@@ -27,7 +28,7 @@ process generate_annotations {
 
     def annotation_file = ANNOTATION_DIR + "/" + params.switch_to_chip_build+'/'+ChipDefinitions.Producer(params.chip_producer)+'/'+ChipDefinitions.SNPAnnotations(params.chip_version)
 
-    tag { params.disease_data_set_prefix_orig }
+    tag { params.disease_data_set_prefix }
 """
 echo -n Generating annotations.list from ${annotation_file}
 if [ "${params.chip_version}" == "Immunochip" ]; then
@@ -54,7 +55,7 @@ process generate_flipfile {
     file 'flipfile' into to_plink_flip
 
     def source = file(ANNOTATION_DIR+'/'+params.switch_to_chip_build+'/'+ChipDefinitions.Producer(params.chip_producer)+'/'+ChipDefinitions.StrandInfo(params.chip_strand_info)).toAbsolutePath()
-    tag { params.disease_data_set_prefix_orig }
+    tag { params.disease_data_set_prefix }
 """
 if [ -e $source ]; then
   echo Using ${source} as flipfile
@@ -80,7 +81,7 @@ process plink_flip {
     file "${pl[1].baseName}_flipped.{bed,fam}" into to_plink_exclude_plink
     file "${pl[1].baseName}_flipped.bim" into to_translate_bim
 
-    tag { params.disease_data_set_prefix_orig }
+    tag { params.disease_data_set_prefix }
 
 shell:
 '''
@@ -102,7 +103,7 @@ process translate_ids {
     output:
     file "${bim.baseName}_translated.bim" into to_find_duplicates_nn, to_exclude_bim
 
-    tag { params.disease_data_set_prefix_orig }
+    tag { params.disease_data_set_prefix }
 
 """
 echo Translating SNP names for ${params.chip_version}
@@ -120,7 +121,7 @@ process find_duplicates_nn {
     output:
     file 'exclude' into to_plink_exclude_list
 
-    tag { params.disease_data_set_prefix_orig }
+    tag { params.disease_data_set_prefix }
 
     shell:
     source = ANNOTATION_DIR+'/'+params.switch_to_chip_build+'/'+ChipDefinitions.Producer(params.chip_producer)+'/'+ChipDefinitions.RsExclude(params.chip_version)
@@ -156,9 +157,9 @@ process plink_exclude {
     file bim from to_exclude_bim
 
     output:
-    file "${params.target_name}.{bim,bed,fam,log}"
+    file "${params.disease_data_set_prefix_rs}.{bim,bed,fam,log}"
 
-    tag { params.disease_data_set_prefix_orig }
+    tag { params.disease_data_set_prefix }
     // Note that Plink 1.07 only excludes the first of duplicates, while 1.9+ removes all duplicates
 
 
@@ -166,6 +167,6 @@ process plink_exclude {
 module load 'IKMB'
 module load 'Plink/1.9'
 echo Excluding SNP list ${exclude} from ${plink} ${bim}
-plink  --bed ${plink[0]} --bim $bim --fam ${plink[1]} --exclude $exclude --make-bed --out ${params.target_name} --allow-no-sex
+plink  --bed ${plink[0]} --bim $bim --fam ${plink[1]} --exclude $exclude --make-bed --out ${params.disease_data_set_prefix_rs} --allow-no-sex
 """
 }
