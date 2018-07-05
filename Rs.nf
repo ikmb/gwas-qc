@@ -14,6 +14,8 @@ to_flipfile = Channel.create()
 // Prepare input file pairs from batches
 Channel.fromFilePairs(params.input + ".{bim,bed,fam}", size:3, flat: true).separate(input_files_flip, input_files_ann, to_flipfile) { a -> [a, a, a] }
 
+params.collection_name = false
+
 /*
  Transform a chip-specific annotations file into a format that is easier to process by the following stages.
  */
@@ -24,7 +26,6 @@ process generate_annotations {
 
     output:
     file 'annotations.list' into to_flipfile_ann, to_translate_ann
-
 
     def annotation_file = ANNOTATION_DIR + "/" + params.switch_to_chip_build+'/'+ChipDefinitions.Producer(params.chip_producer)+'/'+ChipDefinitions.SNPAnnotations(params.chip_version)
 
@@ -170,3 +171,12 @@ echo Excluding SNP list ${exclude} from ${plink} ${bim}
 plink  --bed ${plink[0]} --bim $bim --fam ${plink[1]} --exclude $exclude --make-bed --out ${params.disease_data_set_prefix_rs} --allow-no-sex
 """
 }
+
+workflow.onComplete {
+    println "Generating phase summary..."
+    log.info "Spawning Process in " + System.getProperty("user.dir")
+    def cmd = ["./generate-phase-summary", workflow.runName, workflow.workDir, "report/", "Rs", params.collection_name ?: params.disease_data_set_prefix].join(' ')
+    def gensummary = ["bash", "-c", cmd].execute()
+    gensummary.waitFor()
+}
+

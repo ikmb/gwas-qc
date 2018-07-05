@@ -1,0 +1,47 @@
+#!/usr/bin/env perl
+
+use Time::HiRes qw(gettimeofday);
+
+use strict;
+use warnings;
+
+sub expand_path {
+    my $base = shift;
+    my $hash = shift;
+
+    if ($hash =~ m|(..)/(.*)|) {
+        my $hash_base = $1;
+        my $hash_remainder = $2;
+        opendir(my $dh, "$base/$hash_base/") or die($!);
+        my @results = grep { /^$hash_remainder.*/ } readdir($dh);
+        closedir $dh;
+
+        if (@results > 0) {
+            return $base . "/" . $hash_base . "/" . $results[0];
+        } else {
+            return "/dev/null";
+        }
+    }
+}
+
+# Parse trace
+open (my $fh, '>', 'report-Rs.txt') or die($!);
+open (my $trace, '<', 'trace.txt') or die($!);
+open (my $tex, '>', 'report.tex') or die($!);
+
+print $tex "\documentclass{report}\begin{document}";
+
+<$trace>;
+while(<$trace>) {
+    chomp;
+    my @fields = split /;/;
+    print "$fields[0]; $fields[1]; $fields[2]; " . expand_path($ARGV[1], $fields[3]) . "\n";
+}
+my @output;
+close $trace;
+close $fh;
+
+print $tex "\end{document}";
+close $tex;
+
+
