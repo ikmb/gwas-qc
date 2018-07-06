@@ -1,9 +1,23 @@
 #!/usr/bin/env perl
 
+use 5.024;
+
+# Append "." to include path
+BEGIN {push @INC, '.'}
+
 use Time::HiRes qw(gettimeofday);
+use Report::Generator;
+use Report::Rs;
 
 use strict;
 use warnings;
+
+my %processors = (
+    'Rs' => {
+        'plink_flip' => \&Report::Rs::plink_flip,
+        'plink_exclude' => \&Report::Rs::plink_exclude
+    }
+);
 
 sub expand_path {
     my $base = shift;
@@ -24,24 +38,28 @@ sub expand_path {
     }
 }
 
-# Parse trace
-open (my $fh, '>', 'report-Rs.txt') or die($!);
-open (my $trace, '<', 'trace.txt') or die($!);
-open (my $tex, '>', 'report.tex') or die($!);
+my $arg_pipeline = shift @ARGV;
+my $arg_workdir = shift @ARGV;
 
-print $tex "\documentclass{report}\begin{document}";
+my $report = Report::Generator->new();
+
+# Parse trace
+open (my $trace, '<', 'trace.txt') or die($!);
+open (my $tex, '>', 'Report/report.tex') or die($!);
 
 <$trace>;
 while(<$trace>) {
     chomp;
-    my @fields = split /;/;
-    print "$fields[0]; $fields[1]; $fields[2]; " . expand_path($ARGV[1], $fields[3]) . "\n";
-}
-my @output;
-close $trace;
-close $fh;
+    my ($process, $procname, $tag, $workdir) = split /;/;
+    if (exists $processors{$arg_pipeline}{$process}) {
+        my $expanded = expand_path($arg_workdir, $workdir);
 
-print $tex "\end{document}";
+        $report->append($processors{$arg_pipeline}{$process}->($expanded, $tag));
+    }
+}
+close $trace;
+
+print $tex $report->to_string();
 close $tex;
 
 
