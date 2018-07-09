@@ -174,8 +174,7 @@ plink  --bed ${plink[0]} --bim $bim --fam ${plink[1]} --exclude $exclude --make-
 
 workflow.onComplete {
     println "Generating phase summary..."
-    log.info "Spawning Process in " + System.getProperty("user.dir")
-    def cmd = ["./generate-phase-summary", workflow.runName, workflow.workDir, "report/", "Rs", params.collection_name ?: params.disease_data_set_prefix].join(' ')
+    def cmd = ["./generate-phase-summary", "Rs", params.collection_name ?: params.disease_data_set_prefix, workflow.workDir, params.trace_target].join(' ')
     def gensummary = ["bash", "-c", cmd].execute()
     gensummary.waitFor()
 }

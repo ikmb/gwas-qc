@@ -1,0 +1,24 @@
+#!/usr/bin/env perl
+
+use warnings;
+use strict;
+
+use 5.024;
+
+BEGIN {push @INC, '.'}
+
+use File::Slurp;
+use Report::Generator;
+
+my $target = shift @ARGV;
+
+my $report = Report::Generator->new();
+
+for (@ARGV) {
+    $report->append(read_file($_));
+}
+
+open (my $tex, '>', $target) or die("Failed to open Report/report.tex for writing: $!");
+print $tex $report->to_string;
+close $tex;
+

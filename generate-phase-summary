@@ -8,6 +8,7 @@ BEGIN {push @INC, '.'}
 use Time::HiRes qw(gettimeofday);
 use Report::Generator;
 use Report::Rs;
+use Report::SNPQCI;
 
 use strict;
 use warnings;
@@ -16,6 +17,13 @@ my %processors = (
     'Rs' => {
         'plink_flip' => \&Report::Rs::plink_flip,
         'plink_exclude' => \&Report::Rs::plink_exclude
+    },
+    'SNPQCI' => {
+        'merge_batches' => \&Report::SNPQCI::merge_batches,
+        'generate_hwe_diagrams' => \&Report::SNPQCI::generate_hwe_diagrams,
+        'exclude_lists_for_failed_hwe' => \&Report::SNPQCI::exclude_lists_for_failed_hwe,
+        'exclude_bad_variants' => \&Report::SNPQCI::exclude_bad_variants,
+        'draw_definetti_after_QCI' => \&Report::SNPQCI::draw_definetti_after_QCI
     }
 );
 
@@ -38,14 +46,19 @@ sub expand_path {
     }
 }
 
-my $arg_pipeline = shift @ARGV;
-my $arg_workdir = shift @ARGV;
+if (@ARGV != 4) {
+    print STDERR "Syntax: $0 <pipeline> <tag> <workdir> <target>\n";
+    exit 1;
+}
 
-my $report = Report::Generator->new();
+my $arg_pipeline = shift @ARGV;
+my $arg_tag = shift @ARGV;
+my $arg_workdir = shift @ARGV;
+my $arg_target = shift @ARGV;
 
 # Parse trace
 open (my $trace, '<', 'trace.txt') or die($!);
-open (my $tex, '>', 'Report/report.tex') or die($!);
+open (my $tex, '>', $arg_target) or die($!);
 
 <$trace>;
 while(<$trace>) {
@@ -54,12 +67,12 @@ while(<$trace>) {
     if (exists $processors{$arg_pipeline}{$process}) {
         my $expanded = expand_path($arg_workdir, $workdir);
 
-        $report->append($processors{$arg_pipeline}{$process}->($expanded, $tag));
+        print 'Processing ' . $arg_pipeline . '::' . $process . "...\n";
+
+        print $tex $processors{$arg_pipeline}{$process}->($expanded, $tag);
     }
 }
 close $trace;
-
-print $tex $report->to_string();
 close $tex;
 
 

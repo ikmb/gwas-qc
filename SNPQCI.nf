@@ -352,4 +352,9 @@ R --slave --args ${prefix}.hwe ${prefix}_controls_DeFinetti ${prefix}_cases_DeFi
 """
 }
 
-
+workflow.onComplete {
+    println "Generating phase summary..."
+    def cmd = ["./generate-phase-summary", "SNPQCI", params.collection_name ?: params.disease_data_set_prefix, workflow.workDir, params.trace_target].join(' ')
+    def gensummary = ["bash", "-c", cmd].execute()
+    gensummary.waitFor()
+}

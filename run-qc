@@ -5,18 +5,24 @@
 #
 # 2018, Jan Kässens <j.kaessens@ikmb.uni-kiel.de>
 
-use constant OUT_RS => './out-Rs';
-use constant OUT_SNPQCI => './out-SNPQCI';
-use constant OUT_SAMPLEQC => './out-SampleQC';
-use constant OUT_SNPQCII => './out-SNPQCII';
+
+#use constant OUT_RS => './out-Rs';
+#use constant OUT_SNPQCI => './out-SNPQCI';
+#use constant OUT_SAMPLEQC => './out-SampleQC';
+#use constant OUT_SNPQCII => './out-SNPQCII';
 
 # TODO Check if nextflow is installed and accessible
 use constant NXF_BIN => 'nextflow'; # expect it to be in $PATH
 
 # bare minimum of packages, RZ cluster is not exactly flexible
-use 5.20.0;
+use 5.22.0;
 use Getopt::Long;
 use Pod::Usage;
+use File::Temp qw/ tempdir /;
+use File::Basename;
+use File::Copy;
+use Cwd;
+
 use strict;
 use warnings;
 
@@ -81,8 +87,11 @@ sub call_nextflow {
 my $opt_pause = 0;
 my $opt_output = "./";
 my $opt_help = 0;
+my $opt_verbose = 0;
+
 GetOptions("pause" => \$opt_pause,
            "help|?" => \$opt_help,
+           "verbose|v" => \$opt_verbose,
            "output=s" => \$opt_output);
 pod2usage(1) if $opt_help;
 pod2usage(1) if @ARGV == 0;
@@ -90,8 +99,21 @@ pod2usage(1) if @ARGV == 0;
 $opt_output =~ s!/*$!/!; # Add trailing slash to output path, if not already done
 
 # Do some rudimentary parsing of the Nextflow config and variable substitution
+
 my %config = parse_config($ARGV[0]);
 update_env_paths(\%config);
+
+# Prepare temporary directory for storing the report auxiliaries
+(undef, my $confdir, undef) = fileparse($ARGV[0]);
+print "Config directory: $confdir\n" if $opt_verbose;
+# my $tempdir = tempdir('nxf-qc-' . $config{'collection_name'} . '_XXXX', CLEANUP => 1);
+my $tempdir = tempdir('nxf-qc-' . $config{'collection_name'} . '_XXXX', CLEANUP => 0, TMPDIR => 1) or die($!);
+
+$tempdir .= "/";
+
+print "Temp directory for reports: $tempdir\n" if $opt_verbose;
+
+my @trace_targets = ();
 
 # Feeds all single-batch datasets from the config file into the
 # Rs stage, one after another.
@@ -104,30 +126,28 @@ sub run_rs {
     my @batches = split (/,/, $config{"disease_names"});
     for (@batches) {
         my $batch = $_;
-        my %batchconf = parse_config("$config{BATCH_DIR}/$_.config");
+        my %batchconf = parse_config($confdir . "/$_.config");
         my @cmd = ("nextflow");
         push @cmd, '-c';
-        push @cmd, "$config{BATCH_DIR}/$batch.config";
-        for my $c (@ARGV) {
-            push @cmd, '-c';
-            push @cmd, $c;
-        }
+        push @cmd, $confdir . "QC.config";
+        push @cmd, '-c';
+        push @cmd, $confdir . "$batch.config";
         push @cmd, 'run';
         push @cmd, 'Rs.nf';
-        push @cmd, '--input';
-        push @cmd, "$config{BATCH_DIR}/$batch/orig_files/$batchconf{disease_data_set_prefix_orig}";
-        push @cmd, '--output';
-        push @cmd, $opt_output . OUT_RS;
         push @cmd, '-resume';
         push @cmd, '-with-report';
-        push @cmd, $opt_output . OUT_RS . "/Rs-$batch.report.html";
+        push @cmd, $config{"rs_dir"} . "/Rs-$batch.exec-report.html";
+        push @cmd, '--trace_target';
+        my $target = $tempdir . "Rs-$batch.report.tex";
+        push @cmd, $target;
+        push @trace_targets, $target;
 
         say "Processing batch $batch...";
         say "Calling @cmd";
         call_nextflow(@cmd);
     }
 
-    say "Stage 1 completed. Output files have been copied to " . OUT_RS;
+    say "Stage 1 completed. Output files have been copied to " . $config{"rs_dir"} ;
 }
 
 sub run_snpqci {
@@ -137,102 +157,108 @@ sub run_snpqci {
 
     # Collect batches from configuration and launch Rs.nf for each batch
 
-
     my @cmd = ("nextflow");
-    for my $c (@ARGV) {
-        push @cmd, '-c';
-        push @cmd, $c;
-    }
+    push @cmd, '-c';
+    push @cmd, $confdir . "QC.config";
+    push @cmd, '-c';
+    push @cmd, $confdir . "$config{collection_name}.config";
 
     push @cmd, 'run';
     push @cmd, 'SNPQCI.nf';
-    push @cmd, '--rs_dir';
-    push @cmd, $opt_output . OUT_RS;
-    push @cmd, '--output';
-    push @cmd, $opt_output . OUT_SNPQCI;
     push @cmd, '-resume';
     push @cmd, '-with-report';
-    push @cmd, $opt_output . OUT_SNPQCI . '/SNPQCI-report.html';
+    push @cmd, $config{"snpqci_dir"} . '/SNPQCI-report.html';
+    push @cmd, '--trace_target';
+    my $target = $tempdir . "SNPQCI-$config{collection_name}.report.tex";
+    push @cmd, $target;
+    push @trace_targets, $target;
 
     say "Calling @cmd";
     call_nextflow(@cmd);
 
-    say "Stage 2 completed. Output files have been copied to " . OUT_SNPQCI;
+    say "Stage 2 completed. Output files have been copied to " . $config{"snpqci_dir"};
 }
 
-sub run_sampleqc {
-    say "-----------------------------------------------------------------------";
-    say "Launching stage 3 'SampleQC': Pruning, HapMap/1kG merging, PCA analyses";
-    say "-----------------------------------------------------------------------";
+# sub run_sampleqc {
+#     say "-----------------------------------------------------------------------";
+#     say "Launching stage 3 'SampleQC': Pruning, HapMap/1kG merging, PCA analyses";
+#     say "-----------------------------------------------------------------------";
 
-    # Collect batches from configuration and launch Rs.nf for each batch
-
-
-    my @cmd = ("nextflow");
-    for my $c (@ARGV) {
-        push @cmd, '-c';
-        push @cmd, $c;
-    }
-
-    push @cmd, 'run';
-    push @cmd, 'SampleQCI.nf';
-    push @cmd, '--input';
-    push @cmd, $opt_output . OUT_SNPQCI . "/$config{collection_name}_QCI";
-    push @cmd, '--output';
-    push @cmd, $opt_output . OUT_SAMPLEQC;
-    push @cmd, '-resume';
-    push @cmd, '-with-report';
-    push @cmd, $opt_output . OUT_SAMPLEQC . '/SampleQC-report.html';
-
-    say "Calling @cmd";
-    call_nextflow(@cmd);
-
-    say "Stage 3 completed. Output files have been copied to " . OUT_SAMPLEQC;
-}
-
-sub run_snpqcii {
-    say "--------------------------------------------------------";
-    say "Launching stage 4 'SNPQCII': HF-Test, Monomorphics check";
-    say "--------------------------------------------------------";
-
-    # Collect batches from configuration and launch Rs.nf for each batch
+#     # Collect batches from configuration and launch Rs.nf for each batch
 
 
-    my @cmd = ("nextflow");
-    for my $c (@ARGV) {
-        push @cmd, '-c';
-        push @cmd, $c;
-    }
+#     my @cmd = ("nextflow");
+#     for my $c (@ARGV) {
+#         push @cmd, '-c';
+#         push @cmd, $c;
+#     }
 
-    push @cmd, 'run';
-    push @cmd, 'SNPQCII.nf';
-    push @cmd, '--input';
-    push @cmd, $opt_output . OUT_SAMPLEQC . "/$config{collection_name}_SampleQCI_final";
-    push @cmd, '--input_wr';
-    push @cmd, $opt_output . OUT_SAMPLEQC . "/$config{collection_name}_SampleQCI_final_withoutRelatives";
+#     push @cmd, 'run';
+#     push @cmd, 'SampleQCI.nf';
+#     push @cmd, '--input';
+#     push @cmd, $opt_output . OUT_SNPQCI . "/$config{collection_name}_QCI";
+#     push @cmd, '--output';
+#     push @cmd, $opt_output . OUT_SAMPLEQC;
+#     push @cmd, '-resume';
+#     push @cmd, '-with-report';
+#     push @cmd, $opt_output . OUT_SAMPLEQC . '/SampleQC-report.html';
 
-    push @cmd, '--output';
-    push @cmd, $opt_output . OUT_SNPQCII;
-    push @cmd, '-resume';
-    push @cmd, '-with-report';
-    push @cmd, $opt_output . OUT_SNPQCII . '/SNPQCII-report.html';
+#     say "Calling @cmd";
+#     call_nextflow(@cmd);
 
-    say "Calling @cmd";
-    call_nextflow(@cmd);
+#     say "Stage 3 completed. Output files have been copied to " . OUT_SAMPLEQC;
+# }
 
-    say "Stage 4 completed. Output files have been copied to " . $opt_output . OUT_SNPQCII;
-    say "The final QC'ed dataset can now be found in " . $opt_output . OUT_SNPQCII . "/$config{disease_data_set_prefix_release}.{bed.bim,fam,log,...}";
-}
+# sub run_snpqcii {
+#     say "--------------------------------------------------------";
+#     say "Launching stage 4 'SNPQCII': HF-Test, Monomorphics check";
+#     say "--------------------------------------------------------";
+
+#     # Collect batches from configuration and launch Rs.nf for each batch
+
+
+#     my @cmd = ("nextflow");
+#     for my $c (@ARGV) {
+#         push @cmd, '-c';
+#         push @cmd, $c;
+#     }
+
+#     push @cmd, 'run';
+#     push @cmd, 'SNPQCII.nf';
+#     push @cmd, '--input';
+#     push @cmd, $opt_output . OUT_SAMPLEQC . "/$config{collection_name}_SampleQCI_final";
+#     push @cmd, '--input_wr';
+#     push @cmd, $opt_output . OUT_SAMPLEQC . "/$config{collection_name}_SampleQCI_final_withoutRelatives";
+
+#     push @cmd, '--output';
+#     push @cmd, $opt_output . OUT_SNPQCII;
+#     push @cmd, '-resume';
+#     push @cmd, '-with-report';
+#     push @cmd, $opt_output . OUT_SNPQCII . '/SNPQCII-report.html';
+
+#     say "Calling @cmd";
+#     call_nextflow(@cmd);
+
+#     say "Stage 4 completed. Output files have been copied to " . $opt_output . OUT_SNPQCII;
+#     say "The final QC'ed dataset can now be found in " . $opt_output . OUT_SNPQCII . "/$config{disease_data_set_prefix_release}.{bed.bim,fam,log,...}";
+# }
 
 # TODO Should do some error handling here, i.e. catch IPC exceptions. Needs IPC::System::Simple support, though
 
 run_rs;
 pause if $opt_pause;
 run_snpqci;
-pause if $opt_pause;
-run_sampleqc;
-pause if $opt_pause;
-run_snpqcii;
+#pause if $opt_pause;
+#run_sampleqc;
+#pause if $opt_pause;
+#run_snpqcii;
+
+system("./finalize-qc-summary " . $tempdir . $config{collection_name} . ".tex @trace_targets");
+my $last_wd = getcwd;
+chdir $tempdir;
+system("pdflatex " . $config{"collection_name"} . ".tex");
+copy($config{"collection_name"} . ".pdf", "$last_wd/" . $config{"collection_name"} . ".pdf");
+chdir $last_wd;
 
 # Documentation starts here
 __END__
@@ -251,6 +277,7 @@ run-qc [options] <config1> [<config2> [<confign>]]
    --help|-?        show his help message
    --output=<dir>   put generated files into the specified dir instead of the
                     current working directory
+   --verbose|-v     be chatty
 
  Arguments:
    The only non-option arguments run-qc accepts are configuration file names.

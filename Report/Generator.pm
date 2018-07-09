@@ -32,6 +32,7 @@ sub add_header {
     my $preamble = <<'HEADER_PREAMBLE'
 \documentclass{scrartcl}
 \usepackage{lmodern}
+\usepackage{graphicx}
 HEADER_PREAMBLE
         ;
     my $content = '\author{' . $self->{author} . '}'
