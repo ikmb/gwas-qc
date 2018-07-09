@@ -7,18 +7,19 @@ use 5.024;
 
 BEGIN {push @INC, '.'}
 
-use File::Slurp;
+use File::Slurp::Tiny qw/ read_file /;
 use Report::Generator;
 
+my $collection_name = shift @ARGV;
 my $target = shift @ARGV;
 
-my $report = Report::Generator->new();
+my $report = Report::Generator->new(title => "QC Report for $collection_name");
 
 for (@ARGV) {
     $report->append(read_file($_));
 }
 
-open (my $tex, '>', $target) or die("Failed to open Report/report.tex for writing: $!");
+open (my $tex, '>', $target) or die("Failed to open $target for writing: $!");
 print $tex $report->to_string;
 close $tex;
 

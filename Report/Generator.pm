@@ -13,7 +13,11 @@ sub new {
     my $self = bless ({}, $class);
 
     my $logname = `whoami`;
-    $self->{author} = $args{author} // $logname; # `getent passwd $logname | cut -d: -f5`;
+    my $ent = `getent passwd $logname`;
+    my @fields = split /:/, $ent;
+    $fields[4] =~ s/,+$//; # GECOS field contains tailing commas on weirdly configured systems (i.e. Ubuntu)
+    
+    $self->{author} = $args{author} // $fields[4]; # `getent passwd $logname | cut -d: -f5`;
     $self->{title}  = $args{title} // "No Title";
     $self->{parts} = [];
     $self
@@ -33,6 +37,9 @@ sub add_header {
 \documentclass{scrartcl}
 \usepackage{lmodern}
 \usepackage{graphicx}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[scale=0.85]{geometry}
 HEADER_PREAMBLE
         ;
     my $content = '\author{' . $self->{author} . '}'

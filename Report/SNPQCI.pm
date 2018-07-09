@@ -1,6 +1,6 @@
 package Report::SNPQCI;
 
-use File::Slurp::Tiny;
+use File::Slurp::Tiny qw/ read_file /;
 
 our $VERSION = '1.00';
 
@@ -53,9 +53,9 @@ sub generate_hwe_diagrams {
         chomp;
         print STDERR "$_\n";
         if (/hardy.hwe (\S+) (\S+) (\S+) /) {
-            push @images, '\begin{figure}\centering\includegraphics[width=\textwidth]{' . $workdir . '/' . $1 . '.jpg}\end{figure}';
-            push @images, '\begin{figure}\centering\includegraphics[width=\textwidth]{' . $workdir . '/' . $2 . '.jpg}\end{figure}';
-            push @images, '\begin{figure}\centering\includegraphics[width=\textwidth]{' . $workdir . '/' . $3 . '.jpg}\end{figure}';
+            push @images, '\begin{figure}\centering\includegraphics[height=0.45\textheight]{' . $workdir . '/' . $1 . '.jpg}\end{figure}';
+            push @images, '\begin{figure}\centering\includegraphics[height=0.45\textheight]{' . $workdir . '/' . $2 . '.jpg}\end{figure}';
+            push @images, '\begin{figure}\centering\includegraphics[height=0.45\textheight]{' . $workdir . '/' . $3 . '.jpg}\end{figure}';
             last;
         }
     }

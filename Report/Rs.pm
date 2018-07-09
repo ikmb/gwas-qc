@@ -1,6 +1,6 @@
 package Report::Rs;
 
-use File::Slurp;
+use File::Slurp::Tiny qw/ read_file /;
 
 our $VERSION = '1.00';
 
