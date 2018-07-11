@@ -16,8 +16,9 @@ sub new {
     my $ent = `getent passwd $logname`;
     my @fields = split /:/, $ent;
     $fields[4] =~ s/,+$//; # GECOS field contains tailing commas on weirdly configured systems (i.e. Ubuntu)
+    my @gecos = split /,/, $fields[4];
     
-    $self->{author} = $args{author} // $fields[4]; # `getent passwd $logname | cut -d: -f5`;
+    $self->{author} = $args{author} // $gecos[0]; # `getent passwd $logname | cut -d: -f5`;
     $self->{title}  = $args{title} // "No Title";
     $self->{parts} = [];
     $self
@@ -56,10 +57,7 @@ sub add_footer {
 sub to_string {
     my $self = shift;
     my $s = $self->add_header();
-    for (@{$self->{parts}}) {
-        $s .= $_;
-    }
-
+    $s .= join '', @{$self->{parts}};
     $s .= $self->add_footer();
     $s
 }
