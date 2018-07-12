@@ -25,6 +25,11 @@ my %processors = (
         'exclude_bad_variants' => \&Report::SNPQCI::exclude_bad_variants,
         'draw_definetti_after_QCI' => \&Report::SNPQCI::draw_definetti_after_QCI
     }
+    # ,
+    # 'SampleQC' => {
+    #     'determine_miss_het' => \&Report::SampleQC::determine_miss_het,
+        
+    # }
 );
 
 sub expand_path {

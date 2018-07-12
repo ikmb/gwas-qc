@@ -179,35 +179,39 @@ sub run_snpqci {
     say "Stage 2 completed. Output files have been copied to " . $config{"snpqci_dir"};
 }
 
-# sub run_sampleqc {
-#     say "-----------------------------------------------------------------------";
-#     say "Launching stage 3 'SampleQC': Pruning, HapMap/1kG merging, PCA analyses";
-#     say "-----------------------------------------------------------------------";
+sub run_sampleqc {
+    say "-----------------------------------------------------------------------";
+    say "Launching stage 3 'SampleQC': Pruning, HapMap/1kG merging, PCA analyses";
+    say "-----------------------------------------------------------------------";
 
-#     # Collect batches from configuration and launch Rs.nf for each batch
+    # Collect batches from configuration and launch Rs.nf for each batch
 
 
-#     my @cmd = ("nextflow");
-#     for my $c (@ARGV) {
-#         push @cmd, '-c';
-#         push @cmd, $c;
-#     }
+    my @cmd = ("nextflow");
+    push @cmd, '-c';
+    push @cmd, $confdir . "QC.config";
+    push @cmd, '-c';
+    push @cmd, $confdir . "$config{collection_name}.config";
 
-#     push @cmd, 'run';
-#     push @cmd, 'SampleQCI.nf';
-#     push @cmd, '--input';
-#     push @cmd, $opt_output . OUT_SNPQCI . "/$config{collection_name}_QCI";
-#     push @cmd, '--output';
-#     push @cmd, $opt_output . OUT_SAMPLEQC;
-#     push @cmd, '-resume';
-#     push @cmd, '-with-report';
-#     push @cmd, $opt_output . OUT_SAMPLEQC . '/SampleQC-report.html';
+    push @cmd, 'run';
+    push @cmd, 'SampleQCI.nf';
+    # push @cmd, '--input';
+    # push @cmd, $opt_output . OUT_SNPQCI . "/$config{collection_name}_QCI";
+    # push @cmd, '--output';
+    # push @cmd, $opt_output . OUT_SAMPLEQC;
+    push @cmd, '-resume';
+    push @cmd, '-with-report';
+    push @cmd, $config{"sampleqc_dir"} . '/SampleQC-report.html';
+    push @cmd, '--trace_target';
+    my $target = $tempdir . "SNPQCI-$config{collection_name}.report.tex";
+    push @cmd, $target;
+    push @trace_targets, $target;
 
-#     say "Calling @cmd";
-#     call_nextflow(@cmd);
+    say "Calling @cmd";
+    call_nextflow(@cmd);
 
-#     say "Stage 3 completed. Output files have been copied to " . OUT_SAMPLEQC;
-# }
+    say "Stage 3 completed. Output files have been copied to " . $config{"sampleqci_dir"};
+}
 
 # sub run_snpqcii {
 #     say "--------------------------------------------------------";
@@ -248,8 +252,8 @@ sub run_snpqci {
 run_rs;
 pause if $opt_pause;
 run_snpqci;
-#pause if $opt_pause;
-#run_sampleqc;
+pause if $opt_pause;
+run_sampleqc;
 #pause if $opt_pause;
 #run_snpqcii;
 

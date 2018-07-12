@@ -904,3 +904,10 @@ gawk '{ print $7, $8 }' $OUTFILE >$OUTFILE.Z0.Z1
 R --slave --args $OUTFILE.Z0.Z1 < !{ibdplot}
 '''
 }
+
+workflow.onComplete {
+    println "Generating phase summary..."
+    def cmd = ["./generate-phase-summary", "SampleQC", params.collection_name ?: params.disease_data_set_prefix, workflow.workDir, params.trace_target].join(' ')
+    def gensummary = ["bash", "-c", cmd].execute()
+    gensummary.waitFor()
+}
