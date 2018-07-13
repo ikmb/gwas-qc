@@ -49,7 +49,7 @@ HEADER_PREAMBLE
     . '\title{' . $self->{title} . '}';
 
 
-   $preamble . $content . '\begin{document}\maketitle' . "\n"
+   $preamble . $content . '\begin{document}\maketitle\tableofcontents' . "\n"
 }
 
 sub add_footer {

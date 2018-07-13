@@ -252,8 +252,8 @@ sub run_sampleqc {
 run_rs;
 pause if $opt_pause;
 run_snpqci;
-pause if $opt_pause;
-run_sampleqc;
+#pause if $opt_pause;
+#run_sampleqc;
 #pause if $opt_pause;
 #run_snpqcii;
 
@@ -265,8 +265,10 @@ print "*** Translated $config{'collection_name'} to $title ***\n";
 system("./finalize-qc-summary \"$title\" " . $tempdir . $config{collection_name} . ".tex @trace_targets");
 my $last_wd = getcwd;
 chdir $tempdir;
-system("pdflatex " . $config{"collection_name"} . ".tex");
+system("pdflatex " . $config{"collection_name"} . ".tex"); # generate AUX
+system("pdflatex " . $config{"collection_name"} . ".tex"); # update TOC
 copy($config{"collection_name"} . ".pdf", "$last_wd/" . $config{"collection_name"} . ".pdf");
+copy($config{"collection_name"} . ".tex", "$last_wd/" . $config{"collection_name"} . ".tex");
 chdir $last_wd;
 
 # Documentation starts here

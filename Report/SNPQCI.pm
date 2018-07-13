@@ -4,6 +4,7 @@ use strict;
 use warnings;
 
 use Data::Dumper;
+use File::Basename;
 use File::Slurp::Tiny qw/ read_file /;
 
 our $VERSION = '1.00';
@@ -158,9 +159,31 @@ sub exclude_bad_variants {
     my $all = `wc -l < $workdir/variant-excludes`;
     chomp($all);
 
+    my $miss_entire_thres;
+    my $miss_perbatch_thres;
+
+    (undef, my $miss_entire_dir, undef) = fileparse(readlink("$workdir/missingness-excludes-entire"));
+    open my $miss_entire_fh, '<', "$miss_entire_dir/.command.sh" or die("$!");
+    while(<$miss_entire_fh>) {
+        if (/missingness_entire.lmiss (\d+\.\d+) missingness/) {
+            $miss_entire_thres = $1;
+        }
+    }
+    close $miss_entire_fh;
+
+    (undef, my $miss_batch_dir, undef) = fileparse(readlink("$workdir/missingness-excludes-perbatch"));
+    open my $miss_batch_fh, '<', "$miss_batch_dir/.command.sh" or die("$!");
+    while(<$miss_batch_fh>) {
+        if (/perbatch.lmiss (\d+\.\d+) /) {
+            $miss_perbatch_thres = $1;
+        }
+    }
+    close $miss_batch_fh;
+
     my $s = '\subsection{Removed Bad Variants}';
     $s .= "$hwe_entire variant(s) have been found that fail the HWE test over the whole collection and $hwe_batch variant(s) that fail the HWE test with the worst batch removed.\\\\";
-    $s .= "Additionally, $miss_entire variants with too high missingness over the entire collection and $miss_batch variants with batch-wise high missingess where identified. ";
+    $s .= "Additionally, $miss_entire variants with too high missingness " . '($\\geq ' . $miss_entire_thres . '$' . ") over the entire collection";
+    $s .= "and $miss_batch variants with batch-wise high missingess " . '($\\geq ' . $miss_perbatch_thres . '$' . ") where identified. ";
     $s .= "$all unique variants are removed from the dataset.";
 
     return $s;
@@ -186,7 +209,6 @@ sub draw_definetti_after_QCI {
 
     my $s = "\n" . '\subsection{DeFinetti Diagrams after first QC stage}' . "\n";
     return $s . $minipage;
-    
 }
 
 
