@@ -41,6 +41,7 @@ sub add_header {
 \usepackage[utf8]{inputenc}
 \usepackage[T1]{fontenc}
 \usepackage{booktabs}
+\usepackage{hyperref}
 \usepackage{float}
 \usepackage[scale=0.85]{geometry}
 HEADER_PREAMBLE

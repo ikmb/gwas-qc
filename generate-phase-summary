@@ -9,6 +9,7 @@ use Time::HiRes qw(gettimeofday);
 use Report::Generator;
 use Report::Rs;
 use Report::SNPQCI;
+use Report::SampleQC;
 
 use strict;
 use warnings;
@@ -25,11 +26,11 @@ my %processors = (
         'exclude_bad_variants' => \&Report::SNPQCI::exclude_bad_variants,
         'draw_definetti_after_QCI' => \&Report::SNPQCI::draw_definetti_after_QCI
     }
-    # ,
-    # 'SampleQC' => {
-    #     'determine_miss_het' => \&Report::SampleQC::determine_miss_het,
-        
-    # }
+    ,
+    'SampleQC' => {
+        'apply_precalc_remove_list' => \&Report::SampleQC::apply_precalc_remove_list,
+        'determine_miss_het' => \&Report::SampleQC::determine_miss_het,
+    }
 );
 
 sub expand_path {

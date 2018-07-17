@@ -201,9 +201,9 @@ sub run_sampleqc {
     # push @cmd, $opt_output . OUT_SAMPLEQC;
     push @cmd, '-resume';
     push @cmd, '-with-report';
-    push @cmd, $config{"sampleqc_dir"} . '/SampleQC-report.html';
+    push @cmd, $config{"sampleqci_dir"} . '/SampleQC-report.html';
     push @cmd, '--trace_target';
-    my $target = $tempdir . "SNPQCI-$config{collection_name}.report.tex";
+    my $target = $tempdir . "SampleQC-$config{collection_name}.report.tex";
     push @cmd, $target;
     push @trace_targets, $target;
 
@@ -252,8 +252,8 @@ sub run_sampleqc {
 run_rs;
 pause if $opt_pause;
 run_snpqci;
-#pause if $opt_pause;
-#run_sampleqc;
+pause if $opt_pause;
+run_sampleqc;
 #pause if $opt_pause;
 #run_snpqcii;
 
@@ -266,6 +266,7 @@ system("./finalize-qc-summary \"$title\" " . $tempdir . $config{collection_name}
 my $last_wd = getcwd;
 chdir $tempdir;
 system("pdflatex " . $config{"collection_name"} . ".tex"); # generate AUX
+system("pdflatex " . $config{"collection_name"} . ".tex"); # update TOC
 system("pdflatex " . $config{"collection_name"} . ".tex"); # update TOC
 copy($config{"collection_name"} . ".pdf", "$last_wd/" . $config{"collection_name"} . ".pdf");
 copy($config{"collection_name"} . ".tex", "$last_wd/" . $config{"collection_name"} . ".tex");
