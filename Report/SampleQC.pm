@@ -63,7 +63,7 @@ sub determine_miss_het {
 
     $name = $workdir . "/$name";
 
-    $s .= '\subsection{Missingness}';
+    $s .= '\subsection{Missingness}\label{sec:sampleqc-missingness}';
 #    $s .= '\begin{figure}[H!]\centering';
     $s .= '\includegraphics[width=0.5\columnwidth,type=png,ext=.lmiss.1.png,read=.lmiss.1.png]{' . $name . '_miss}';
     $s .= '\includegraphics[width=0.5\columnwidth,type=png,ext=.lmiss.2.png,read=.lmiss.2.png]{' . $name . '_miss}\\\\';
@@ -103,7 +103,7 @@ sub prune {
     }
     close $sh;
 
-    my $s = '\subsection{Pruning}';
+    my $s = '\subsection{Sample Outlier Detection}\subsubsection{Pruning}';
 
     # Parameters
     my $window_size = 0;
@@ -156,11 +156,11 @@ sub prune {
             $s_initial = $1; next;
         }
 
-        if (/^--extract.(\d+) variants remaining/) {
-            $v_pruned = $v_intial - $1; next;
+        if (/^--extract..(\d+) variants remaining/) {
+            $v_pruned = $v_initial - $1; next;
         }
 
-        if (/^--remove.(\d+) people remaining/) {
+        if (/^--remove..(\d+) people remaining/) {
             $s_missings_removed = $s_initial - $1; next;
         }
 
@@ -183,7 +183,7 @@ sub prune {
 
     open my $final_fh, '<', $workdir . "/" . $name . ".log" or die($!);
     while(<$final_fh>) {
-        if (/Total genotpying rate is ([0-9\.]+)./) {
+        if (/Total genotyping rate is ([0-9\.]+)./) {
             $rate_after = $1;
         }
 
@@ -194,19 +194,146 @@ sub prune {
     }
 
     # Jetzt noch alles in eine Tabelle gießen
-
+    $s .= 'For sample outlier detection, a separate pruned dataset is created to carry out principal component analyses and IBD/IBS detection. The initial dataset is prepared as follows:\\\\';
+    $s .= '\begin{tabularx}{\textwidth}{rrX}\toprule{}';
+    $s .= 'Samples & Variants & Process and parameters\\\\\midrule{}';
+    $s .= "$s_initial & $v_initial & \\emph{Initial dataset, genotyping rate $rate_before}\\\\";
+    $s .= ($s_initial - $s_missings_removed) . " & $v_initial & Samples removed with high missingness (see \\ref{sec:sampleqc-missingness})\\\\";
+    # $s .= "$s_final & $v_initial & Missing-sex samples removed\\\\";
+    $s .= "$s_final & " . ($v_initial - $v_pruned) . " & LD pruning (" . 'r$^2$' . "=$rsq, window size $window_size, step size $step_size)\\\\";
+    $s .= "$s_final & " . ($v_initial - $v_pruned - $v_maf_removed) . " & MAF filtering (threshold $maf)\\\\";
+    $s .= "$s_final & " . ($v_after_intermediate - $v_region_filtered) . " & Remove SNPs from non-autosomes, SNPs from xMHC regions, A/T and C/G SNPs, and D/I SNPs\\\\";
+    $s .= "$s_final & $v_final & \\emph{Pruned dataset, genotyping rate $rate_after}\\\\\\bottomrule\\end{tabularx}\\\\[1ex]";
+    $s .= "After pruning, the dataset consists of $s_final_cases cases and $s_final_controls controls.";
+    return $s;
 }
 
-# DKTNF_POPGEN_GS_SampleQCI_het.het                 DKTNF_POPGEN_GS_SampleQCI_miss.lmiss.1.png
-# DKTNF_POPGEN_GS_SampleQCI_het.het.1.png           DKTNF_POPGEN_GS_SampleQCI_miss.lmiss.2.png
-# DKTNF_POPGEN_GS_SampleQCI_het.het.2.png           DKTNF_POPGEN_GS_SampleQCI_miss.lmiss.logscale.1.png
-# DKTNF_POPGEN_GS_SampleQCI_het.het.logscale.1.png  DKTNF_POPGEN_GS_SampleQCI_miss.lmiss.logscale.2.png
-# DKTNF_POPGEN_GS_SampleQCI_het.het.logscale.2.png  DKTNF_POPGEN_GS_SampleQCI_miss.log
-# DKTNF_POPGEN_GS_SampleQCI_het.het.outlier.txt     DKTNF_POPGEN_GS_SampleQCI_miss.nosex
-# DKTNF_POPGEN_GS_SampleQCI_het.log                 DKTNF_POPGEN_GS_SampleQCI_miss.outlier.txt
-# DKTNF_POPGEN_GS_SampleQCI_het.nosex               manually-removed.bed
-# DKTNF_POPGEN_GS_SampleQCI_miss.imiss              manually-removed.bim
-# DKTNF_POPGEN_GS_SampleQCI_miss.lmiss              manually-removed.fam
+sub hapmap_eigenstrat {
+    my $workdir = shift;
+    my $tag = shift;
+
+    my $basename;
+    my $sigma_threshold;
+    my $num_pcs;
+    
+    open my $sh, '<', "$workdir/.command.sh" or die($!);
+    while(<$sh>) {
+        chomp;
+        if (/pca_run\("(\S+?)", ([0-9\.]+), \S+?, (\d+), \d+, .*\)/) {
+            $basename = $1;
+            $sigma_threshold = $2;
+            $num_pcs = $3;
+            last;
+        }
+    }
+    $basename .= "_$num_pcs" . 'PC';
+
+    my $s = '\subsubsection{PCA with merged HapMap2 samples}';
+    $s .= 'The images on the left side are with, the others are without projection on HapMap samples.\\\\';
+
+    $s .= "\\includegraphics[width=0.5\\textwidth,type=png,ext=.2PC.png,read=.2PC.png]{$workdir/$basename}";
+    $s .= "\\includegraphics[width=0.5\\textwidth,type=png,ext=.2PC.png,read=.2PC.png]{$workdir/$basename.withoutProjection}\\\\";
+    $s .= "\\includegraphics[width=0.5\\textwidth,type=png,ext=.4PCpairs.png,read=.4PCpairs.png]{$workdir/$basename}";
+    $s .= "\\includegraphics[width=0.5\\textwidth,type=png,ext=.4PCpairs.png,read=.4PCpairs.png]{$workdir/$basename.withoutProjection}\\\\";
+    return $s;
+}
+
+sub onekg_flashpca {
+    my $workdir = shift;
+    my $tag = shift;
+
+    my $basename;
+    my $num_pcs;
+
+    open my $sh, '<', "$workdir/.command.sh" or die($!);
+    while(<$sh>) {
+#        print $_;
+        chomp;
+
+        if (/merge__new_plink_collection_pruned__1kG\(\S+, "(\S+)", .*\)/) {
+            $basename = $1;
+            next;
+        }
+
+        if (/^flashpca2 -d (\d+)/) {
+            $num_pcs = $1;
+            next;
+        }
+    }
+
+    $basename .= '_' . $num_pcs . 'PC';
+    my $s = '\subsubsection{PCA with merged 1000 Genomes samples}';
+
+    $s .= "\\includegraphics[width=0.5\\textwidth,type=pdf,ext=.2PC.pdf,read=.2PC.pdf]{$workdir/$basename}";
+    $s .= "\\includegraphics[width=0.5\\textwidth,type=pdf,ext=.country.2PC.pdf,read=.country.2PC.pdf]{$workdir/$basename}";
+
+    my $count_fail = `wc -l <$workdir/$basename.fail-pca-1KG-qc.txt` or die($!);
+    chomp($count_fail);
+    my $count_fail_country = `wc -l <$workdir/$basename.country.fail-pca-1KG-qc.txt` or die($!);
+    chomp($count_fail_country);
+    $s .= "\\\\The batch- and country-wise PCA yielded $count_fail and $count_fail_country outliers, respectively.";
 
 
-1
+    return $s;
+}
+
+sub remove_bad_samples {
+    my $workdir = shift;
+    my $tag = shift;
+
+    my $s = '\subsubsection{Outlier Removal}';
+    $s .= 'The following outliers are scheduled for removal:\\\\[1ex]';
+    $s .= '\begin{tabular}{rl}\toprule{}';
+
+    my @files;
+    open my $fh, '<', "$workdir/.command.sh" or die($!);
+    while(<$fh>) {
+        if (/^cat (\S+)/) {
+            push @files, $1;
+            next;
+        }
+
+        if (/cut -f 1,2 (\S+)/) {
+            push @files, $1;
+            next;
+        }
+
+        if (/cut .* -f 1,2 (\S+)/) {
+            push @files, $1;
+            next;
+        }
+    }
+    close $fh;
+
+    my $precalc = "0";
+    if (-e "$workdir/$files[0]") {
+        $precalc = `wc -l <$workdir/$files[0]`;
+        chomp($precalc);
+    }
+
+    my $het = `wc -l <$workdir/$files[1]` or die("$files[1]: $!");
+    chomp($het);
+    my $miss = `wc -l <$workdir/$files[2]` or die("files[2]: $!");
+    chomp($miss);
+    my $duplicates = `wc -l <$workdir/$files[3]` or die("files[3]: $!");
+    chomp($duplicates);
+    my $es_outliers = `wc -l <$workdir/$files[4]` or die("files[4]: $!");
+    chomp($es_outliers);
+    my $flash_outliers = `wc -l <$workdir/$files[5]` or die("files[5]: $!");
+    chomp($flash_outliers);
+    my $all = `wc -l <$workdir/remove-samples` or die("remove-samples: $!");
+
+    $s .= 'Count & Process\\\\\midrule{}';
+    $s .= "$precalc & Pre-calculated sample exclusion list\\\\";
+    $s .= "$het & Heterozygosity outliers\\\\";
+    $s .= "$miss & Missingness outliers\\\\";
+    $s .= "$duplicates & Duplicates (through IBD analysis)\\\\";
+    $s .= "$es_outliers & PCA Outliers (EIGENSTRAT)\\\\";
+    $s .= "$flash_outliers & PCA Outliers (FlashPCA)\\\\" . '\midrule{}';
+    $s .= ($precalc + $het + $miss + $duplicates + $es_outliers + $flash_outliers) . " & Total\\\\";
+    $s .= "$all & Total (unique)\\\\" . '\bottomrule{}';
+    $s .= "\\end{tabular}";
+    return $s;
+
+
+}

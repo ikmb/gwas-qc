@@ -43,6 +43,7 @@ sub add_header {
 \usepackage{booktabs}
 \usepackage{hyperref}
 \usepackage{float}
+\usepackage{tabularx}
 \usepackage[scale=0.85]{geometry}
 HEADER_PREAMBLE
         ;

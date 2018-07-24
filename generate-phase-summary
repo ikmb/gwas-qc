@@ -30,6 +30,10 @@ my %processors = (
     'SampleQC' => {
         'apply_precalc_remove_list' => \&Report::SampleQC::apply_precalc_remove_list,
         'determine_miss_het' => \&Report::SampleQC::determine_miss_het,
+            'prune' => \&Report::SampleQC::prune,
+            'pca_run' => \&Report::SampleQC::hapmap_eigenstrat,
+            'flashpca2_pruned_1kG' => \&Report::SampleQC::onekg_flashpca,
+            'remove_bad_samples' => \&Report::SampleQC::remove_bad_samples
     }
 );
 

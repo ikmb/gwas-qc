@@ -63,7 +63,7 @@ def pca_run(plink, sigmathreshold, projection_on_populations, numof_pc, numof_th
     cmd.run(); del cmd
 
     # draw first two PCs
-    os.system("R --slave --args %s < %s" %(plink_pca, "raw_evec_EIGENSTRAT.r"))
+    os.system("R --slave --args %s < %s" %(plink_pca, "draw_evec_EIGENSTRAT.r"))
 
     # read which batches (HapMap) were used for projection
     projection_batches = {}
