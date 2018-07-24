@@ -561,25 +561,25 @@ touch remove-samples
 
 # pre-calculated remove list for individuals
 if [ -e !{remove_manually} ]; then
-    cut -f 1,2 !{remove_manually} >>remove-samples
+    cut -f 1,2 !{remove_manually} | tr -s ' \t' ' '>>remove-samples
 fi
 
 # heterozygosity outliers
-cat !{het_outliers} >>remove-samples
+cat !{het_outliers} | tr -s ' \t' ' '>>remove-samples
 
 # too high missingness
-cat !{miss_outliers} >>remove-samples
+cat !{miss_outliers} | tr -s ' \t' ' '>>remove-samples
 
 # duplicates
-cut -d" " -f 1,2 !{duplicates} >>remove-samples
+cut -d" " -f 1,2 !{duplicates} | tr -s ' \t' ' ' >>remove-samples
 
 # eigenstrat outliers (empty if flashpca has been used)
-cat !{eigenstrat_outliers} >>remove-samples
+cat !{eigenstrat_outliers} | tr -s ' \t' ' '>>remove-samples
 
 # flashpca outliers (empty if eigenstrat has been used)
-cat !{flashpca_outliers} >>remove-samples
+cat !{flashpca_outliers} | tr -s ' \t' ' ' >>remove-samples
 
-sort remove-samples | uniq | TMPDIR=. sponge remove-samples
+cut -f1,2 -d' ' remove-samples | sort | uniq | TMPDIR=. sponge remove-samples
 
 plink --noweb --bfile !{pruned[0].baseName} --remove remove-samples --make-bed --out !{target_basename} --allow-no-sex
 '''
