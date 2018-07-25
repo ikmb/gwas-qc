@@ -92,6 +92,7 @@ sub determine_miss_het {
 sub prune {
     my $workdir = shift;
     my $tag = shift;
+    my $intro = shift // '\subsection{Sample Outlier Detection}';
 
     my $name;
 
@@ -103,7 +104,7 @@ sub prune {
     }
     close $sh;
 
-    my $s = '\subsection{Sample Outlier Detection}\subsubsection{Pruning}';
+    my $s = $intro . '\subsubsection{Pruning}';
 
     # Parameters
     my $window_size = 0;
@@ -332,8 +333,94 @@ sub remove_bad_samples {
     $s .= "$flash_outliers & PCA Outliers (FlashPCA)\\\\" . '\midrule{}';
     $s .= ($precalc + $het + $miss + $duplicates + $es_outliers + $flash_outliers) . " & Total\\\\";
     $s .= "$all & Total (unique)\\\\" . '\bottomrule{}';
-    $s .= "\\end{tabular}";
+    $s .= "\\end{tabular}\\\\";
     return $s;
 
 
+}
+
+sub draw_histograms {
+    my $workdir = shift;
+    my $tag = shift;
+
+    my $basename;
+
+    open my $sh, '<', "$workdir/.command.sh" or die($!);
+    while(<$sh>) {
+
+        if (/^cp (\S+).evec \S+.evec.pca.evec$/) {
+            $basename = $1;
+            last;
+        }
+    }
+    close $sh;
+
+    my $s;
+    $s .= '\subsubsection{PCA Histograms}Phenotype-wise histograms of the first 4 PCs:\\\\';
+    $s .= "\\includegraphics[width=0.5\\textwidth,type=png,ext=.evec.histPC1.png,read=.evec.histPC1.png]{$workdir/$basename}";
+    $s .= "\\includegraphics[width=0.5\\textwidth,type=png,ext=.evec.histPC2.png,read=.evec.histPC2.png]{$workdir/$basename}\\\\";
+    $s .= "\\includegraphics[width=0.5\\textwidth,type=png,ext=.evec.histPC3.png,read=.evec.histPC3.png]{$workdir/$basename}";
+    $s .= "\\includegraphics[width=0.5\\textwidth,type=png,ext=.evec.histPC4.png,read=.evec.histPC4.png]{$workdir/$basename}\\\\";
+    $s = 'Country-wise histograms of the first 4 PCs:\\\\';
+    $s .= "\\includegraphics[width=0.5\\textwidth,type=png,ext=.country.evec.histPC1.png,read=.country.evec.histPC1.png]{$workdir/$basename}";
+    $s .= "\\includegraphics[width=0.5\\textwidth,type=png,ext=.country.evec.histPC2.png,read=.country.evec.histPC2.png]{$workdir/$basename}\\\\";
+    $s .= "\\includegraphics[width=0.5\\textwidth,type=png,ext=.country.evec.histPC3.png,read=.country.evec.histPC3.png]{$workdir/$basename}";
+    $s .= "\\includegraphics[width=0.5\\textwidth,type=png,ext=.country.evec.histPC4.png,read=.country.evec.histPC4.png]{$workdir/$basename}\\\\";
+
+    return $s;
+}
+
+sub prune_related {
+    my $workdir = shift;
+    my $tag = shift;
+
+    my $cases_before;
+    my $controls_before;
+    my $cases_after;
+    my $controls_after;
+    my $samples_before;
+    my $samples_removed;
+
+    my $log;
+
+    open $log, '<', "$workdir/.command.log" or die("$log: $!");
+
+    while(<$log>) {
+        chomp;
+
+        if(/^(\d+) individuals read from/) {
+            $samples_before = $1;
+            next;
+        }
+
+        if(/^(\d+) cases, (\d+) controls and \d+ missing$/) {
+            $cases_before = $1;
+            $controls_before = $2;
+            next;
+        }
+
+        if(/^(\d+) individuals removed with/) {
+            $samples_removed = $1;
+            next;
+        }
+
+        if(/^After filtering, (\d+) cases, (\d+) controls and \d+ missing/) {
+            $cases_after = $1;
+            $controls_after = $2;
+            next;
+        }
+    }
+    close $log;
+
+    my $s = '\subsection{Dataset Without Relatives}';
+    $s .= 'For subsequent analyses, another secondary dataset is created, where the relatives detected during IBD/IBS analysis are removed. ';
+    $s .= "From the original dataset ($cases_before cases, $controls_before controls), $samples_removed individuals are considered to be related and were removed, leaving $cases_after cases and $controls_after controls. ";
+
+    return $s;
+}
+
+sub prune_outliers_without_related {
+    my $workdir = shift;
+    my $tag = shift;
+    return prune($workdir, $tag, '');
 }

@@ -33,7 +33,10 @@ my %processors = (
             'prune' => \&Report::SampleQC::prune,
             'pca_run' => \&Report::SampleQC::hapmap_eigenstrat,
             'flashpca2_pruned_1kG' => \&Report::SampleQC::onekg_flashpca,
-            'remove_bad_samples' => \&Report::SampleQC::remove_bad_samples
+            'remove_bad_samples' => \&Report::SampleQC::remove_bad_samples,
+            'draw_histograms' => \&Report::SampleQC::draw_histograms,
+            'prune_related' => \&Report::SampleQC::prune_related,
+            'prune_outliers_without_related' => \&Report::SampleQC::prune_outliers_without_related
     }
 );
 
