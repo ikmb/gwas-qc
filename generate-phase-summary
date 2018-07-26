@@ -24,7 +24,8 @@ my @phase_order = (
     'merge_batches', 'generate_hwe_diagrams', 'exclude_lists_for_failed_hwe', 'exclude_bad_variants', 'draw_definetti_after_QCI',
     # SampleQC
     'apply_precalc_remove_list', 'determine_miss_het', 'prune', 'pca_run', 'flashpca2_pruned_1kG',
-    'remove_bad_samples', 'draw_histograms', 'prune_related', 'prune_outliers_without_related'
+    'remove_bad_samples', 'draw_histograms', 'prune_related', 'prune_outliers_without_related',
+    'ibs_merge_and_verify_wr'
     );
 
 my %processors = (
@@ -49,7 +50,8 @@ my %processors = (
         'remove_bad_samples' => \&Report::SampleQC::remove_bad_samples,
         'draw_histograms' => \&Report::SampleQC::draw_histograms,
         'prune_related' => \&Report::SampleQC::prune_related,
-        'prune_outliers_without_related' => \&Report::SampleQC::prune_outliers_without_related
+            'prune_outliers_without_related' => \&Report::SampleQC::prune_outliers_without_related,
+            'ibs_merge_and_verify_wr' => \&Report::SampleQC::ibs_merge_and_verify_wr
     }
 );
 

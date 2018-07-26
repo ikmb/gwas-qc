@@ -424,3 +424,20 @@ sub prune_outliers_without_related {
     my $tag = shift;
     return prune($workdir, $tag, '');
 }
+
+sub ibs_merge_and_verify_wr {
+    my $workdir = shift;
+    my $tag = shift;
+
+    my $s = '\subsubsection{IBD Z0/Z1 Plot}';
+    my $basename;
+    open my $sh, '<', "$workdir/.command.sh" or die($!);
+    while(<$sh>) {
+        if (/^OUTFILE="(\S+)"$/) {
+            $basename = $1;
+        }
+    }
+
+    $s .= "\\includegraphics[width=\\textwidth,type=png,ext=.Z0.Z1.IBD-plot.png,read=.Z0.Z1.IBD-plot.png]{$workdir/$basename}";
+    return $s;
+}
