@@ -113,6 +113,12 @@ $tempdir .= "/";
 
 print "Temp directory for reports: $tempdir\n" if $opt_verbose;
 
+
+mkdir $config{'snpqci_dir'} if !-e $config{'snpqci_dir'};
+mkdir $config{'sampleqci_dir'} if !-e $config{'sampleqci_dir'};
+mkdir $config{'qc_dir'} if !-e $config{'qc_dir'};
+
+
 my @trace_targets = ();
 
 # Feeds all single-batch datasets from the config file into the
@@ -127,6 +133,7 @@ sub run_rs {
     for (@batches) {
         my $batch = $_;
         my %batchconf = parse_config($confdir . "/$_.config");
+        mkdir $config{'rs_dir'} if !-e $config{'rs_dir'};
         my @cmd = ("nextflow");
         push @cmd, '-c';
         push @cmd, $confdir . "QC.config";
@@ -195,10 +202,6 @@ sub run_sampleqc {
 
     push @cmd, 'run';
     push @cmd, 'SampleQCI.nf';
-    # push @cmd, '--input';
-    # push @cmd, $opt_output . OUT_SNPQCI . "/$config{collection_name}_QCI";
-    # push @cmd, '--output';
-    # push @cmd, $opt_output . OUT_SAMPLEQC;
     push @cmd, '-resume';
     push @cmd, '-with-report';
     push @cmd, $config{"sampleqci_dir"} . '/SampleQC-report.html';
@@ -213,39 +216,34 @@ sub run_sampleqc {
     say "Stage 3 completed. Output files have been copied to " . $config{"sampleqci_dir"};
 }
 
-# sub run_snpqcii {
-#     say "--------------------------------------------------------";
-#     say "Launching stage 4 'SNPQCII': HF-Test, Monomorphics check";
-#     say "--------------------------------------------------------";
+sub run_snpqcii {
+    say "--------------------------------------------------------";
+    say "Launching stage 4 'SNPQCII': HF-Test, Monomorphics check";
+    say "--------------------------------------------------------";
 
-#     # Collect batches from configuration and launch Rs.nf for each batch
+    my @cmd = ("nextflow");
+    push @cmd, '-c';
+    push @cmd, $confdir . "QC.config";
+    push @cmd, '-c';
+    push @cmd, $confdir . "$config{collection_name}.config";
 
+    push @cmd, 'run';
+    push @cmd, 'SNPQCII.nf';
 
-#     my @cmd = ("nextflow");
-#     for my $c (@ARGV) {
-#         push @cmd, '-c';
-#         push @cmd, $c;
-#     }
+    push @cmd, '-resume';
+    push @cmd, '-with-report';
+    push @cmd, $config{"snpqcii_dir"} . '/SNPQCII-report.html';
+    push @cmd, '--trace_target';
+    my $target = $tempdir . "SNPQCII-$config{collection_name}.report.tex";
+    push @cmd, $target;
+    push @trace_targets, $target;
 
-#     push @cmd, 'run';
-#     push @cmd, 'SNPQCII.nf';
-#     push @cmd, '--input';
-#     push @cmd, $opt_output . OUT_SAMPLEQC . "/$config{collection_name}_SampleQCI_final";
-#     push @cmd, '--input_wr';
-#     push @cmd, $opt_output . OUT_SAMPLEQC . "/$config{collection_name}_SampleQCI_final_withoutRelatives";
+    say "Calling @cmd";
+    call_nextflow(@cmd);
 
-#     push @cmd, '--output';
-#     push @cmd, $opt_output . OUT_SNPQCII;
-#     push @cmd, '-resume';
-#     push @cmd, '-with-report';
-#     push @cmd, $opt_output . OUT_SNPQCII . '/SNPQCII-report.html';
-
-#     say "Calling @cmd";
-#     call_nextflow(@cmd);
-
-#     say "Stage 4 completed. Output files have been copied to " . $opt_output . OUT_SNPQCII;
-#     say "The final QC'ed dataset can now be found in " . $opt_output . OUT_SNPQCII . "/$config{disease_data_set_prefix_release}.{bed.bim,fam,log,...}";
-# }
+    say "Stage 4 completed. Output files have been copied to " . $config{"qc_dir"} ;
+    say "The final QC'ed dataset can now be found in " . $config{"qc_dir"};
+}
 
 # TODO Should do some error handling here, i.e. catch IPC exceptions. Needs IPC::System::Simple support, though
 
@@ -254,13 +252,11 @@ pause if $opt_pause;
 run_snpqci;
 pause if $opt_pause;
 run_sampleqc;
-#pause if $opt_pause;
-#run_snpqcii;
+pause if $opt_pause;
+run_snpqcii;
 
 my $title = $config{'collection_name'};
 $title =~ s/_/\\_/g;
-
-print "*** Translated $config{'collection_name'} to $title ***\n";
 
 system("./finalize-qc-summary \"$title\" " . $tempdir . $config{collection_name} . ".tex @trace_targets");
 my $last_wd = getcwd;

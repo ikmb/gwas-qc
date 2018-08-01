@@ -11,21 +11,21 @@ use Report::Generator;
 use Report::Rs;
 use Report::SNPQCI;
 use Report::SampleQC;
+use Report::SNPQCII;
 
 use Data::Dumper;
 
 use strict;
 use warnings;
 
-my @phase_order = (
-    # Rs
-    'plink_flip', 'plink_exclude',
-    # SNPQCI
-    'merge_batches', 'generate_hwe_diagrams', 'exclude_lists_for_failed_hwe', 'exclude_bad_variants', 'draw_definetti_after_QCI',
-    # SampleQC
-    'apply_precalc_remove_list', 'determine_miss_het', 'prune', 'pca_run', 'flashpca2_pruned_1kG',
-    'remove_bad_samples', 'draw_histograms', 'prune_related', 'prune_outliers_without_related',
-    'ibs_merge_and_verify_wr'
+my %phase_order = (
+    'Rs' => ['plink_flip', 'plink_exclude'],
+
+    'SNPQCI' => ['merge_batches', 'generate_hwe_diagrams', 'exclude_lists_for_failed_hwe', 'exclude_bad_variants', 'draw_definetti_after_QCI'],
+
+    'SampleQC' => ['apply_precalc_remove_list', 'determine_miss_het', 'prune', 'pca_run', 'flashpca2_pruned_1kG','remove_bad_samples', 'draw_histograms', 'prune_related', 'prune_outliers_without_related', 'ibs_merge_and_verify_wr'],
+
+    'SNPQCII' => ['exclude_variants', 'prune', 'flashpca_pruned', 'draw_histograms_pruned']
     );
 
 my %processors = (
@@ -50,9 +50,16 @@ my %processors = (
         'remove_bad_samples' => \&Report::SampleQC::remove_bad_samples,
         'draw_histograms' => \&Report::SampleQC::draw_histograms,
         'prune_related' => \&Report::SampleQC::prune_related,
-            'prune_outliers_without_related' => \&Report::SampleQC::prune_outliers_without_related,
-            'ibs_merge_and_verify_wr' => \&Report::SampleQC::ibs_merge_and_verify_wr
+        'prune_outliers_without_related' => \&Report::SampleQC::prune_outliers_without_related,
+        'ibs_merge_and_verify_wr' => \&Report::SampleQC::ibs_merge_and_verify_wr,
+    },
+    'SNPQCII' => {
+        'exclude_variants' => \&Report::SNPQCII::exclude_variants,
+        'prune' => \&Report::SNPQCII::prune,
+        'flashpca_pruned' => \&Report::SNPQCII::flashpca_pruned,
+        'draw_histograms_pruned' => \&Report::SampleQC::draw_histograms, 
     }
+    
 );
 
 sub expand_path {
@@ -78,9 +85,9 @@ sub cmp_phase {
     my $a_index = -1;
     my $b_index = -1;
 
-    for(my $i = 0; $i < @phase_order; $i++) {
-        $a_index = $i if $phase_order[$i] eq $::a->[0];
-        $b_index = $i if $phase_order[$i] eq $::b->[0];
+    for(my $i = 0; $i < @{$phase_order{$::a->[4]}}; $i++) {
+        $a_index = $i if $phase_order{$::a->[4]}->[$i] eq $::a->[0];
+        $b_index = $i if $phase_order{$::b->[4]}->[$i] eq $::b->[0];
     }
 
     return $a_index <=> $b_index;
@@ -107,7 +114,7 @@ while(<$trace>) {
     chomp;
     my ($process, $procname, $tag, $workdir) = split /;/;
     if (exists $processors{$arg_pipeline}{$process}) {
-        push @execution_phases, [$process, $procname, $tag, $workdir ];
+        push @execution_phases, [$process, $procname, $tag, $workdir, $arg_pipeline];
     }
 }
 close $trace;
@@ -119,7 +126,7 @@ print "Ordered: " . Dumper(@ordered_execution_phases);
 
 for my $phaseref (@ordered_execution_phases) {
 
-    my ($process, $procname, $tag, $workdir) = @{$phaseref};
+    my ($process, $procname, $tag, $workdir, ) = @{$phaseref};
 
     if (exists $processors{$arg_pipeline}{$process}) {
         my $expanded = expand_path($arg_workdir, $workdir);
