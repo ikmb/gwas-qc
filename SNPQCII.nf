@@ -321,11 +321,11 @@ plink --bfile !{dataset.bed.baseName} --extract "!{params.PCA_SNPList}" --make-b
     module load "IKMB"
     module load "Plink/1.7"
 
-plink --noweb --bfile !{dataset.bed.baseName} --indep-pairwise 50 5 0.2 --out after-indep-pairwise --allow-no-sex
-plink --noweb --bfile !{dataset.bed.baseName} --extract after-indep-pairwise.prune.in --maf 0.05 --make-bed --out after-correlated-remove --allow-no-sex
+plink --noweb --bfile !{dataset.bed.baseName} --indep-pairwise 50 5 0.2 --out _prune --allow-no-sex
+plink --noweb --bfile !{dataset.bed.baseName} --extract _prune.prune.in --maf 0.05 --make-bed --out intermediate --allow-no-sex
 
-python -c 'from SampleQCI_helpers import *; write_snps_autosomes_noLDRegions_noATandGC_noIndels("!{dataset.bim}", "include-variants")'
-plink --noweb --bfile after-correlated-remove --extract include-variants --make-bed --out "!{prefix}_pruned" --allow-no-sex
+python -c 'from SampleQCI_helpers import *; write_snps_autosomes_noLDRegions_noATandGC_noIndels("!{dataset.bim}", "include_variants")'
+plink --noweb --bfile intermediate --extract include_variants --make-bed --out "!{prefix}_pruned" --allow-no-sex
 '''
     }
 }

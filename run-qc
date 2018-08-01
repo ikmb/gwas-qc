@@ -232,7 +232,7 @@ sub run_snpqcii {
 
     push @cmd, '-resume';
     push @cmd, '-with-report';
-    push @cmd, $config{"snpqcii_dir"} . '/SNPQCII-report.html';
+    push @cmd, $config{"qc_dir"} . '/SNPQCII-report.html';
     push @cmd, '--trace_target';
     my $target = $tempdir . "SNPQCII-$config{collection_name}.report.tex";
     push @cmd, $target;

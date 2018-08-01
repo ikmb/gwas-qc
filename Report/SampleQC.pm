@@ -244,6 +244,7 @@ sub onekg_flashpca {
     my $tag = shift;
 
     my $basename;
+    my $alt_basename;
     my $num_pcs;
 
     open my $sh, '<', "$workdir/.command.sh" or die($!);
@@ -256,11 +257,19 @@ sub onekg_flashpca {
             next;
         }
 
-        if (/^flashpca2 -d (\d+)/) {
+        if (/flashpca2 -d (\d+) --bfile "(\S+?)"/) {
+            $alt_basename = $2;
+            $num_pcs = $1;
+            last;
+        }
+
+        if (/flashpca2 -d (\d+)/) {
             $num_pcs = $1;
             next;
         }
     }
+
+    $basename = $basename // $alt_basename;
 
     $basename .= '_' . $num_pcs . 'PC';
     my $s = '\subsubsection{PCA with merged 1000 Genomes samples}';
@@ -268,11 +277,13 @@ sub onekg_flashpca {
     $s .= "\\includegraphics[width=0.5\\textwidth,type=pdf,ext=.2PC.pdf,read=.2PC.pdf]{$workdir/$basename}";
     $s .= "\\includegraphics[width=0.5\\textwidth,type=pdf,ext=.country.2PC.pdf,read=.country.2PC.pdf]{$workdir/$basename}";
 
-    my $count_fail = `wc -l <$workdir/$basename.fail-pca-1KG-qc.txt` or die($!);
-    chomp($count_fail);
-    my $count_fail_country = `wc -l <$workdir/$basename.country.fail-pca-1KG-qc.txt` or die($!);
-    chomp($count_fail_country);
-    $s .= "\\\\The batch- and country-wise PCA yielded $count_fail and $count_fail_country outliers, respectively.";
+    if (-e "$workdir/$basename.fail-pca-1KG-qc.txt") {
+        my $count_fail = `wc -l <$workdir/$basename.fail-pca-1KG-qc.txt` or die($!);
+        chomp($count_fail);
+        my $count_fail_country = `wc -l <$workdir/$basename.country.fail-pca-1KG-qc.txt` or die($!);
+        chomp($count_fail_country);
+        $s .= "\\\\The batch- and country-wise PCA yielded $count_fail and $count_fail_country outliers, respectively.";
+    }
 
 
     return $s;
