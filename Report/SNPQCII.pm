@@ -222,5 +222,93 @@ sub draw_histograms {
     return $s;
 }
 
+sub compile_variants_exclusion {
+    my $workdir = shift;
+    my $tag = shift;
+
+    my $s = '\subsection{Final Cleaning}';
+    my $extra = '';
+    my $basename;
+    my $final_list;
+
+
+    open my $sh, '<', "$workdir/.command.sh" or die($!);
+    while(<$sh>) {
+        if (/gawk.* "(\S+).monomorphic" ".*.nearly_monomorphic" ".*.differential_missingness".*>"(\S+)"/) {
+            $basename = $1;
+            $final_list = $2;
+            next;
+        }
+
+        if (/"True" == "True"/) {
+            $extra = '(ignored in controls-only setting)';
+        }
+    }
+    close $sh;
+
+
+    my $monomorphics = `wc -l < $workdir/$basename.monomorphic`; chomp($monomorphics);
+    my $nearly_monomorphics = `wc -l < $workdir/$basename.nearly_monomorphic`; chomp($nearly_monomorphics);
+    my $diff_missingness = `wc -l < $workdir/$basename.differential_missingness`; chomp($diff_missingness);
+    my $total = `wc -l < $workdir/$final_list`; chomp($total);
+
+    $s .= "The following SNPs have been removed:\\\\[1ex]";
+    $s .= '\begin{tabular}{r|l}';
+    $s .= '\toprule{}';
+    $s .= $monomorphics . ' & Monomorphic SNPs ' . $extra . '\\\\';
+    $s .= $nearly_monomorphics . ' & Nearly monomorphic SNPs ' . $extra . '\\\\';
+    $s .= $diff_missingness . ' & SNPs with high differential missingness\\\\\\midrule';
+    $s .= $total . ' & Total unique SNPs to be removed\\\\\\bottomrule\end{tabular}\\\\[1ex]';
+
+
+    return $s;
+}
+
+sub final_cleaning {
+    my $workdir = shift;
+    my $tag = shift;
+
+
+    my $cases;
+    my $controls;
+    my $males;
+    my $females;
+    my $gt_rate;
+    my $ind_removed;
+    my $snps;
+
+    open my $log, '<', "$workdir/.command.log" or die($!);
+    while(<$log>) {
+        if (/^(\d+) individuals removed with/) {
+            $ind_removed = $1;
+            next;
+        }
+
+        if (/^Total genotyping rate in remaining individuals is ([0-9\.]+)/) {
+            $gt_rate = $1;
+            next;
+        }
+
+        if (/After filtering, (\d+) cases, (\d+) controls and 0 missing/) {
+            $cases = $1;
+            $controls = $2;
+            next;
+        }
+
+        if (/After filtering, (\d+) males, (\d+) females, and \d+ of unspecified sex/) {
+            $males = $1;
+            $females = $2;
+            next;
+        }
+
+        if (/After frequency and genotyping pruning, there are (\d+) SNPs/) {
+            $snps = $1;
+            next;
+        }
+    }
+
+    my $s = "After removing $ind_removed sample(s) because of unknown diagnoses or manual exclusion, the final dataset consists of $cases cases and $controls controls ($males males, $females females, ";
+    $s .= ($males + $females) . " in total) and $snps SNPs with a genotyping rate of $gt_rate.";
+}
 
 1

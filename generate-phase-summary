@@ -25,7 +25,7 @@ my %phase_order = (
 
     'SampleQC' => ['apply_precalc_remove_list', 'determine_miss_het', 'prune', 'pca_run', 'flashpca2_pruned_1kG','remove_bad_samples', 'draw_histograms', 'prune_related', 'prune_outliers_without_related', 'ibs_merge_and_verify_wr'],
 
-    'SNPQCII' => ['exclude_variants', 'prune', 'flashpca_pruned', 'draw_histograms_pruned']
+    'SNPQCII' => ['exclude_variants', 'prune', 'flashpca_pruned', 'draw_histograms_pruned', 'compile_variants_exclusion', 'final_cleaning']
     );
 
 my %processors = (
@@ -57,7 +57,9 @@ my %processors = (
         'exclude_variants' => \&Report::SNPQCII::exclude_variants,
         'prune' => \&Report::SNPQCII::prune,
         'flashpca_pruned' => \&Report::SNPQCII::flashpca_pruned,
-        'draw_histograms_pruned' => \&Report::SNPQCII::draw_histograms, 
+        'draw_histograms_pruned' => \&Report::SNPQCII::draw_histograms,
+        'compile_variants_exclusion' => \&Report::SNPQCII::compile_variants_exclusion,
+        'final_cleaning' => \&Report::SNPQCII::final_cleaning
     }
     
 );
