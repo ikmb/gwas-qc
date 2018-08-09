@@ -1071,5 +1071,11 @@ R --slave --args "!{ds.bim.baseName}_freq.frq" <"!{logmaf}"
 '''
 }
 
+workflow.onComplete {
+    println "Generating phase summary..."
+    def cmd = ["./generate-phase-summary", "SNPQCII", params.collection_name ?: params.disease_data_set_prefix, workflow.workDir, params.trace_target].join(' ')
+    def gensummary = ["bash", "-c", cmd].execute()
+    gensummary.waitFor()
+}
 
 

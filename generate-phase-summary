@@ -57,7 +57,7 @@ my %processors = (
         'exclude_variants' => \&Report::SNPQCII::exclude_variants,
         'prune' => \&Report::SNPQCII::prune,
         'flashpca_pruned' => \&Report::SNPQCII::flashpca_pruned,
-        'draw_histograms_pruned' => \&Report::SampleQC::draw_histograms, 
+        'draw_histograms_pruned' => \&Report::SNPQCII::draw_histograms, 
     }
     
 );

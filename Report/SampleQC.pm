@@ -239,6 +239,7 @@ sub hapmap_eigenstrat {
     return $s;
 }
 
+# Note: This function is also used from SNPQCII, with num_pcs = 1000
 sub onekg_flashpca {
     my $workdir = shift;
     my $tag = shift;
@@ -271,11 +272,19 @@ sub onekg_flashpca {
 
     $basename = $basename // $alt_basename;
 
-    $basename .= '_' . $num_pcs . 'PC';
-    my $s = '\subsubsection{PCA with merged 1000 Genomes samples}';
+    my $s;
+    my $type;
+    if( $num_pcs < 1000 ){
+        $type = "pdf";
+        $basename .= '_' . $num_pcs . 'PC';
+        $s = '\subsubsection{PCA with merged 1000 Genomes samples}';
+    } else {
+        $type = "png";
+        $s = '\subsubsection{PCA of cases and controls only}';
+    }
 
-    $s .= "\\includegraphics[width=0.5\\textwidth,type=pdf,ext=.2PC.pdf,read=.2PC.pdf]{$workdir/$basename}";
-    $s .= "\\includegraphics[width=0.5\\textwidth,type=pdf,ext=.country.2PC.pdf,read=.country.2PC.pdf]{$workdir/$basename}";
+    $s .= "\\includegraphics[width=0.5\\textwidth,type=pdf,ext=.2PC.$type,read=.2PC.$type]{$workdir/$basename}";
+    $s .= "\\includegraphics[width=0.5\\textwidth,type=pdf,ext=.country.2PC.$type,read=.country.2PC.$type]{$workdir/$basename}";
 
     if (-e "$workdir/$basename.fail-pca-1KG-qc.txt") {
         my $count_fail = `wc -l <$workdir/$basename.fail-pca-1KG-qc.txt` or die($!);
