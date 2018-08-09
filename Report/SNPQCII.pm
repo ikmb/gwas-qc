@@ -26,6 +26,7 @@ sub exclude_variants {
 }
 
 
+# Parser Regexes are different. Sample QC uses Plink 1.9, this uses 1.07
 sub prune {
     my $workdir = shift;
     my $tag = shift;
@@ -51,7 +52,7 @@ sub prune {
 
     # (s)ample and (v)ariant counts
     my $s_initial = 0;
-    my $s_missings_removed = 0; # number of removed samples
+#    my $s_missings_removed = 0; # number of removed samples
     my $s_final = 0;
 
     my $s_final_cases = 0;
@@ -74,7 +75,7 @@ sub prune {
             $rsq = $3;
         }
 
-        if (/Total genotyping rate is ([0-9\.]+)./) {
+        if (/Total genotyping rate in remaining individuals is ([0-9\.]+)./) {
             $rate_before = $1;
         }
     }
@@ -86,33 +87,34 @@ sub prune {
             $maf = $1; next;
         }
 
-        if (/^(\d+) variants loaded from/) {
+        if (/^(\d+) markers to be included from/) {
             $v_initial = $1; next;
         }
 
-        if (/^(\d+) people/) {
+        if (/^(\d+) individuals read from/) {
             $s_initial = $1; next;
         }
 
-        if (/^--extract..(\d+) variants remaining/) {
+        if (/^Before frequency and genotyping pruning, there are (\d+) SNPs/) {
             $v_pruned = $v_initial - $1; next;
         }
 
-        if (/^--remove..(\d+) people remaining/) {
-            $s_missings_removed = $s_initial - $1; next;
-        }
+#        if (/^--remove..(\d+) people remaining/) {
+ #           $s_missings_removed = $s_initial - $1; next;
+  #      }
 
-        if (/^(\d+) variants removed due to minor allele threshold/) {
+        if (/^(\d+) SNPs failed frequency test/) {
             $v_maf_removed = $1; next;
         }
 
-        if (/^(\d+) variants and (\d+) people pass filters and QC/) {
-            $s_final = $2;
+        if (/^After frequency and genotyping pruning, there are (\d+) SNPs/) {#}(\d+) variants and (\d+) people pass filters and QC/) {
+#            $s_final = $2;
             $v_after_intermediate = $1;
             next;
         }
 
-        if (/^Among remaining phenotypes, (\d+) are cases and (\d+) are controls./) {
+        if (/^After filtering, (\d+) cases, (\d+) controls and 0 missing/) {
+            $s_final = $1 + $2;
             $s_final_cases = $1;
             $s_final_controls = $2;
             next;
@@ -121,11 +123,11 @@ sub prune {
 
     open my $final_fh, '<', $workdir . "/" . $name . ".log" or die($!);
     while(<$final_fh>) {
-        if (/Total genotyping rate is ([0-9\.]+)./) {
+        if (/Total genotyping rate in remaining individuals is ([0-9\.]+)./) {
             $rate_after = $1;
         }
 
-        if (/^(\d+) variants and/) {
+        if (/^After frequency and genotyping pruning, there are (\d+) SNPs/) {
             $v_region_filtered = $v_after_intermediate - $1;
             $v_final = $1;
         }
@@ -136,7 +138,7 @@ sub prune {
     $s .= '\begin{tabularx}{\textwidth}{rrX}\toprule{}';
     $s .= 'Samples & Variants & Process and parameters\\\\\midrule{}';
     $s .= "$s_initial & $v_initial & \\emph{Initial dataset, genotyping rate $rate_before}\\\\";
-    $s .= ($s_initial - $s_missings_removed) . " & $v_initial & Samples removed with high missingness (see \\ref{sec:sampleqc-missingness})\\\\";
+#    $s .= ($s_initial - $s_missings_removed) . " & $v_initial & Samples removed with high missingness (see \\ref{sec:sampleqc-missingness})\\\\";
     # $s .= "$s_final & $v_initial & Missing-sex samples removed\\\\";
     $s .= "$s_final & " . ($v_initial - $v_pruned) . " & LD pruning (" . 'r$^2$' . "=$rsq, window size $window_size, step size $step_size)\\\\";
     $s .= "$s_final & " . ($v_initial - $v_pruned - $v_maf_removed) . " & MAF filtering (threshold $maf)\\\\";
