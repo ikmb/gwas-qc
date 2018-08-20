@@ -26,7 +26,7 @@ use Cwd;
 use strict;
 use warnings;
 
-use autodie qw(:all); # no stable signal or error handling, yet
+# use autodie qw(:all); # no stable signal or error handling, yet
 
 # Trim leading and trailing whitespace from argument
 sub trim {
@@ -129,18 +129,27 @@ sub run_rs {
     say "--------------------------------------------";
 
     # Collect batches from configuration and launch Rs.nf for each batch
-    my @batches = split (/,/, $config{"disease_names"});
+    my @batches = split (/,/, $config{"batches_names"});
+    my @batches_basenames = split (/,/, $config{"batches_basenames"});
+    my @batches_phony_names = split (/,/, $config{"batches_phony_names"});
+    my $i = 0;
     for (@batches) {
         my $batch = $_;
-        my %batchconf = parse_config($confdir . "/$_.config");
+        my $basename = $batches_basenames[$i];
+        my $phony = $batches_phony_names[$i];
+        my %batchconf = parse_config($confdir . "/$phony.config");
         mkdir $config{'rs_dir'} if !-e $config{'rs_dir'};
         my @cmd = ("nextflow");
         push @cmd, '-c';
         push @cmd, $confdir . "QC.config";
         push @cmd, '-c';
-        push @cmd, $confdir . "$batch.config";
+        push @cmd, $confdir . "$phony.config";
         push @cmd, 'run';
         push @cmd, 'Rs.nf';
+        push @cmd, '--basename';
+        push @cmd, $basename;
+        push @cmd, '--batch_name';
+        push @cmd, $batch;
         push @cmd, '-resume';
         push @cmd, '-with-report';
         push @cmd, $config{"rs_dir"} . "/Rs-$batch.exec-report.html";
@@ -152,6 +161,7 @@ sub run_rs {
         say "Processing batch $batch...";
         say "Calling @cmd";
         call_nextflow(@cmd);
+        $i++;
     }
 
     say "Stage 1 completed. Output files have been copied to " . $config{"rs_dir"} ;
@@ -247,13 +257,15 @@ sub run_snpqcii {
 
 # TODO Should do some error handling here, i.e. catch IPC exceptions. Needs IPC::System::Simple support, though
 
-run_rs;
+run_rs unless $config{'skip_rs'} == 1;
 pause if $opt_pause;
-run_snpqci;
-pause if $opt_pause;
-run_sampleqc;
-pause if $opt_pause;
-run_snpqcii;
+#run_snpqci;
+#pause if $opt_pause;
+#run_sampleqc;
+#pause if $opt_pause;
+#run_snpqcii;
+
+exit 0;
 
 my $title = $config{'collection_name'};
 $title =~ s/_/\\_/g;

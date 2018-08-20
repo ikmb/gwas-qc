@@ -7,12 +7,13 @@
 def ChipDefinitions = this.class.classLoader.parseClass(new File("config/ChipDefinitions.groovy"))
 
 // initialize configuration
+params.rs_dir = "." // Not initialized if we skipped Rs
 params.snpqci_dir = "."
 //input_basename = params.input
 hwe_template_script = file(params.hwe_template)
 
 // Lots of indirection layers require lots of backslash escaping
-individuals_annotation = file(BATCH_DIR + "/" + params.individuals_annotation)
+individuals_annotation = file(ANNOTATION_DIR + "/" + params.individuals_annotation)
 definetti_r = file(SCRIPT_DIR + "/DeFinetti_hardy.r")
 autosomes = file(ANNOTATION_DIR + "/" + params.chip_build + "/" + ChipDefinitions.Producer(params.chip_producer) + "/" + ChipDefinitions.RsAutosomes(params.chip_version))
 draw_fdr = file("bin/SNP_QCI_draw_FDR.r")
@@ -34,40 +35,57 @@ process merge_batches {
 
     //.getAbsolutePath();
     shell:
-    rsdir = file(params.rs_dir)
+//    if(params.skip_rs == 1) {
+//    	rsdir = file(".")
+//    } else {
+//	    rsdir = file(params.rs_dir)
+//	}
 '''
 #!/usr/bin/env bash
 
-IFS=','
-NAMES=($(echo "!{params.disease_names}"))
-PREFIXES=($(echo "!{params.disease_data_set_prefix_rs}"))
-BASE="!{rsdir}/${PREFIXES[0]}"
+# Rs stage is not skipped
+if [ "!{params.skip_rs}" -eq "0" ]; then
+
+    IFS=','
+    NAMES=($(echo "!{params.disease_names}"))
+    PREFIXES=($(echo "!{params.disease_data_set_prefix_rs}"))
+    BASE="!{params.rs_dir}/${PREFIXES[0]}"
 
     module load IKMB
     module load Plink/1.9
     
-       for idx in ${!PREFIXES[@]}; do
-           echo idx: $idx
-           echo name: ${NAMES[$idx]}
-           echo prefix: ${PREFIXES[$idx]}
+    for idx in ${!PREFIXES[@]}; do
+        echo idx: $idx
+        echo name: ${NAMES[$idx]}
+        echo prefix: ${PREFIXES[$idx]}
 
-           if [ "$idx" -gt 0 ]; then
-               echo -n !{rsdir}/${PREFIXES[$idx]}.bed  >>merge-list
-               echo -n " " >>merge-list
-               echo -n !{rsdir}/${PREFIXES[$idx]}.bim >>merge-list
-               echo -n " " >>merge-list
-               echo !{rsdir}/${PREFIXES[$idx]}.fam >>merge-list
-           fi
-       done
+        if [ "$idx" -gt 0 ]; then
+            echo -n !{params.rs_dir}/${PREFIXES[$idx]}.bed  >>merge-list
+            echo -n " " >>merge-list
+            echo -n !{params.rs_dir}/${PREFIXES[$idx]}.bim >>merge-list
+            echo -n " " >>merge-list
+            echo !{params.rs_dir}/${PREFIXES[$idx]}.fam >>merge-list
+        fi
+    done
 
-       if [ "${#PREFIXES[*]}" -gt 0 ]; then
-           plink --bfile $BASE --merge-list merge-list --make-bed --out "!{params.collection_name}_Rs" --allow-no-sex
-       else
-           cp $BASE.bim !{params.collection_name}_Rs.bim
-           cp $BASE.bed !{params.collection_name}_Rs.bed
-           cp $BASE.fam !{params.collection_name}_Rs.fam
-           echo "No merge perfomed, only one disease name found" >!{params.collection_name}_Rs.log
-       fi
+    if [ "${#PREFIXES[*]}" -gt 0 ]; then
+        plink --bfile $BASE --merge-list merge-list --make-bed --out "!{params.collection_name}_Rs" --allow-no-sex
+    else
+        cp $BASE.bim !{params.collection_name}_Rs.bim
+        cp $BASE.bed !{params.collection_name}_Rs.bed
+        cp $BASE.fam !{params.collection_name}_Rs.fam
+        echo "No merge perfomed, only one disease name found" >!{params.collection_name}_Rs.log
+    fi
+else
+    # Rs stage has been skipped, so copy source files into work folder
+    # Make sure to normalize Frauke's mangled rs names
+	perl -ne '@f=split(/\\s+/,$_); @s=split(/:/,$f[1]);print "$f[0] $s[0] $f[2] $f[3] $f[4] $f[5]\\n";' <"!{params.rs_dir}/!{params.disease_data_set_prefix_rs}.bim" >!{params.collection_name}_Rs.bim
+
+#    cp "!{params.rs_dir}/!{params.disease_data_set_prefix_rs}.bim" !{params.collection_name}_Rs.bim
+    cp "!{params.rs_dir}/!{params.disease_data_set_prefix_rs}.bed" !{params.collection_name}_Rs.bed
+    cp "!{params.rs_dir}/!{params.disease_data_set_prefix_rs}.fam" !{params.collection_name}_Rs.fam
+    touch !{params.collection_name}_Rs.log
+fi
 '''
 }
 
@@ -81,7 +99,7 @@ process generate_hwe_diagrams {
 
   input:
     //file plink from to_hwe_diagram
-    file autosomes
+//    file autosomes
     file definetti_r
     file merged_bim
     file merged_bed
@@ -100,9 +118,10 @@ process generate_hwe_diagrams {
 //    def basename = new File(merged_bim.toString()).getBaseName()
 """
     module load IKMB
-    module load Plink/1.7
+    module load Plink/1.9
     
-plink --noweb --bfile ${merged_bim.baseName} --hardy --out ${params.collection_name}_hardy --missing-phenotype 0 --hwe 0.0 --extract $autosomes
+# plink --noweb --bfile ${merged_bim.baseName} --hardy --out ${params.collection_name}_hardy --missing-phenotype 0 --hwe 0.0 --extract $autosomes
+plink --bfile ${merged_bim.baseName} --hardy --out ${params.collection_name}_hardy --hwe 0.0 --chr 1-22 --allow-no-sex
 R --slave --args ${params.collection_name}_hardy.hwe ${params.collection_name}_controls_DeFinetti ${params.collection_name}_cases_DeFinetti ${params.collection_name}_cases_controls_DeFinetti <$definetti_r
 """
 }
@@ -346,8 +365,9 @@ process draw_definetti_after_QCI {
 
 """
     module load IKMB
-    module load Plink/1.7
-plink --noweb --bfile "${new File(new_plink[0].toString()).getBaseName()}" --hardy --out ${prefix} --hwe 0.0 --extract "$autosomes"
+    module load Plink/1.9
+#plink --noweb --bfile "${new File(new_plink[0].toString()).getBaseName()}" --hardy --out ${prefix} --hwe 0.0 --extract "$autosomes"
+plink --noweb --bfile "${new File(new_plink[0].toString()).getBaseName()}" --hardy --out ${prefix} --hwe 0.0 --chr 1-22 --allow-no-sex
 R --slave --args ${prefix}.hwe ${prefix}_controls_DeFinetti ${prefix}_cases_DeFinetti ${prefix}_cases_controls_DeFinetti <"$definetti_r"
 """
 }

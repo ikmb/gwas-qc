@@ -11,62 +11,210 @@ input_files_flip = Channel.create()
 input_files_ann = Channel.create()
 to_flipfile = Channel.create()
 
+input_files_lift = Channel.create()
+
 // Prepare input file pairs from batches
-Channel.fromFilePairs(params.input + ".{bim,bed,fam}", size:3, flat: true).separate(input_files_flip, input_files_ann, to_flipfile) { a -> [a, a, a] }
+//Channel.fromFilePairs(params.input + ".{bim,bed,fam}", size:3, flat: true).separate(input_files_flip, input_files_ann, to_flipfile) { a -> [a, a, a] }
+
+println BATCH_DIR + "/" + params.collection_name + "/" + params.basename + ".{bim,bed,fam}"
+
+// 
 
 params.collection_name = false
 
 /*
  Transform a chip-specific annotations file into a format that is easier to process by the following stages.
  */
-process generate_annotations {
+// process generate_annotations {
+//     input:
+//     // Process results without inputs will not get cached, so force caching of results by providing a predictable dummy parameter
+//     val dummy from Channel.from(1);
+
+//     output:
+//     file 'annotations.list' into to_flipfile_ann, to_translate_ann
+
+//     def annotation_file = ANNOTATION_DIR + "/" + params.switch_to_chip_build+'/'+ChipDefinitions.Producer(params.chip_producer)+'/'+ChipDefinitions.SNPAnnotations(params.chip_version)
+
+//     tag { params.disease_data_set_prefix }
+// """
+// echo -n Generating annotations.list from ${annotation_file}
+// if [ "${params.chip_version}" == "Immunochip" ]; then
+//     echo " for Immunochip"
+//     perl -ne '@l=split(/\\s+/);print "\$l[3] \$l[4] \$l[7] \$l[8] \$l[5] \$l[1] \$l[2]\\n";' $annotation_file >annotations.list
+// else
+//     echo " for ${params.chip_version}"
+//     perl -ne '@l=split(/\\s+/);print "\$l[2] \$l[3] \$l[6] \$l[7] \$l[4] \$l[1] \$l[1]\\n";' $annotation_file >annotations.list
+// fi
+// """
+// }
+
+// BEWARE: the first item in this list seems to be a "1". I have no clue why.
+input_files_lift =  Channel.fromFilePairs(BATCH_DIR + "/" + params.batch_name + "/" + params.basename + ".{bim,bed,fam}", size:3, flat: true)
+
+process lift_genome_build {
     input:
-    // Process results without inputs will not get cached, so force caching of results by providing a predictable dummy parameter
-    val dummy from Channel.from(1);
 
+    file original from input_files_lift
+ 
     output:
-    file 'annotations.list' into to_flipfile_ann, to_translate_ann
+    file "${original[1].baseName}_lift.{bed,bim,fam}" into to_normalize_variants, to_plink_flip_bedfam
 
-    def annotation_file = ANNOTATION_DIR + "/" + params.switch_to_chip_build+'/'+ChipDefinitions.Producer(params.chip_producer)+'/'+ChipDefinitions.SNPAnnotations(params.chip_version)
+    shell:
 
-    tag { params.disease_data_set_prefix }
-"""
-echo -n Generating annotations.list from ${annotation_file}
-if [ "${params.chip_version}" == "Immunochip" ]; then
-    echo " for Immunochip"
-    perl -ne '@l=split(/\\s+/);print "\$l[3] \$l[4] \$l[7] \$l[8] \$l[5] \$l[1] \$l[2]\\n";' $annotation_file >annotations.list
+'''
+module load Plink/1.9
+
+TARGETNAME="!{original[1].baseName}_lift"
+BASENAME="!{original[1].baseName}"
+STRAND_FILE="!{params.lift_to}"
+
+
+if [ -e "$STRAND_FILE" ]; then
+    $NXF_DIR/bin/update_build_PLINK1.9.sh "$BASENAME" "$STRAND_FILE" "$TARGETNAME"
 else
-    echo " for ${params.chip_version}"
-    perl -ne '@l=split(/\\s+/);print "\$l[2] \$l[3] \$l[6] \$l[7] \$l[4] \$l[1] \$l[1]\\n";' $annotation_file >annotations.list
+    echo "No strand file specified for lifting."
+    mv "!{original[1].baseName}.bed $TARGETNAME.bed"
+    mv "!{original[1].baseName}.bim $TARGETNAME.bim"
+    mv "!{original[1].baseName}.fam $TARGETNAME.fam"
 fi
-"""
+'''
 }
 
-/*
- Generate a Plink flipfile based on annotations and strand info
- */
-process generate_flipfile {
-//    echo true
+process normalize_variant_names {
 
     input:
-    file ann from to_flipfile_ann
-    file ds from to_flipfile
+    file source from to_normalize_variants
 
     output:
     file 'flipfile' into to_plink_flip
+    file "${source[0].baseName}_updated.bim" into to_plink_flip_bim
 
-    def source = file(ANNOTATION_DIR+'/'+params.switch_to_chip_build+'/'+ChipDefinitions.Producer(params.chip_producer)+'/'+ChipDefinitions.StrandInfo(params.chip_strand_info)).toAbsolutePath()
-    tag { params.disease_data_set_prefix }
-"""
-if [ -e $source ]; then
-  echo Using ${source} as flipfile
-  cp "$source" flipfile
-else
-  echo Generating flipfile from ${ann}
-  generate_flipfile.pl "${ds[0].baseName}.bim" "$ann" >flipfile
-fi
-"""
+    shell:
+'''
+#!/usr/bin/env perl
+
+use strict;
+use warnings;
+
+use Switch;
+use DBI;
+use DBD::SQLite::Constants qw/:file_open/;
+use File::Copy;
+use Data::Dumper;
+
+my $scratch_dir = $ENV{'TMPDIR'} // '/tmp';
+
+print "Copying database to $scratch_dir}...\\n";
+copy("!{params.variant_annotation_db}", "$scratch_dir/annotation.sqlite") or die($!);
+
+my $db = DBI->connect("dbi:SQLite:dbname=$ENV{TMPDIR}/annotation.sqlite", "", "", { sqlite_open_flags => SQLITE_OPEN_READONLY });
+my $query_plus = $db->prepare('SELECT name FROM annotation WHERE chrom=?1 AND position=?2 AND ((strand="+" AND alleleA=?3 AND alleleB=?4) OR (strand="+" AND alleleB=?3 AND alleleA=?4) OR (strand="-" AND alleleA=?5 AND alleleB=?6) OR (strand="-" AND alleleB=?5 AND alleleA=?6))');
+
+my $query_minus = $db->prepare('SELECT name FROM annotation WHERE chrom=?1 AND position=?2 AND ((strand="+" AND alleleA=?5 AND alleleB=?6) OR (strand="+" AND alleleB=?5 AND alleleA=?6) OR (strand="-" AND alleleA=?3 AND alleleB=?4) OR (strand="-" AND alleleB=?3 AND alleleA=?4))');
+
+# Checks each variant against the variant annotation file, replaces variant names and generates a flip file
+my $bim = "!{source[0].baseName}.bim";
+my $new_bim = "!{source[0].baseName}_updated.bim";
+
+my $num_match = 0;
+my $num_replaced = 0;
+my $num_noname = 0;
+my $num_flip_match = 0;
+my $num_flip_replaced = 0;
+my $num_flip_noname = 0;
+my $num_mismatch = 0;
+
+sub make_complement {
+    my $orig = shift;
+    switch($orig) {
+        case 'A' { return 'T' }
+        case 'C' { return 'G' }
+        case 'G' { return 'C' }
+        case 'T' { return 'A' }
+    }
 }
+
+sub find_on_strand {
+    my $dbh = shift;
+    my $strand = shift;
+    my $pos = shift;
+    my $alla = shift;
+    my $allb = shift;
+
+    my $res = $db->execute();
+
+}
+
+open my $flip, '>', "$scratch_dir/fliplist" or die("Could not open fliplist: $!");
+open my $newbim, '>', "$scratch_dir/bim" or die("Could not open $new_bim: $!");
+open my $fh, '<', $bim or die("Could not open $bim: $!");
+while(<$fh>) {
+   chomp;
+   my ($chr, $name, $pos_cm, $pos, $alla, $allb) = split(/\\s+/, $_);
+
+   if($. % 1000 == 0) { print $. . "\\n"; }
+
+   my $result = $query_plus->execute($chr, $pos, $alla, $allb, make_complement($alla), make_complement($allb)) or die($!);
+   my $rows = $query_plus->fetchrow_arrayref();
+   if(!defined $rows) {
+       $result = $query_minus->execute($chr, $pos, $alla, $allb, make_complement($alla), make_complement($allb)) or die($!);
+       $rows = $query_minus->fetchrow_arrayref();
+
+       if(!defined $rows) { $num_mismatch++; $name = "unk_$chr:$pos"; }
+       elsif(!defined $rows->[0]) { $num_flip_noname++; $name = "$chr:$pos"; print $flip "$name\\n"; }
+       elsif($rows->[0] eq $name) { $num_flip_match++; print $flip "$name\\n"; }
+       else { $num_flip_replaced++; $name = $rows->[0]; print $flip "$name\\n"; }
+   } else {
+       if(!defined $rows->[0]) { $num_noname++; $name = "$chr:$pos"; }
+       elsif($rows->[0] eq $name) { $num_match++;}
+       else { $num_replaced++; $name = $rows->[0]; }
+   }
+
+   print $newbim "$chr\\t$name\\t$pos_cm\\t$pos\\t$alla\\t$allb\\n";
+}
+
+print "Exact matches: $num_match\\n";
+print "Variants with new Rs ID: $num_replaced\\n";
+print "Variants without known Rs IDs: $num_noname\\n";
+print "Flipped matches: $num_flip_match\\n";
+print "Flipped variants with new Rs ID: $num_flip_replaced\\n";
+print "Flipped variants without known Rs IDs: $num_flip_noname\\n";
+print "Unknown variants: $num_mismatch\\n";
+
+copy("$scratch_dir/bim", $new_bim) or die($!);
+copy("$scratch_dir/fliplist", "flipfile") or die($!);
+
+unlink("$scratch_dir/annotation.sqlite");
+unlink("$scratch_dir/bim");
+unlink("$scratch_dir/fliplist");
+'''
+}
+
+// /*
+//  Generate a Plink flipfile based on annotations and strand info
+//  */
+// process generate_flipfile {
+// //    echo true
+
+//     input:
+//     file ann from to_flipfile_ann
+//     file ds from to_flipfile
+
+//     output:
+//     file 'flipfile' into to_plink_flip
+
+//     def source = file(ANNOTATION_DIR+'/'+params.switch_to_chip_build+'/'+ChipDefinitions.Producer(params.chip_producer)+'/'+ChipDefinitions.StrandInfo(params.chip_strand_info)).toAbsolutePath()
+//     tag { params.disease_data_set_prefix }
+// """
+// if [ -e $source ]; then
+//   echo Using ${source} as flipfile
+//   cp "$source" flipfile
+// else
+//   echo Generating flipfile from ${ann}
+//   generate_flipfile.pl "${ds[0].baseName}.bim" "$ann" >flipfile
+// fi
+// """
+// }
 
 /*
  Call Plink to actually flip alleles based on strand information
@@ -75,12 +223,13 @@ process plink_flip {
 //    echo true
 
     input:
-    file pl from input_files_flip
+    file bim from to_plink_flip_bim
+    file bedfam from to_plink_flip_bedfam
     file flip  from to_plink_flip
 
     output:
-    file "${pl[1].baseName}_flipped.{bed,fam}" into to_plink_exclude_plink
-    file "${pl[1].baseName}_flipped.bim" into to_translate_bim
+    file "${bedfam[0].baseName}_flipped.{bed,fam}" into to_plink_exclude_plink
+    file "${bedfam[0].baseName}_flipped.bim" into to_exclude_bim, to_find_duplicates_nn
 
     tag { params.disease_data_set_prefix }
 
@@ -89,28 +238,28 @@ shell:
 module load IKMB
 module load Plink/1.9
 echo Flipping strands for "!{pl}"
-plink --bed "!{pl[1]}" --bim "!{pl[2]}" --fam "!{pl[3]}" --flip "!{flip}" --threads 1 --memory 6144 --make-bed --out "!{pl[1].baseName}_flipped" --allow-no-sex
+plink --bed "!{bedfam[0].baseName}.bed" --bim "!{bim}" --fam "!{bedfam[0].baseName}" --flip "!{flip}" --threads 1 --memory 6144 --make-bed --out "!{bedfam[0].baseName}_flipped" --allow-no-sex
 '''
 }
 //
-/*
- Translate Immunochop IDs to Rs names
- */
-process translate_ids {
-    input:
-    file bim from to_translate_bim
-    file ann from to_translate_ann
+// /*
+//  Translate Immunochop IDs to Rs names
+//  */
+// process translate_ids {
+//     input:
+//     file bim from to_translate_bim
+//     file ann from to_translate_ann
 
-    output:
-    file "${bim.baseName}_translated.bim" into to_find_duplicates_nn, to_exclude_bim
+//     output:
+//     file "${bim.baseName}_translated.bim" into to_find_duplicates_nn, to_exclude_bim
 
-    tag { params.disease_data_set_prefix }
+//     tag { params.disease_data_set_prefix }
 
-"""
-echo Translating SNP names for ${params.chip_version}
-translate_ichip_to_rs.pl ${params.chip_version} "$bim" "$ann" ${params.chip_build} ${params.switch_to_chip_build} >"${bim.baseName}_translated.bim"
-"""
-}
+// """
+// echo Translating SNP names for ${params.chip_version}
+// translate_ichip_to_rs.pl ${params.chip_version} "$bim" "$ann" ${params.chip_build} ${params.switch_to_chip_build} >"${bim.baseName}_translated.bim"
+// """
+// }
 
 /*
  Create a list of duplicate SNPs now that all SNPs have standardized Rs names
