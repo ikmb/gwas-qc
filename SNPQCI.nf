@@ -185,10 +185,19 @@ shell:
 R CMD Rserve --RS-socket /scratch/rserve.sock --no-save --RS-pidfile /scratch/rserve.pid
 
 # Wait for R to spawn the Rserve daemon and open its socket. Rule out race conditions with plink not finding the Rserve socket on time
+echo Waiting for Rserve to create the socket
 while [ ! -e /scratch/rserve.sock ]
 do
    sleep 0.5
 done
+
+# File is there but it does not need to be populated on slow nodes. Wait for that to happen.
+echo Waiting for Rserve to create the pid file
+while [ ! -s /scratch/rserve.pid ]
+do
+   sleep 1
+done
+
 RSERVE_PID=$(cat /scratch/rserve.pid)
 echo Rserve process spawned with pid $RSERVE_PID
 
