@@ -43,48 +43,43 @@ process merge_batches {
 '''
 #!/usr/bin/env bash
 
-# Rs stage is not skipped
-if [ "!{params.skip_rs}" -eq "0" ]; then
+IFS=','
+NAMES=($(echo "!{params.disease_names}"))
+PREFIXES=($(echo "!{params.disease_data_set_prefix_rs}"))
 
-    IFS=','
-    NAMES=($(echo "!{params.disease_names}"))
-    PREFIXES=($(echo "!{params.disease_data_set_prefix_rs}"))
-    BASE="!{params.rs_dir}/${PREFIXES[0]}"
-
-    module load IKMB
-    module load Plink/1.9
-    
-    for idx in ${!PREFIXES[@]}; do
-        echo idx: $idx
-        echo name: ${NAMES[$idx]}
-        echo prefix: ${PREFIXES[$idx]}
-
-        if [ "$idx" -gt 0 ]; then
-            echo -n !{params.rs_dir}/${PREFIXES[$idx]}.bed  >>merge-list
-            echo -n " " >>merge-list
-            echo -n !{params.rs_dir}/${PREFIXES[$idx]}.bim >>merge-list
-            echo -n " " >>merge-list
-            echo !{params.rs_dir}/${PREFIXES[$idx]}.fam >>merge-list
-        fi
-    done
-
-    if [ "${#PREFIXES[*]}" -gt 0 ]; then
-        plink --bfile $BASE --merge-list merge-list --make-bed --out "!{params.collection_name}_Rs" --allow-no-sex
-    else
-        cp $BASE.bim !{params.collection_name}_Rs.bim
-        cp $BASE.bed !{params.collection_name}_Rs.bed
-        cp $BASE.fam !{params.collection_name}_Rs.fam
-        echo "No merge perfomed, only one disease name found" >!{params.collection_name}_Rs.log
-    fi
+BASEDIR="!{params.rs_dir}"
+if [[ ${BASEDIR:0:1} == "/" ]]; then
+    echo "$BASEDIR seems to be absolute. No change necessary."
 else
-    # Rs stage has been skipped, so copy source files into work folder
-    # Make sure to normalize Frauke's mangled rs names
-	perl -ne '@f=split(/\\s+/,$_); @s=split(/:/,$f[1]);print "$f[0] $s[0] $f[2] $f[3] $f[4] $f[5]\\n";' <"!{params.rs_dir}/!{params.disease_data_set_prefix_rs}.bim" >!{params.collection_name}_Rs.bim
+    BASEDIR="$NXF_DIR/$BASEDIR"
+fi
 
-#    cp "!{params.rs_dir}/!{params.disease_data_set_prefix_rs}.bim" !{params.collection_name}_Rs.bim
-    cp "!{params.rs_dir}/!{params.disease_data_set_prefix_rs}.bed" !{params.collection_name}_Rs.bed
-    cp "!{params.rs_dir}/!{params.disease_data_set_prefix_rs}.fam" !{params.collection_name}_Rs.fam
-    touch !{params.collection_name}_Rs.log
+BASE="$BASEDIR/${PREFIXES[0]}"
+
+module load IKMB
+module load Plink/1.9
+
+for idx in ${!PREFIXES[@]}; do
+echo idx: $idx
+echo name: ${NAMES[$idx]}
+echo prefix: ${PREFIXES[$idx]}
+
+if [ "$idx" -gt 0 ]; then
+    echo -n !{params.rs_dir}/${PREFIXES[$idx]}.bed  >>merge-list
+    echo -n " " >>merge-list
+    echo -n !{params.rs_dir}/${PREFIXES[$idx]}.bim >>merge-list
+    echo -n " " >>merge-list
+    echo !{params.rs_dir}/${PREFIXES[$idx]}.fam >>merge-list
+fi
+done
+
+if [ "${#PREFIXES[*]}" -gt 1 ]; then
+plink --bfile $BASE --merge-list merge-list --make-bed --out "!{params.collection_name}_Rs" --allow-no-sex
+else
+cp $BASE.bim !{params.collection_name}_Rs.bim
+cp $BASE.bed !{params.collection_name}_Rs.bed
+cp $BASE.fam !{params.collection_name}_Rs.fam
+echo "No merge perfomed, only one disease name found" >!{params.collection_name}_Rs.log
 fi
 '''
 }
