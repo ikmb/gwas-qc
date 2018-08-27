@@ -311,11 +311,12 @@ process merge_dataset_with_hapmap {
         bim_pruned = pruned[1]
      
 
-    if (params.PCA_SNPexcludeList != "" && params.PCA_SNPexcludeList != "nofileexists") {
+    if (params.PCA_SNPexcludeList != "" && params.PCA_SNPexcludeList != "nofileexists" && params.PCA_SNPexcludeList != "nothing.txt") {
         snpexclude = BATCH_DIR + "/" + params.PCA_SNPexcludeList
         """
         module load "IKMB"
         module load "Plink/1.9"
+
         plink --bfile "${base_pruned}" --extract "${hapmap}.bim" --exclude "${snpexclude}" --make-bed --out pruned_tmp --allow-no-sex --memory ${task.memory.toMega()} 
         plink --bfile "${hapmap}" --extract "${bim_pruned}" --exclude "${snpexclude}" --make-bed --out hapmap_tmp --allow-no-sex --memory ${task.memory.toMega()} 
         plink --bfile pruned_tmp --bmerge hapmap_tmp --out ${prefix}pruned_hapmap --allow-no-sex --memory ${task.memory.toMega()} 
@@ -345,7 +346,7 @@ process pca_convert {
   file prefix+'pruned_hapmap.{eigenstratgeno,ind,snp}' into for_pca_run
 
 
-  def annotations = BATCH_DIR + "/" + params.individuals_annotation_hapmap2
+  def annotations = ANNOTATION_DIR + "/" + params.individuals_annotation_hapmap2
 
   script:
   base_pruned = pruned[0].baseName
@@ -381,7 +382,7 @@ process pca_run {
     sigma_threshold = 100.0
     draw_eigenstrat = SCRIPT_DIR + "/draw_evec_EIGENSTRAT.r"
     draw_without = SCRIPT_DIR + "/draw_evec_withoutProjection.r"
-    projection_on_populations_hapmap = BATCH_DIR + "/" + params.projection_on_populations_hapmap
+    projection_on_populations_hapmap = ANNOTATION_DIR + "/" + params.projection_on_populations_hapmap
 """
     module load "IKMB"
     module load "Plink/1.9"
@@ -407,7 +408,7 @@ process second_pca_eigenstrat {
 
     script:
     sigma_threshold = 6.0
-    projection_on_populations_controls = BATCH_DIR + "/${params.projection_on_populations_controls}"
+    projection_on_populations_controls = ANNOTATION_DIR + "/${params.projection_on_populations_controls}"
 """
 if [ "${params.program_for_second_PCA}" == "EIGENSTRAT" ]; then
   python -c 'from SampleQCI_helpers import *;  pca_run("${pruned}", ${sigma_threshold}, "${projection_on_populations_controls}", ${params.numof_pc})'
@@ -442,7 +443,7 @@ process flashpca2_pruned {
     draw_evec_FLASHPCA2 = SCRIPT_DIR + "/draw_evec_FLASHPCA2.r"
     pcaplot_1KG = SCRIPT_DIR + "/pcaplot_1KG_v2.R"
 
-    individuals_annotation = BATCH_DIR + "/" + params.individuals_annotation
+    individuals_annotation = ANNOTATION_DIR + "/" + params.individuals_annotation
 """
     module load "IKMB"
     module load "FlashPCA"
@@ -484,7 +485,7 @@ process flashpca2_pruned_1kG {
         PCA_SNPexcludeList = BATCH_DIR + "/" + params.PCA_SNPexcludeList
     }
 
-    individuals_annotation = BATCH_DIR + "/" + params.individuals_annotation
+    individuals_annotation = ANNOTATION_DIR + "/" + params.individuals_annotation
 """
     module load "IKMB"
     module load "FlashPCA"
@@ -596,7 +597,7 @@ process extract_qced_samples {
     file "${dataset[0].baseName}_annotation.txt" into for_draw_histograms_ann
 
     shell:
-    individuals_annotation = BATCH_DIR + "/${params.individuals_annotation}"
+    individuals_annotation = ANNOTATION_DIR + "/${params.individuals_annotation}"
     qced_annotations = "${dataset[0].baseName}_annotation.txt"
     newevec = "${dataset[0].baseName}.evec"
     newcountryevec = "${dataset[0].baseName}.country.evec"
@@ -699,7 +700,7 @@ process pca_without_projection {
     shell:
     kg_out = "${params.collection_name}_SampleQCI_pruned_1kG"
     kg_pca = "${kg_out}_${params.numof_pc}PC"
-    individuals_annotation = BATCH_DIR + "/${params.individuals_annotation}"
+    individuals_annotation = ANNOTATION_DIR + "/${params.individuals_annotation}"
     pcaplot_1KG = SCRIPT_DIR + "/pcaplot_1KG_v2.R"
 '''
     module load 'IKMB'
@@ -755,7 +756,7 @@ process prune_related {
     file "${dataset[0].baseName}_withoutRelatives.annotation.txt"
 
     shell:
-    individuals_annotation = BATCH_DIR + "/${params.individuals_annotation}"
+    individuals_annotation = ANNOTATION_DIR + "/${params.individuals_annotation}"
 '''
     module load "IKMB"
     module load "Plink/1.7"

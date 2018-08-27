@@ -441,7 +441,8 @@ def merge__new_plink_collection_pruned__1kG(new_plink_pruned, new_plink_pruned_1
 
     # calculate overlap in SNPs
     # remove some variants if specified in file PCA_SNPexcludeList, SNPIDs in chr:pos format required
-    if PCA_SNPexcludeList != "":
+    if os.path.isfile(PCA_SNPexcludeList):
+
         cmd = Command("plink --noweb --bfile %s.chrpos --extract %s.bim.chrpos --exclude %s.chrpos --make-bed --out %s --allow-no-sex" \
                    %(new_plink_pruned,\
                      preQCIMDS_1kG,\

@@ -677,7 +677,7 @@ process det_unknown_diagnosis {
 
     shell:
 
-    annotation = BATCH_DIR + "/${params.individuals_annotation}"
+    annotation = ANNOTATION_DIR + "/${params.individuals_annotation}"
     prefix = "${params.collection_name}_SNPQCII"
 '''
 # TODO: Might need to process "!{params.diagnoses}" into an actual list before calling
@@ -734,7 +734,7 @@ process final_cleaning {
 
     shell:
 
-    annotation = BATCH_DIR + "/${params.individuals_annotation}"
+    annotation = ANNOTATION_DIR + "/${params.individuals_annotation}"
     dataset = mapFileList(dataset_staged)
     prefix = params.disease_data_set_prefix_release
 '''

@@ -1,6 +1,6 @@
 #!/usr/bin/env perl
 
-use 5.024;
+use 5.022;
 use sort 'stable';
 
 # Append "." to include path
@@ -95,7 +95,7 @@ sub cmp_phase {
     return $a_index <=> $b_index;
 }
 
-if (@ARGV != 4) {
+if (@ARGV < 4) {
     print STDERR "Syntax: $0 <pipeline> <tag> <workdir> <target>\n";
     exit 1;
 }
@@ -105,10 +105,12 @@ my $arg_tag = shift @ARGV;
 my $arg_workdir = shift @ARGV;
 my $arg_target = shift @ARGV;
 
+my $arg_trace = shift @ARGV // 'trace.txt';
+
 my @execution_phases;
 
 # Parse trace
-open (my $trace, '<', 'trace.txt') or die($!);
+open (my $trace, '<', $arg_trace) or die($!);
 open (my $tex, '>', $arg_target) or die($!);
 
 <$trace>;

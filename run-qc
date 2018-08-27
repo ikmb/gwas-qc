@@ -88,10 +88,12 @@ my $opt_pause = 0;
 my $opt_output = "./";
 my $opt_help = 0;
 my $opt_verbose = 0;
+my $opt_force = 0;
 
 GetOptions("pause" => \$opt_pause,
            "help|?" => \$opt_help,
            "verbose|v" => \$opt_verbose,
+           "force|f" => \$opt_force,
            "output=s" => \$opt_output);
 pod2usage(1) if $opt_help;
 pod2usage(1) if @ARGV == 0;
@@ -117,7 +119,6 @@ print "Temp directory for reports: $tempdir\n" if $opt_verbose;
 mkdir $config{'snpqci_dir'} if !-e $config{'snpqci_dir'};
 mkdir $config{'sampleqci_dir'} if !-e $config{'sampleqci_dir'};
 mkdir $config{'qc_dir'} if !-e $config{'qc_dir'};
-
 
 my @trace_targets = ();
 
@@ -150,7 +151,7 @@ sub run_rs {
         push @cmd, $basename;
         push @cmd, '--batch_name';
         push @cmd, $batch;
-        push @cmd, '-resume';
+        push @cmd, '-resume' unless $opt_force == 1;
         push @cmd, '-with-report';
         push @cmd, $config{"rs_dir"} . "/Rs-$batch.exec-report.html";
         push @cmd, '--trace_target';
@@ -182,7 +183,7 @@ sub run_snpqci {
 
     push @cmd, 'run';
     push @cmd, 'SNPQCI.nf';
-    push @cmd, '-resume';
+    push @cmd, '-resume' unless $opt_force == 1;
     push @cmd, '-with-report';
     push @cmd, $config{"snpqci_dir"} . '/SNPQCI-report.html';
     push @cmd, '--trace_target';
@@ -212,7 +213,7 @@ sub run_sampleqc {
 
     push @cmd, 'run';
     push @cmd, 'SampleQCI.nf';
-    push @cmd, '-resume';
+    push @cmd, '-resume' unless $opt_force == 1;
     push @cmd, '-with-report';
     push @cmd, $config{"sampleqci_dir"} . '/SampleQC-report.html';
     push @cmd, '--trace_target';
@@ -240,7 +241,7 @@ sub run_snpqcii {
     push @cmd, 'run';
     push @cmd, 'SNPQCII.nf';
 
-    push @cmd, '-resume';
+    push @cmd, '-resume' unless $opt_force == 1;
     push @cmd, '-with-report';
     push @cmd, $config{"qc_dir"} . '/SNPQCII-report.html';
     push @cmd, '--trace_target';
@@ -259,11 +260,11 @@ sub run_snpqcii {
 
 run_rs unless $config{'skip_rs'} == 1;
 pause if $opt_pause;
-#run_snpqci;
-#pause if $opt_pause;
-#run_sampleqc;
-#pause if $opt_pause;
-#run_snpqcii;
+run_snpqci;
+pause if $opt_pause;
+run_sampleqc;
+pause if $opt_pause;
+run_snpqcii;
 
 exit 0;
 
