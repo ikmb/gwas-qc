@@ -81,6 +81,7 @@ fi
 }
 
 process normalize_variant_names {
+    publishDir params.rs_dir ?: '.', mode: 'copy'
 
     input:
     file source from to_normalize_variants
@@ -88,6 +89,7 @@ process normalize_variant_names {
     output:
     file 'flipfile' into to_plink_flip
     file "${source[0].baseName}_updated.bim" into to_plink_flip_bim
+    file "Rs-${params.collection_name}.RsTranslation.log"
 
     shell:
 '''
@@ -101,6 +103,8 @@ use DBI;
 use DBD::SQLite::Constants qw/:file_open/;
 use File::Copy;
 use Data::Dumper;
+
+my $logtarget = "Rs-!{params.collection_name}.RsTranslation.log";
 
 my $scratch_dir = $ENV{'TMPDIR'} // '/tmp';
 
@@ -145,9 +149,13 @@ sub find_on_strand {
 
 }
 
-open my $flip, '>', "$scratch_dir/fliplist" or die("Could not open fliplist: $!");
-open my $newbim, '>', "$scratch_dir/bim" or die("Could not open $new_bim: $!");
+open my $log, '>', $logtarget or die("Could not open $logtarget: $!");
+open my $flip, '>', "flipfile" or die("Could not open flipfile: $!");
+open my $newbim, '>', $new_bim or die("Could not open $new_bim: $!");
 open my $fh, '<', $bim or die("Could not open $bim: $!");
+
+print $log "OldID\tNewID\tReason\n";
+
 while(<$fh>) {
    chomp;
    my ($chr, $name, $pos_cm, $pos, $alla, $allb) = split(/\\s+/, $_);
@@ -160,14 +168,14 @@ while(<$fh>) {
        $result = $query_minus->execute($chr, $pos, $alla, $allb, make_complement($alla), make_complement($allb)) or die($!);
        $rows = $query_minus->fetchrow_arrayref();
 
-       if(!defined $rows) { $num_mismatch++; $name = "unk_$chr:$pos"; }
-       elsif(!defined $rows->[0]) { $num_flip_noname++; $name = "$chr:$pos"; print $flip "$name\\n"; }
+       if(!defined $rows) { $num_mismatch++; print $log "$name\t"; $name = "unk_$chr:$pos"; print $log "$name\tMismatch\n"; }
+       elsif(!defined $rows->[0]) { $num_flip_noname++; print $log "$name\t"; $name = "$chr:$pos"; print $log "$name\tNo_name_in_DB\n"; print $flip "$name\\n"; }
        elsif($rows->[0] eq $name) { $num_flip_match++; print $flip "$name\\n"; }
-       else { $num_flip_replaced++; $name = $rows->[0]; print $flip "$name\\n"; }
+       else { $num_flip_replaced++; print $log "$name\t"; $name = $rows->[0]; print $log "$name\tName_replaced\n"; print $flip "$name\\n"; }
    } else {
-       if(!defined $rows->[0]) { $num_noname++; $name = "$chr:$pos"; }
+       if(!defined $rows->[0]) { $num_noname++; print $log "$name\t"; $name = "$chr:$pos"; print $log "$name\tNo_name_in_DB\n";}
        elsif($rows->[0] eq $name) { $num_match++;}
-       else { $num_replaced++; $name = $rows->[0]; }
+       else { $num_replaced++; print $log "$name\t"; $name = $rows->[0]; print $log "$name\tName_replaced\n"; }
    }
 
    print $newbim "$chr\\t$name\\t$pos_cm\\t$pos\\t$alla\\t$allb\\n";
@@ -181,12 +189,12 @@ print "Flipped variants with new Rs ID: $num_flip_replaced\\n";
 print "Flipped variants without known Rs IDs: $num_flip_noname\\n";
 print "Unknown variants: $num_mismatch\\n";
 
-copy("$scratch_dir/bim", $new_bim) or die($!);
-copy("$scratch_dir/fliplist", "flipfile") or die($!);
+# copy("$scratch_dir/bim", $new_bim) or die($!);
+# copy("$scratch_dir/fliplist", "flipfile") or die($!);
 
 unlink("$scratch_dir/annotation.sqlite");
-unlink("$scratch_dir/bim");
-unlink("$scratch_dir/fliplist");
+#unlink("$scratch_dir/bim");
+#unlink("$scratch_dir/fliplist");
 '''
 }
 
