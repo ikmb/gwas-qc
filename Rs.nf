@@ -246,8 +246,8 @@ shell:
 '''
 module load IKMB
 module load Plink/1.9
-echo Flipping strands for "!{pl}"
-plink --bed "!{bedfam[0].baseName}.bed" --bim "!{bim}" --fam "!{bedfam[0].baseName}" --flip "!{flip}" --threads 1 --memory 6144 --make-bed --out "!{bedfam[0].baseName}_flipped" --allow-no-sex
+echo Flipping strands for "!{bim.baseName}"
+plink --bed "!{bedfam[0].baseName}.bed" --bim "!{bim}" --fam "!{bedfam[0].baseName}.fam" --flip "!{flip}" --threads 1 --memory 6144 --make-bed --out "!{bedfam[0].baseName}_flipped" --allow-no-sex
 '''
 }
 //
@@ -308,7 +308,7 @@ fi
  Apply an exclude list to the translated Plink data set
  */
 process plink_exclude {
-    publishDir params.output ?: '.', mode: 'copy'
+    publishDir params.rs_dir ?: '.', mode: 'copy'
 
     input:
     file exclude from to_plink_exclude_list

@@ -91,6 +91,7 @@ SampleQCI_final_wr = ["${params.sampleqci_dir}/${params.collection_name}_SampleQ
 */
 hf_test_chunk_size = 1000
 
+/*
 
 // from SNP_QCII_CON_PS_AS_CD_UC_PSC_parallel_part1.py
 process hf_test_prepare {
@@ -240,7 +241,7 @@ if [ $NAS_MERGED ne $NAS_ORIG ]; then
 fi
 '''
 }
-
+*/
 
 // see part2.py: "TODO mit jan kaessens: auskommentieren wenn nur eine kontrollgruppe"
 

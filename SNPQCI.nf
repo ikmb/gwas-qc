@@ -18,7 +18,7 @@ definetti_r = file(SCRIPT_DIR + "/DeFinetti_hardy.r")
 autosomes = file(ANNOTATION_DIR + "/" + params.chip_build + "/" + ChipDefinitions.Producer(params.chip_producer) + "/" + ChipDefinitions.RsAutosomes(params.chip_version))
 draw_fdr = file("bin/SNP_QCI_draw_FDR.r")
 
-println "Autosomes: " + ANNOTATION_DIR + "/" + params.chip_build + "/" + ChipDefinitions.Producer(params.chip_producer) + "/" + ChipDefinitions.RsAutosomes(params.chip_version)
+// println "Autosomes: " + ANNOTATION_DIR + "/" + params.chip_build + "/" + ChipDefinitions.Producer(params.chip_producer) + "/" + ChipDefinitions.RsAutosomes(params.chip_version)
 
 // set up channels
 to_calc_hwe_script = Channel.create()
@@ -124,6 +124,7 @@ R --slave --args ${params.collection_name}_hardy.hwe ${params.collection_name}_c
 /*
  Split the data set into 1000-SNP chunks so they can be evaluated in parallel.
  */
+/*
 process split_dataset {
   input:
     file input_bim from to_split_bim
@@ -132,13 +133,14 @@ process split_dataset {
     file 'chunk_*' into to_calc_hwe
 
   """
-  cut -f 2 $input_bim | split -l 1000 -a 3 -d - chunk_
+  cut -f 2 $input_bim | split -l 10000 -a 3 -d - chunk_
   """
 }
-
+*/
 /*
  Generate a HWE calculation R script to be used as a Plink slave.
  */
+/*
 process generate_hwe_script {
   input:
     file individuals_annotation
@@ -153,13 +155,15 @@ process generate_hwe_script {
   sed "s|INDIVIDUALS_ANNOTATION|!{individuals_annotation}|g" "!{hwe_template_script}" >hwe-script.r
   '''
 }
-
+*/
 /*
  Run the HWE calculation R script on every 1000-SNP chunk
  */
+/*
 process calculate_hwe {
   // Should have been zero, but killall -q returns 1 if it didn't find anything
-  validExitStatus 0,1
+  validExitStatus 0
+  errorStrategy 'retry'
   input:
     set file(chunk), file('hwe-script.r') from to_calc_hwe.flatten().combine(to_calc_hwe_script)
     file input_bim from to_hwe_bim
@@ -181,44 +185,56 @@ shell:
     module load IKMB
     module load Plink/1.9
     
-# Start Rserve process in background. Keep in mind that --RS-pidfile is an undocumented feature that writes the PID after daemonizing (that is, not the R pid but the Rserve pid) into the specified file. It might be changed in the future
-R CMD Rserve --RS-socket /scratch/rserve.sock --no-save --RS-pidfile /scratch/rserve.pid
+RETRY=1
+while [ $RETRY -eq 1 ]; do
+	rm -f /scratch/rserve.sock /scratch/rserve.pid "!{chunk}-out.auto.R"
+	
+	# Start Rserve process in background. Keep in mind that --RS-pidfile is an undocumented feature that writes the PID after daemonizing (that is, not the R pid but the Rserve pid) into the specified file. It might be changed in the future
+	R CMD Rserve --RS-socket /scratch/rserve.sock --no-save --RS-pidfile /scratch/rserve.pid
 
-# Wait for R to spawn the Rserve daemon and open its socket. Rule out race conditions with plink not finding the Rserve socket on time
-echo Waiting for Rserve to create the socket
-while [ ! -e /scratch/rserve.sock ]
-do
-   sleep 0.5
+	# Wait for R to spawn the Rserve daemon and open its socket. Rule out race conditions with plink not finding the Rserve socket on time
+	echo Waiting for Rserve to create the socket
+	while [ ! -e /scratch/rserve.sock ]
+	do
+	   sleep 0.5
+	done
+
+	# File is there but it does not need to be populated on slow nodes. Wait for that to happen.
+	echo Waiting for Rserve to create the pid file
+	while [ ! -s /scratch/rserve.pid ]
+	do
+	   sleep 1
+	done
+
+	RSERVE_PID=$(cat /scratch/rserve.pid)
+	echo Rserve process spawned with pid $RSERVE_PID
+
+	# Cwd to the staging directory where the scripts and chunks are stored
+	THEPWD=$(pwd)
+	echo "setwd('$THEPWD')" >hwe-script-local.r
+	cat hwe-script.r >>hwe-script-local.r
+	plink --bfile "!{new File(input_bim.toString()).getBaseName()}" --R-socket /scratch/rserve.sock --R hwe-script-local.r --threads 1 --memory 512 --allow-no-sex --extract !{chunk} --out !{chunk}-out
+	sleep 1
+
+	RETRY=0
+	kill $RSERVE_PID || {
+		echo "Rserve/PLINK failed. Retrying."
+		rm -f /scratch/rserve.sock /scratch/rserve.pid "!{chunk}-out.auto.R"
+		RETRY=1
+	}
+
+	if [ ! -e "!{chunk}-out.auto.R" ]; then
+		RETRY=1
+	fi
 done
-
-# File is there but it does not need to be populated on slow nodes. Wait for that to happen.
-echo Waiting for Rserve to create the pid file
-while [ ! -s /scratch/rserve.pid ]
-do
-   sleep 1
-done
-
-RSERVE_PID=$(cat /scratch/rserve.pid)
-echo Rserve process spawned with pid $RSERVE_PID
-
-# Cwd to the staging directory where the scripts and chunks are stored
-THEPWD=$(pwd)
-echo "setwd('$THEPWD')" >hwe-script-local.r
-cat hwe-script.r >>hwe-script-local.r
-plink --bfile "!{new File(input_bim.toString()).getBaseName()}" --R-socket /scratch/rserve.sock --R hwe-script-local.r --threads 1 --memory 512 --allow-no-sex --extract !{chunk} --out !{chunk}-out
-sleep 1
-if [ -e /scratch/rserve.sock ]; then
-   echo Killing Rserve with pid $RSERVE_PID
-   kill $RSERVE_PID
-else
-   echo Rserve died on its own
-fi
 '''
 }
+*/
 
 /*
  Merge all chunked HWE tables into a single file and screen for obvious errors (i.e. N/A HWE values or wrong SNP counts)
  */
+/*
 process merge_and_verify_chunked_hwe {
     input:
     file 'chunk' from from_calc_hwe.collect()
@@ -251,6 +267,7 @@ then
 fi
 '''
 }
+*/
 
 /*
 Make a lists of variants that
@@ -259,6 +276,7 @@ Make a lists of variants that
 
 Additionally, FDR values are ploted for both lists
 */
+/*
 process exclude_lists_for_failed_hwe {
 
     publishDir params.snpqci_dir ?: '.', mode: 'copy'
@@ -277,6 +295,18 @@ process exclude_lists_for_failed_hwe {
 //    script:
 """
 SNPQCI_fdr_filter.py "$hwe_result" "$individuals_annotation" "$draw_fdr" ${params.collection_name}_exclude-whole-collection ${params.collection_name}_exclude-per-batch ${params.FDR_index_remove_variants}
+"""
+}
+*/
+
+process dummy_hwe_replacement {
+output:
+    file "${params.collection_name}_exclude-whole-collection" into excludes_whole
+    file "${params.collection_name}_exclude-per-batch" into excludes_perbatch
+script:
+"""
+touch "${params.collection_name}_exclude-whole-collection"
+touch "${params.collection_name}_exclude-per-batch"
 """
 }
 
