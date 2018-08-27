@@ -52,6 +52,7 @@ params.collection_name = false
 input_files_lift =  Channel.fromFilePairs(BATCH_DIR + "/" + params.batch_name + "/" + params.basename + ".{bim,bed,fam}", size:3, flat: true)
 
 process lift_genome_build {
+
     input:
 
     file original from input_files_lift

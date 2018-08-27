@@ -9,9 +9,11 @@ sub plink_flip {
     my $tag = shift;
 
     my $s = "\\section{$tag}";
-    my $prefix = read_file("$workdir/input.1");
-    my $logfile = $workdir . '/' . $prefix . '_flipped.log';
-
+#    my $prefix
+#    if (-e "$workdir/input.1") {
+#       $prefix = read_file("$workdir/input.1");
+#    my $logfile = $workdir . '/' . $prefix . '_flipped.log';
+	my $logfile = $workdir . '/.command.log';
     open my $log, '<', $logfile or die("Could not open $logfile: " . $!);
 
     my $variants = 0;
@@ -40,7 +42,8 @@ sub plink_exclude {
     my $workdir = shift;
     my $tag = shift;
 
-    my $logfile = $workdir . '/' .  $tag . '_rs.log';
+#    my $logfile = $workdir . '/' .  $tag . '_rs.log';
+    my $logfile = $workdir . '/.command.log';
     open my $log, '<', $logfile or die("Could not open $logfile: " . $!);
 
     my $variants = 0;
