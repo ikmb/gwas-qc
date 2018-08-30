@@ -154,6 +154,8 @@ sub run_rs {
         push @cmd, '-resume' unless $opt_force == 1;
         push @cmd, '-with-report';
         push @cmd, $config{"rs_dir"} . "/Rs-$batch.exec-report.html";
+        push @cmd, '-with-dag';
+        push @cmd, 'Rs.pdf';
         push @cmd, '--trace_target';
         my $target = $tempdir . "Rs-$batch.report.tex";
         push @cmd, $target;
@@ -186,6 +188,8 @@ sub run_snpqci {
     push @cmd, '-resume' unless $opt_force == 1;
     push @cmd, '-with-report';
     push @cmd, $config{"snpqci_dir"} . '/SNPQCI-report.html';
+    push @cmd, '-with-dag';
+    push @cmd, 'snpqci.pdf';
     push @cmd, '--trace_target';
     my $target = $tempdir . "SNPQCI-$config{collection_name}.report.tex";
     push @cmd, $target;
@@ -216,6 +220,8 @@ sub run_sampleqc {
     push @cmd, '-resume' unless $opt_force == 1;
     push @cmd, '-with-report';
     push @cmd, $config{"sampleqci_dir"} . '/SampleQC-report.html';
+    push @cmd, '-with-dag';
+    push @cmd, 'SampleQC.pdf';
     push @cmd, '--trace_target';
     my $target = $tempdir . "SampleQC-$config{collection_name}.report.tex";
     push @cmd, $target;
@@ -244,6 +250,8 @@ sub run_snpqcii {
     push @cmd, '-resume' unless $opt_force == 1;
     push @cmd, '-with-report';
     push @cmd, $config{"qc_dir"} . '/SNPQCII-report.html';
+    push @cmd, '-with-dag';
+    push @cmd, 'SNPQCII.pdf';
     push @cmd, '--trace_target';
     my $target = $tempdir . "SNPQCII-$config{collection_name}.report.tex";
     push @cmd, $target;
@@ -258,7 +266,7 @@ sub run_snpqcii {
 
 # TODO Should do some error handling here, i.e. catch IPC exceptions. Needs IPC::System::Simple support, though
 
-run_rs unless $config{'skip_rs'} == 1;
+run_rs;
 pause if $opt_pause;
 run_snpqci;
 pause if $opt_pause;

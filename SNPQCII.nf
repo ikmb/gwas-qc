@@ -83,6 +83,11 @@ SampleQCI_final_wr = ["${params.sampleqci_dir}/${params.collection_name}_SampleQ
                       "${params.sampleqci_dir}/${params.collection_name}_SampleQCI_final_withoutRelatives.annotation.txt", 
                       "${params.sampleqci_dir}/${params.collection_name}_SampleQCI_final_withoutRelatives.pca.evec" ].collect { fileExists(file(it)) }
 
+for_prune = Channel.create()
+for_flashpca_1kg_final = Channel.create()
+for_final_sample_cleaning_outliers = Channel.create()
+for_final_sample_cleaning = Channel.create()
+
 /*
  The number of markers that the HF test will be performed on at once.
  If you use 100 markers out of 10,000 markers, this will queue up
@@ -272,10 +277,8 @@ process exclude_variants {
 
     output:
 
-    file "*SNPQCII_final{.bed,.bim,.fam,.log,_flag.relatives.txt,_annotation.txt}" into for_prune,for_flashpca_pruned_final,for_draw_histograms_final,for_twstats_final,for_final_cleaning,for_flashpca_1kg_final, for_det_monomorphics, for_det_unknown_diagnosis
+    file "*SNPQCII_final{.bed,.bim,.fam,.log,_flag.relatives.txt,_annotation.txt}" into for_final_cleaning, for_det_monomorphics, for_det_unknown_diagnosis
     file "*test_missingness.*" into for_det_diff_missingness
-
-
 
     shell:
 
@@ -331,154 +334,6 @@ plink --noweb --bfile intermediate --extract include_variants --make-bed --out "
     }
 }
 
-// TODO: generates a very long header
-process flashpca_pruned {
-    publishDir params.qc_dir ?: '.', mode: 'copy', overwrite: true
-
-    input:
-
-    file dataset_staged from for_flashpca_pruned // output from prune
-    file dataset_final_staged from for_flashpca_pruned_final // unpruned
-
-    output:
-
-    file "*.{evec,eval}" into for_draw_histograms_pruned_pcaresults, for_twstats_pcaresults
-    file "*.{pdf,png}"
-
-
-
-    shell:
-
-    dataset = mapFileList(dataset_staged)
-    dataset_final = mapFileList(dataset_final_staged)
-
-    prefix = params.collection_name + "_SNPQCII_final_pruned"
-//    evec = prefix + "_" + params.numof_pc + "PC.pca.evec"
-//    eval = prefix + "_" + params.numof_pc + "PC.eval"
-    annotation = dataset_final.annotation
-
-    draw_evec_FLASHPCA2 = SCRIPT_DIR + "/draw_evec_FLASHPCA2.r"
-
-//    template 'run_flashpca.sh'
-
-'''
-    module load "IKMB"
-    module load "FlashPCA/2.0"
-    module load "Eigensoft/4.2"
-echo Dataset for flashpca: !{dataset}
-    flashpca2 -d 1000 --bfile "!{dataset.bed.baseName}" \
-    --outval !{prefix}_eigenvalues_flashpca2 \
-    --outvec !{prefix}_eigenvectors_flashpca2 \
-    --outpc  !{prefix}_pcs_flashpca2 \
-    --numthreads !{task.cpus} \
-    --outload !{prefix}_loadings_flashpca2 \
-    --outmeansd !{prefix}_meansfd_flashpca2 \
-    --memory !{task.memory.toMega()}
-
-
-echo Adding batch info | ts
-python -c 'from SampleQCI_helpers import *; addphenoinfo_10PCs("!{prefix}_pcs_flashpca2", "!{prefix}_eigenvalues_flashpca2", "!{prefix}.pca.evec", "!{prefix}.eval", "!{annotation}", "!{params.preQCIMDS_1kG_sample}")'
-
-echo Drawing FLASHPCA2 eigenvectors for set with batch info | ts
-R --slave --args "!{dataset.bed.baseName}" "!{params.preQCIMDS_1kG_sample}" <"!{draw_evec_FLASHPCA2}"
-
-echo Adding country info | ts
-python -c 'from SampleQCI_helpers import *; addcountryinfo_10PCs("!{prefix}_pcs_flashpca2", "!{prefix}_eigenvalues_flashpca2", "!{prefix}.country.pca.evec", "!{prefix}.country.eval", "!{annotation}", "!{params.preQCIMDS_1kG_sample}")'
-
-echo Drawing FLASHPCA2 eigenvectors for set with country info | ts
-R --slave --args "!{dataset.bed.baseName}.country" "!{params.preQCIMDS_1kG_sample}" <"!{draw_evec_FLASHPCA2}"
-'''
-}
-
-
-process draw_histograms_pruned {
-    publishDir params.qc_dir ?: '.', mode: 'copy', overwrite: true
-
-    input:
-
-    file dataset_staged from for_draw_histograms_pruned
-    file flashpca_results_staged from for_draw_histograms_pruned_pcaresults
-    file dataset_final_staged from for_draw_histograms_final
-
-    output:
-
-    file "*.png"
-
-    shell:
-
-    dataset = mapFileList(dataset_staged)
-    pca = mapFileList(flashpca_results_staged)
-    dataset_final = mapFileList(dataset_final_staged)
-    annotation = dataset_final.annotation
-    histos_con_flashpca = SCRIPT_DIR + "/draw_histos_CON_CASE_FLASHPCA2.r"
-    histos_all_flashpca = SCRIPT_DIR + "/draw_histos_CON_PS_AS_CD_UC_PSC_FLASHPCA2.r"
-    histos_con_country_flashpca = SCRIPT_DIR + "/draw_histos_CON_CASE_FLASHPCA2_country.r"
-
-'''
-# Currently, these R scripts expect the evec files to end in ".pca.evec"
-cp !{pca.evec} !{pca.evec}.pca.evec
-cp !{pca.country_evec} !{pca.country_evec}.pca.evec
-
-if [ "!{params.hf_test_CON_only}" == "True" ]; then
-    R --slave --args !{pca.evec} !{annotation} < !{histos_con_flashpca}
-    R --slave --args !{pca.country_evec} !{annotation} < !{histos_con_country_flashpca}
-else
-    R --slave --args !{pca.evec} !{annotation} < !{histos_con_flashpca}
-    R --slave --args !{pca.country_evec} !{annotation} < !{histos_all_flashpca}
-fi
-'''
-}
-
-process tracy_widom_stats {
-    publishDir params.qc_dir ?: '.', mode: 'copy', overwrite: true
-
-
-    input:
-
-    file dataset_final_staged from for_twstats_final
-    file dataset_pruned_staged from for_twstats_pruned
-    file pca_staged from for_twstats_pcaresults
-
-    output:
-
-    file "*.tracy_widom"
-
-    shell:
-
-    dataset = mapFileList(dataset_pruned_staged)
-    annotation = mapFileList(dataset_final_staged).annotation
-    pca = mapFileList(pca_staged)
-
-    //    template "run_tracy_widom_stats.sh"
-    '''
-    module load 'IKMB'
-    module load 'Eigensoft/4.2'
-NUM_CASES=$(grep -P 'After.*\\d+.cases' !{dataset.log} | cut -d' ' -f3)
-NUM_CONTROLS=$(grep -P 'After .*\\d+.controls' !{dataset.log} | cut -d' ' -f5)
-echo Cases: $NUM_CASES, controls: $NUM_CONTROLS
-NUM_SAMPLES=$(($NUM_CASES + $NUM_CONTROLS))
-NUM_SNPS=$(grep -P 'After.*\\d+.SNPs' !{dataset.log} | cut -d' ' -f8)
-echo Samples: $NUM_SAMPLES, markers: $NUM_SNPS
-
-head -n 1000 !{pca.eval} >eval.tw
-
-if [ "!{params.projection_on_populations_CON_only}" == "True" ]; then
-    if [ "$NUM_CONTROLS" -gt "$NUM_SNPS" ]; then
-        let NUM_CONTROLS--
-        twstats -t !{params.twtable} -i eval.tw -o !{dataset.bed.baseName}.eval.tracy_widom -n "$NUM_CONTROLS"
-    else
-        twstats -t !{params.twtable} -i eval.tw -o !{dataset.bed.baseName}.eval.tracy_widom
-    fi
-else
-    if [ "$NUM_SAMPLES" -gt "$NUM_SNPS" ]; then
-        let NUM_SAMPLES--
-        twstats -t !{params.twtable} -i eval.tw -o !{dataset.bed.baseName}.eval.tracy_widom -n "$NUM_SAMPLES"
-    else
-        twstats -t !{params.twtable} -i eval.tw -o !{dataset.bed.baseName}.eval.tracy_widom
-    fi
-fi
-'''
-}
 
 
 process merge_pruned_with_1kg {
@@ -489,7 +344,7 @@ process merge_pruned_with_1kg {
 
     output:
 
-    file "*_1kG.{bed,bim,fam,log}" into for_flashpca_1kg_merged
+    file "*_1kG.{bed,bim,fam,log}" into for_flashpca_1kg_merged,for_pca_plot_1KG_frauke
 
 
 
@@ -520,7 +375,7 @@ process flashpca_1kg {
 
     output:
 
-    file "*.{evec,eval}" into for_pca_plot_1kg_pcaresults
+    file "*.{evec,eval}" into for_pca_plot_1kg_pcaresults, for_pca_plot_1KG_frauke_evec
 
 
 
@@ -538,7 +393,7 @@ process flashpca_1kg {
         module load "IKMB"
     module load "FlashPCA/2.0"
     module load "Eigensoft/4.2"
-flashpca2 -d 1000 --bfile "!{dataset.bed.baseName}" \
+flashpca2 -d 10 --bfile "!{dataset.bed.baseName}" \
     --outval !{prefix}_eigenvalues_flashpca2 \
     --outvec !{prefix}_eigenvectors_flashpca2 \
     --outpc  !{prefix}_pcs_flashpca2 \
@@ -563,6 +418,41 @@ R --slave --args "!{dataset.bed.baseName}.country" "!{params.preQCIMDS_1kG_sampl
 '''
 }
 
+process pca_plot_1kg_frauke {
+    publishDir params.qc_dir ?: '.', mode: 'copy', overwrite: true
+    input:
+    file dataset_staged from for_pca_plot_1KG_frauke
+    file pcaresults_staged from for_pca_plot_1KG_frauke_evec
+
+    output:
+    file "*.pdf"
+    file "outliers" into for_final_sample_cleaning_outliers
+
+    shell:
+    dataset = mapFileList(dataset_staged)
+    // pcaresults = mapFileList(pcaresults_staged)
+    plink_pca_1kG = mapFileList(pcaresults_staged).eval.baseName
+    pcaplot_1KG = NXF_DIR + "/bin/pcaplot_1KG.R"
+'''
+# Rscript $NXF_DIR/bin/pcaplot_1KG.R "!{dataset.bim.baseName}" "!{params.numof_pc}" "!{params.preQCIMDS_1kG_sample}"
+
+echo Drawing FLASHPCA2 eigenvectors for set with batch info
+echo Calling R --slave --args "!{plink_pca_1kG}" "!{params.preQCIMDS_1kG_sample}"  lt "!{pcaplot_1KG}"
+# R --slave --args "!{plink_pca_1kG}" "!{params.preQCIMDS_1kG_sample}" <"!{pcaplot_1KG}"
+
+Rscript "!{pcaplot_1KG}" "!{plink_pca_1kG}" 5 "!{params.preQCIMDS_1kG_sample}"
+mv fail-pca-1KG-qc.txt fail-pca-1KG-qc.txt-batch
+
+echo Drawing FLASHPCA2 eigenvectors for set with country info
+echo Calling R --slave --args "!{plink_pca_1kG}.country" "!{params.preQCIMDS_1kG_sample}" lt "!{pcaplot_1KG}"
+# R --slave --args "!{plink_pca_1kG}.country" "!{params.preQCIMDS_1kG_sample}" <"!{pcaplot_1KG}"
+Rscript "!{pcaplot_1KG}" "!{plink_pca_1kG}.country" 5 "!{params.preQCIMDS_1kG_sample}"
+mv fail-pca-1KG-qc.txt  fail-pca-1KG-qc.txt-country
+
+cat fail-pca-1KG-qc.txt-batch fail-pca-1KG-qc.txt-country | sort | uniq >outliers
+'''
+}
+/*
 process pca_plot_1kg {
     publishDir params.qc_dir ?: '.', mode: 'copy', overwrite: true
     input:
@@ -577,7 +467,7 @@ process pca_plot_1kg {
     shell:
 
     plink_pca_1kG = mapFileList(pcaresults_staged).eval.baseName
-    pcaplot_1KG = SCRIPT_DIR + "/pcaplot_1KG_v2.R"
+    pcaplot_1KG = NXF_DIR + "/bin/pcaplot_1KG_v2.R"
 '''
 echo Drawing FLASHPCA2 eigenvectors for set with batch info
 echo Calling R --slave --args "!{plink_pca_1kG}" "!{params.preQCIMDS_1kG_sample}"  lt "!{pcaplot_1KG}"
@@ -588,6 +478,7 @@ echo Calling R --slave --args "!{plink_pca_1kG}.country" "!{params.preQCIMDS_1kG
 R --slave --args "!{plink_pca_1kG}.country" "!{params.preQCIMDS_1kG_sample}" <"!{pcaplot_1KG}"
 '''
 }
+*/
 
 // part 3 begins here
 
@@ -717,21 +608,21 @@ fi
 '''
 }
 
-process final_cleaning {
+process final_snp_cleaning {
     publishDir params.qc_dir ?: '.', mode: 'copy', overwrite: true
     input:
 
+    // from diff_missingness/det_monomorphics/det_diagnoses to prune/1kg.
     file dataset_staged from for_final_cleaning
     file individuals from for_final_cleaning_individuals
     file variants from for_final_cleaning_variants
 
-
-
-
     output:
 
-    file "${params.disease_data_set_prefix_release}{.bed,.bim,.fam,.log,_annotation.txt,_flag.relatives.txt}" into for_snprelate_prune,for_twstats_final_pruned_ann,for_draw_final_pca_histograms_ds,for_plot_maf,for_eigenstrat_convert_ann,for_snprelate_ann,for_twstats_final_pruned_eigenstrat_ann
+//    file "${params.disease_data_set_prefix_release}{.bed,.bim,.fam,.log,_annotation.txt,_flag.relatives.txt}" into for_snprelate_prune,for_twstats_final_pruned_ann,for_draw_final_pca_histograms_ds,for_plot_maf,for_eigenstrat_convert_ann,for_snprelate_ann,for_twstats_final_pruned_eigenstrat_ann
 
+    file "${params.disease_data_set_prefix_release}{.bed,.bim,.fam,.log,_annotation.txt,_flag.relatives.txt}" into for_prune, for_flashpca_1kg_final, for_final_sample_cleaning
+    
     shell:
 
     annotation = ANNOTATION_DIR + "/${params.individuals_annotation}"
@@ -740,13 +631,52 @@ process final_cleaning {
 '''
     module load "IKMB"
     module load "Plink/1.7" 
+
+# Remove sample and SNP outliers
 plink --noweb --bfile "!{dataset.bed.baseName}" --remove "!{individuals}" --exclude "!{variants}" --make-bed --out "!{prefix}" --allow-no-sex
 
+# Fix annotations
 python -c 'from SNPQC_helpers import *; extract_QCsamples_annotationfile_relativesfile( \
     fam="!{prefix}.fam", individuals_annotation_QCed="!{prefix}_annotation.txt", \
     related_samples_file="!{params.collection_name}_SNPQCII_final_flag.relatives.txt", \
     related_samples_file_QCed="!{prefix}_flag.relatives.txt", \
     individuals_annotation="!{annotation}", \
+    diagnoses="!{params.diagnoses}")'
+
+touch outliers
+
+'''
+}
+
+
+process final_cleaning {
+    publishDir params.qc_dir ?: '.', mode: 'copy', overwrite: true
+    input:
+
+    // from Frauke's PCA outlier detection
+    file sample_outliers from for_final_sample_cleaning_outliers
+    file dataset_staged from for_final_sample_cleaning
+
+    output:
+
+    file "${params.disease_data_set_prefix_release}_final{.bed,.bim,.fam,.log,_annotation.txt,_flag.relatives.txt}" into for_snprelate_prune,for_twstats_final_pruned_ann,for_draw_final_pca_histograms_ds,for_plot_maf,for_eigenstrat_convert_ann,for_snprelate_ann,for_twstats_final_pruned_eigenstrat_ann
+shell:
+    dataset = mapFileList(dataset_staged)
+    prefix = params.disease_data_set_prefix_release
+
+'''
+module load "IKMB"
+module load "Plink/1.9"
+
+# Remove sample outliers
+plink --bfile "!{dataset.bed.baseName}" --remove "!{sample_outliers}" --make-bed --out "!{prefix}_final" --allow-no-sex
+
+# Fix annotations
+python -c 'from SNPQC_helpers import *; extract_QCsamples_annotationfile_relativesfile( \
+    fam="!{prefix}_final.fam", individuals_annotation_QCed="!{prefix}_final_annotation.txt", \
+    related_samples_file="!{dataset.relatives}", \
+    related_samples_file_QCed="!{prefix}_final_flag.relatives.txt", \
+    individuals_annotation="!{dataset.annotation}", \
     diagnoses="!{params.diagnoses}")'
 '''
 }

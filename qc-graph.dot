@@ -18,27 +18,35 @@ digraph {
 
   {
     # process names
-    rs_clean_namesa [label="Clean SNP IDs"]
+    rs_clean_namesa [label="Lift genome build"]
+    rs_norm_variantsa [label="Normalize variant names"]
+    rs_flipa [label="Flip variants"]
     rs_duplicatesa [label="Remove duplicates"]
-    rs_clean_namesb [label="Clean SNP IDs"]
+    
+    rs_clean_namesb [label="Lift genome build"]
+    rs_norm_variantsb [label="Normalize variant names"]
+    rs_flipb [label="Flip variants"]
     rs_duplicatesb [label="Remove duplicates"]
-    rs_clean_namesc [label="Clean SNP IDs"]
+    
+    rs_clean_namesc [label="Lift genome build"]
+    rs_norm_variantsc [label="Normalize variant names"]
+    rs_flipc [label="Flip variants"]
     rs_duplicatesc [label="Remove duplicates"]
   }
 
 
   subgraph cluster_1 {
-    rs_clean_namesa -> rs_duplicatesa;
+    rs_clean_namesa -> rs_norm_variantsa -> rs_flipa -> rs_duplicatesa;
     label="Rs Phase";
   }
 
   subgraph cluster_2 {
-    rs_clean_namesb -> rs_duplicatesb;
+    rs_clean_namesb -> rs_norm_variantsb -> rs_flipb -> rs_duplicatesb;
     label="Rs Phase";
   }
 
   subgraph cluster_3 {
-    rs_clean_namesc -> rs_duplicatesc;
+    rs_clean_namesc -> rs_norm_variantsc -> rs_flipc -> rs_duplicatesc;
     label="Rs Phase";
   }
 
@@ -62,11 +70,11 @@ digraph {
     snpqci_remove[label="Remove bad SNPs"];
 
     "Merge batches" -> after_QCI_merge;
-    after_QCI_merge -> {"Filter HWE" "Filter Missingness" "Filter Heterozygosity"};
+    after_QCI_merge -> {"Filter HWE" "Filter Missingness" "Filter Missingness batch-wise" "Draw DeFinetti Diagrams"};
 
     "Filter HWE" -> snpqci_remove [label="Outliers"];
     "Filter Missingness" -> snpqci_remove [label="Outliers"];
-    "Filter Heterozygosity" -> snpqci_remove [label="Outliers"];
+    "Filter Missingness batch-wise" -> snpqci_remove [label="Outliers"];
     after_QCI_merge -> snpqci_remove [color=blue,label="Dataset"];
 
   }
@@ -101,8 +109,10 @@ digraph {
 
     "Merge with 1kG" -> "FlashPCA w/o projection";
 
-    "Detect (related) duplicates through IBD/IBS" -> "Prune related" [label="Duplicates"];
-    sampleqci_miss_het -> "Prune related";
+    sampleqc_remove_bad -> "Remove related";
+    
+    "Detect (related) duplicates through IBD/IBS" -> "Remove related" [label="Related samples"];
+    
   }
 
   snpqci_remove -> after_QCI;
@@ -111,21 +121,23 @@ digraph {
 
   "Update annotations" -> SampleQC_final;
   
-  "Prune related" -> SampleQC_final_wr;
+  "Remove related" -> SampleQC_final_wr;
+  SampleQC_final_wr -> "HF test";
+  
   sampleqc_remove_bad -> SampleQC_final [color=blue];
 
 
   subgraph cluster_snpqcii {
     label="SNP QC II";
-    "Remove HF test outliers";
+    "HF test";
     qc2_prune [label="Prune individuals by LD, Missingness and regions"];
     qc2_flashpca_prune [label="FlashPCA"];
     qc2_tracy_widom [label="Tracy Widom Stats"];
     qc2_merge_1kg [label="Merge with 1kG"];
     qc2_1kg_flashpca [label="FlashPCA"];
 
-
-    "Remove HF test outliers" -> qc2_prune;
+    SampleQC_final -> qc2_prune;
+    "HF test" -> "Remove HF test outliers" -> qc2_prune [label="Outliers"];
     qc2_prune -> qc2_flashpca_prune -> "Draw Histograms and PCs";
     qc2_prune -> qc2_merge_1kg -> qc2_1kg_flashpca;
 

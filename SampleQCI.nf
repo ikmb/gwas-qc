@@ -538,7 +538,7 @@ process remove_bad_samples {
     publishDir params.sampleqci_dir ?: '.', mode: 'copy'
 
     input:
-    file pruned from for_remove_bad_samples
+    file pruned from for_remove_bad_samples // TODO: naming issue. These are original files from SNPQCI, not pruned files.
     file het_outliers from for_remove_bad_samples_het
     file miss_outliers from for_remove_bad_samples_miss
     file duplicates from for_remove_bad_samples_duplicates
