@@ -266,12 +266,12 @@ sub run_snpqcii {
 
 # TODO Should do some error handling here, i.e. catch IPC exceptions. Needs IPC::System::Simple support, though
 
-run_rs;
-pause if $opt_pause;
-run_snpqci;
-pause if $opt_pause;
-run_sampleqc;
-pause if $opt_pause;
+#run_rs;
+#pause if $opt_pause;
+#run_snpqci;
+#pause if $opt_pause;
+#run_sampleqc;
+#pause if $opt_pause;
 run_snpqcii;
 
 exit 0;

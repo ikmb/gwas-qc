@@ -684,16 +684,13 @@ python -c 'from SNPQC_helpers import *; extract_QCsamples_annotationfile_relativ
 // part 4
 // TODO: nochmal überlegen, ob diese ganze SNPRelate-Sache überhaupt noch sinnvoll ist
 
-process prune_snprelate {
-    when:
-    params.run_final_snprelate == true
-
+process prune_final {
 
     input:
     file ds_staged from for_snprelate_prune
     
     output:
-    file "$prefix{.bed,.bim,.fam,.log}" into for_snprelate, for_det_eigenstrat_outliers, for_eigenstrat_run_ds, for_eigenstrat_convert_ds, for_twstats_final_pruned,for_twstats_final_pruned_eigenstrat
+    file "$prefix{.bed,.bim,.fam,.log}" into for_snprelate, for_twstats_final_pruned
 
     shell:
     dataset = mapFileList(ds_staged)
@@ -720,42 +717,54 @@ plink --noweb --bfile after-correlated-remove --extract include-variants --make-
     }
 }
 
-process run_snprelate {
-    when:
-    params.run_final_snprelate == true
+process final_pca_con_projection {
+    publishDir params.qc_dir ?: '.', mode: 'copy', overwrite: true
 
     input:
     file ds_pruned_staged from for_snprelate
     file ds_final_staged from for_snprelate_ann
     
     output:
-    file "${dataset.fam.baseName}.{pca.evec,eval}" into for_draw_final_pca_histograms, for_twstats_final_pruned_pcaresults
+    file "${params.disease_data_set_prefix_release}.{pca.evec,eval}" into for_draw_final_pca_histograms, for_twstats_final_pruned_pcaresults
+    file "*.png"
     
     shell:
     dataset = mapFileList(ds_pruned_staged)
     ds_final = mapFileList(ds_final_staged)
     prefix = params.disease_data_set_prefix_release
-    gds_script = SCRIPT_DIR + "/SNPRelate_convert2gds.r"
-    snprelate_script = SCRIPT_DIR + "/SNPRelate_PCA_32PCAs.r"
-    projection_samples = params.disease_data_set_prefix_release + "_pruned_PCAprojection_control_samples.txt"
+    draw_evec_FLASHPCA2 = SCRIPT_DIR + "/draw_evec_FLASHPCA2.r"
+    pcaplot_1KG = SCRIPT_DIR + "/pcaplot_1KG_v2.R"
+
+//    gds_script = SCRIPT_DIR + "/SNPRelate_convert2gds.r"
+//    snprelate_script = SCRIPT_DIR + "/SNPRelate_PCA_32PCAs.r"
+//    projection_samples = params.disease_data_set_prefix_release + "_pruned_PCAprojection_control_samples.txt"
 '''
-# Convert to GDS format
-R --slave --args "!{dataset.bim.baseName}" < "!{gds_script}"
+    module load "IKMB"
+    module load "FlashPCA/2.0"
+    module load "Eigensoft/4.2"
+flashpca2 -d 10 --bfile "!{dataset.bed.baseName}" \
+    --outval !{prefix}_eigenvalues_flashpca2 \
+    --outvec !{prefix}_eigenvectors_flashpca2 \
+    --outpc  !{prefix}_pcs_flashpca2 \
+    --numthreads !{task.cpus} \
+    --outload !{prefix}_loadings_flashpca2 \
+    --outmeansd !{prefix}_meansfd_flashpca2 \
+    --memory !{task.memory.toMega()}
+#    --memory 64000
 
-# Do projection on control samples (only)
-gawk '{ if ($6 == 1) print $2 }' "!{dataset.fam}" > "!{projection_samples}"
+echo Adding batch info | ts
+python -c 'from SampleQCI_helpers import *; addphenoinfo_10PCs("!{prefix}_pcs_flashpca2", "!{prefix}_eigenvalues_flashpca2", "!{prefix}.pca.evec", "!{prefix}.eval", "!{ds_final.annotation}", "!{params.preQCIMDS_1kG_sample}")'
 
-# Run PCA
-R --slave --args "!{dataset.bim.baseName}" "!{projection_samples}" < "!{snprelate_script}"
+echo Drawing FLASHPCA2 eigenvectors for set with batch info | ts
+R --slave --args "!{prefix}" "!{params.preQCIMDS_1kG_sample}" <"!{draw_evec_FLASHPCA2}"
 
-# Add batch information
-python -c 'from SNPQC_helpers import *; addbatchinfo_32PCAs(\
-    fam="!{dataset.fam}",\
-    individuals_annotation="!{ds_final.annotation}",\
-    evec_file="!{dataset.fam.baseName}.SNPrelate.pca.evec",\
-    eval_file="!{dataset.fam.baseName}.SNPrelate.eval",\
-    new_evec_file="!{dataset.fam.baseName}.pca.evec",\
-    new_eval_file="!{dataset.fam.baseName}.eval")'
+echo Adding country info | ts
+python -c 'from SampleQCI_helpers import *; addcountryinfo_10PCs("!{prefix}_pcs_flashpca2", "!{prefix}_eigenvalues_flashpca2", "!{prefix}.country.pca.evec", "!{prefix}.country.eval", "!{ds_final.annotation}", "!{params.preQCIMDS_1kG_sample}")'
+
+echo Drawing FLASHPCA2 eigenvectors for set with country info | ts
+R --slave --args "!{prefix}.country" "!{params.preQCIMDS_1kG_sample}" <"!{draw_evec_FLASHPCA2}"
+
+
 '''
 }
 
@@ -780,7 +789,7 @@ process draw_final_pca_histograms {
     con_case_script = SCRIPT_DIR + "/draw_histos_CON_CASE_FAMStyle.r"
     con_all_script = SCRIPT_DIR + "/draw_histos_CON_PS_AS_CD_UC_PSC_FAMStyle.r"
 '''
-R --slave --args "!{ds.bim.baseName}_pruned" < "!{evec_script}"
+R --slave --args "!{pca.eval.baseName}" < "!{evec_script}"
 if [ "!{params.hf_test_CON_only}" == "True" ]; then
     R --slave --args "!{pca.evec}" "!{ds.annotation}" < "!{con_case_script}"
 else
@@ -790,7 +799,7 @@ fi
 }
 
 
-process twstats_final_pruned_snprelate {
+process twstats_final_pruned {
     when:
     params.run_final_snprelate == true
 
@@ -843,142 +852,6 @@ fi
 '''
 }
 
-process eigenstrat_convert {
-    when:
-    params.run_final_snprelate == true
-
-    input:
-    file ds_final_pruned_staged from for_eigenstrat_convert_ds
-    file ds_final_staged from for_eigenstrat_convert_ann
-    
-    output:
-    file "${ds.bim.baseName}.{eigenstratgeno,ind,snp}" into for_eigenstrat_run
-    
-    shell:
-    parameters = params.disease_data_set_prefix_release + "_pruned_par.PACKEDPED.EIGENSTRAT"
-    ds = mapFileList(ds_final_pruned_staged)
-    ds_final = mapFileList(ds_final_staged)
-'''
-  module load "IKMB"
-  module load "Plink/1.9"
-  module load "Eigensoft"
-  python -c 'from SampleQCI_helpers import *; pca_convert ("!{ds.bim.baseName}", "!{parameters}", "!{ds_final.annotation}")'
-'''
-}
-
-process eigenstrat_run {
-    when:
-    params.run_final_snprelate == true
-
-    publishDir params.qc_dir ?: '.', mode: 'copy'   
-
-
-    input:
-    file ds_pruned from for_eigenstrat_run_ds
-    file pca_params from for_eigenstrat_run
-
-    output:
-    file "*.png"
-    file "*.pdf"
-    file "${ds.bim.baseName}_${params.numof_pc}PC.{evec,eval}" into for_twstats_final_pruned_eigenstrat_pcaresults
-    file "${ds.bim.baseName}_${params.numof_pc}PC.log" into for_det_eigenstrat_outliers_log
-// evec, eval?
-
-    shell:
-    ds = mapFileList(ds_pruned)
-    base_pruned = ds.bim.baseName
-    sigma_threshold = 6.0
-    draw_eigenstrat = SCRIPT_DIR + "/draw_evec_EIGENSTRAT_2000PCs.r"
-    draw_without = SCRIPT_DIR + "/draw_evec_withoutProjection_2000PCs.r"
-    projection_on_populations_hapmap = BATCH_DIR + "/" + params.projection_on_populations_controls
-'''
-    module load "IKMB"
-    module load "Plink/1.9"
-    module load "Eigensoft/4.2"
-export TMPDIR="$(pwd)"
-export TEMPDIR="$(pwd)"
-export TEMP="$(pwd)"
-
-python -c 'from SampleQCI_helpers import *; pca_run("!{base_pruned}", !{sigma_threshold}, "!{projection_on_populations_hapmap}", !{params.numof_pc}, !{task.cpus}, "!{draw_eigenstrat}", "!{draw_without}")'
-'''
-}
-
-process determine_eigenstrat_outliers {
-    when:
-    params.run_final_snprelate == true
-
-    input:
-    file ds_final_pruned_staged from for_det_eigenstrat_outliers
-    file logfile from for_det_eigenstrat_outliers_log
-    
-    output:
-    file outliers
-
-    shell:
-    ds = mapFileList(ds_final_pruned_staged)
-    outliers = ds.fam.baseName + "_" + params.numof_pc + "PC.outlier.txt"
-
-'''
-#!/usr/bin/env python
-
-from SNPQC_helpers import *
-determine_pca_outlier(log="!{logfile}", fam_file="!{ds.fam}", outlier_file="!{outliers}")
-'''
-}
-
-
-process twstats_final_pruned_eigenstrat {
-    when:
-    params.run_final_snprelate == true
-
-    publishDir params.qc_dir ?: '.', mode: 'copy', overwrite: true
-
-    input:
-
-    file dataset_final_staged from for_twstats_final_pruned_eigenstrat_ann
-    file dataset_pruned_staged from for_twstats_final_pruned_eigenstrat
-    file pca_staged from for_twstats_final_pruned_eigenstrat_pcaresults
-
-    output:
-
-    file "*.tracy_widom"
-
-    shell:
-
-    dataset = mapFileList(dataset_pruned_staged)
-    annotation = mapFileList(dataset_final_staged).annotation
-    pca = mapFileList(pca_staged)
-
-    //    template "run_tracy_widom_stats.sh"
-    '''
-    module load 'IKMB'
-    module load 'Eigensoft/4.2'
-NUM_CASES=$(grep -P 'After.*\\d+.cases' !{dataset.log} | cut -d' ' -f3)
-NUM_CONTROLS=$(grep -P 'After .*\\d+.controls' !{dataset.log} | cut -d' ' -f5)
-echo Cases: $NUM_CASES, controls: $NUM_CONTROLS
-NUM_SAMPLES=$(($NUM_CASES + $NUM_CONTROLS))
-NUM_SNPS=$(grep -P 'After.*\\d+.SNPs' !{dataset.log} | cut -d' ' -f8)
-echo Samples: $NUM_SAMPLES, markers: $NUM_SNPS
-
-head -n 2000 !{pca.eval} >eval.tw
-
-if [ "!{params.projection_on_populations_CON_only}" == "True" ]; then
-    if [ "$NUM_CONTROLS" -gt "$NUM_SNPS" ]; then
-        let NUM_CONTROLS--
-        twstats -t !{params.twtable} -i eval.tw -o !{dataset.bed.baseName}_!{params.numof_pc}PC.eval.tracy_widom -n "$NUM_CONTROLS"
-    else
-        twstats -t !{params.twtable} -i eval.tw -o !{dataset.bed.baseName}_!{params.numof_pc}PC.eval.tracy_widom
-    fi
-else
-    if [ "$NUM_SAMPLES" -gt "$NUM_SNPS" ]; then
-        let NUM_SAMPLES--
-        twstats -t !{params.twtable} -i eval.tw -o !{dataset.bed.baseName}_!{params.numof_pc}PC.eval.tracy_widom -n "$NUM_SAMPLES"
-    else
-        twstats -t !{params.twtable} -i eval.tw -o !{dataset.bed.baseName}_!{params.numof_pc}PC.eval.tracy_widom
-    fi
-fi
-'''
-}
 
 
 process plot_maf {

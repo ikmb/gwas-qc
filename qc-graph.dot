@@ -131,24 +131,34 @@ digraph {
     label="SNP QC II";
     "HF test";
     qc2_prune [label="Prune individuals by LD, Missingness and regions"];
-    qc2_flashpca_prune [label="FlashPCA"];
-    qc2_tracy_widom [label="Tracy Widom Stats"];
     qc2_merge_1kg [label="Merge with 1kG"];
     qc2_1kg_flashpca [label="FlashPCA"];
 
-    SampleQC_final -> qc2_prune;
-    "HF test" -> "Remove HF test outliers" -> qc2_prune [label="Outliers"];
-    qc2_prune -> qc2_flashpca_prune -> "Draw Histograms and PCs";
+    # SampleQC_final -> qc2_prune;
+    "HF test" -> "Remove HF test outliers";
+    #-> qc2_prune [label="Outliers"];
     qc2_prune -> qc2_merge_1kg -> qc2_1kg_flashpca;
+    qc2_1kg_flashpca -> "Final cleaning" [label="Outliers"];
+    
 
-    qc2_flashpca_prune -> qc2_tracy_widom;
+#    qc2_flashpca_prune -> qc2_tracy_widom;
 
-    "Remove HF test outliers" -> "Determine monomorphics" -> "Final cleaning";
-    "Remove HF test outliers" -> "Determine differential missingness" -> "Final cleaning";
-    "Remove HF test outliers" -> "Find unknown diagnoses" -> "Final cleaning";
+    "Remove HF test outliers" -> "Determine monomorphics" -> "Final SNP cleaning";
+    "Remove HF test outliers" -> "Determine differential missingness" -> "Final SNP cleaning";
+    "Remove HF test outliers" -> "Find unknown diagnoses" -> "Final SNP cleaning";
 
-    "Remove HF test outliers" -> "Final cleaning" [color="blue", label="Dataset"];
+    "Remove HF test outliers" -> "Final SNP cleaning" [color="blue", label="Dataset"];
+    "Final SNP cleaning" -> qc2_prune;
+    "Final SNP cleaning" -> "Final cleaning" [color="blue", label="Dataset"];
+
+    qc2_final_flashpca [label="FlashPCA with CON projection"];
+    qc2_final_tw [label="Tracy Widom stats"];
+    qc2_final_histos [label="Draw histograms"];
+    
     "Final cleaning" -> "Plot MAF";
+    "Final cleaning" -> qc2_final_flashpca;
+    qc2_final_flashpca -> qc2_final_tw;
+    qc2_final_flashpca -> qc2_final_histos;
     
   }
 
