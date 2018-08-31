@@ -659,7 +659,7 @@ process final_cleaning {
 
     output:
 
-    file "${params.disease_data_set_prefix_release}_final{.bed,.bim,.fam,.log,_annotation.txt,_flag.relatives.txt}" into for_snprelate_prune,for_twstats_final_pruned_ann,for_draw_final_pca_histograms_ds,for_plot_maf,for_eigenstrat_convert_ann,for_snprelate_ann,for_twstats_final_pruned_eigenstrat_ann
+    file "${params.disease_data_set_prefix_release}_final{.bed,.bim,.fam,.log,_annotation.txt,_flag.relatives.txt}" into for_snprelate_prune,for_twstats_final_pruned_ann,for_draw_final_pca_histograms_ds,for_plot_maf,for_eigenstrat_convert_ann,for_snprelate_ann,for_twstats_final_pruned_eigenstrat_ann,for_sex_check
 shell:
     dataset = mapFileList(dataset_staged)
     prefix = params.disease_data_set_prefix_release
@@ -852,7 +852,32 @@ fi
 '''
 }
 
+process sex_check {
+    publishDir params.qc_dir ?: '.', mode: 'copy'
 
+    input:
+    file ds_staged from for_sex_check
+
+    output:
+    file "*.{pdf,txt}"
+
+    shell:
+    ds = mapFileList(ds_staged)
+'''
+module load IKMB
+module load Plink/1.9
+
+# Check if we have data on both X and Y chromosomes
+plink --allow-no-sex --bfile "!{ds.bim.baseName}" --chr X --recode --out /scratch/"!{ds.bim.baseName}"_sex.X.ped || true
+plink --allow-no-sex --bfile "!{ds.bim.baseName}" --chr Y --recode --out /scratch/"!{ds.bim.baseName}"_sex.Y.ped || true
+
+if [ -e /scratch/"!{ds.bim.baseName}"_sex.X.ped -a -e /scratch/"!{ds.bim.baseName}"_sex.Y.ped ]; then
+    Rscript $NXF_DIR/bin/indivplot.R "!{ds.bed.baseName}" /scratch/"!{ds.bim.baseName}"_sex.X.ped /scratch/"!{ds.bim.baseName}"_sex.Y.ped
+else
+    echo "Sex check requires X and Y chromosomes to be present in the dataset" | tee sex-check-not-possible.txt
+fi
+'''
+}
 
 process plot_maf {
     publishDir params.qc_dir ?: '.', mode: 'copy'
@@ -870,8 +895,11 @@ process plot_maf {
 module load IKMB
 module load Plink/1.9
 
-plink --bfile "!{ds.bim.baseName}" --freq --out "!{ds.bim.baseName}_freq" --allow-no-sex
-R --slave --args "!{ds.bim.baseName}_freq.frq" <"!{logmaf}"
+
+
+
+    plink --bfile "!{ds.bim.baseName}" --freq --out "!{ds.bim.baseName}_freq" --allow-no-sex
+    R --slave --args "!{ds.bim.baseName}_freq.frq" <"!{logmaf}"
 '''
 }
 
