@@ -879,6 +879,33 @@ fi
 '''
 }
 
+process ibd_verify {
+    publishDir params.qc_dir ?: '.', mode: 'copy'
+
+    input:
+    file ds_wr from Channel.from(SampleQCI_final_wr).collect()
+
+    output:
+    file "fail-IBD-percent-qc.txt"
+    file "relatedness.png"
+
+    shell:
+        ds = mapFileList(ds_wr)
+'''
+module load IKMB
+module load Plink/1.9
+
+Rscript $NXF_DIR/bin/ibdplot.R "!{ds.bed.baseName}" $NXF_DIR/bin/high-LD-regions.txt || true
+
+if [ ! -e relatedness.png ]; then
+    echo "No relatives found, no diagrams generated"
+    touch relatedness.png
+    touch fail-IBD-percent-qc.txt
+fi
+
+'''
+}
+
 process plot_maf {
     publishDir params.qc_dir ?: '.', mode: 'copy'
     

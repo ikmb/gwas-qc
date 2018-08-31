@@ -693,7 +693,7 @@ process pca_without_projection {
     file remove_list from for_pca_without_projection_removelist
 
     output:
-    file "*_flashpca2"
+//    file "*_flashpca2"
     file "${params.collection_name}_SampleQCI_pruned_1kG_${params.numof_pc}PC.fail-pca-1KG-qc.txt"
     file "${params.collection_name}_SampleQCI_pruned_1kG_${params.numof_pc}PC.country.fail-pca-1KG-qc.txt"
 
