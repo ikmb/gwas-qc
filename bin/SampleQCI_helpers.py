@@ -712,6 +712,9 @@ def pca_convert(plink, eigenstrat_parameter_file, annotation_file):
     packedped.write_par_file()
     del packedped
 
+    with open(eigenstrat_parameter_file, "a") as parfile:
+        parfile.write("allowdups: YES\n")
+
     # ------------------------ #
     # - run convertf program - #
     # ------------------------ #
@@ -949,7 +952,9 @@ def write_snps_autosomes_noLDRegions_noATandGC_noIndels(bim, outfile):
                      (12 == chr and (33000000 <= pos and pos < 40000000)) or
                      (12 == chr and (109500000 <= pos and pos < 112000000)) or
                      (20 == chr and (32000000 <= pos and pos < 34500000))))\
-                    and (a1 != complement[a2]) and (not (a1 in indels or a2 in indels)):
+                    and (len(a1) == 1) and (len(a2) == 1) \
+                    and (a1 != complement[a2]) \
+                    and (not (a1 in indels or a2 in indels)):
 
                 # write variants for inclusion
                 out.writelines("%s\n" % (list[1]))

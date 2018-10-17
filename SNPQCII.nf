@@ -95,16 +95,13 @@ for_final_sample_cleaning = Channel.create()
  Default: 100 (as extracted from SNP_QCII_CON_PS_AS_CD_UC_PSC_parallel_part1.py)
 */
 hf_test_chunk_size = 1000
-
 /*
-
 // from SNP_QCII_CON_PS_AS_CD_UC_PSC_parallel_part1.py
 process hf_test_prepare {
 
     // It is okay if kill could not successfully kill Rserve, it might have died on its own,
     // so allow an error-indicating return value.
     validExitStatus 0,1
-
 
     input:
 
@@ -165,41 +162,56 @@ process hf_test {
 '''
     module load "IKMB"
     module load "Plink/1.9"
-# Spawn Rserve. Detaches into background before setting up socket, so wait for socket to appear.
-R CMD Rserve --RS-socket /scratch/rserve.sock --no-save --RS-pidfile /scratch/rserve.pid
-while [ ! -e /scratch/rserve.sock ]
+
+RETRY=1
+while [ $RETRY -gt 0 ]
 do
+
+    # Spawn Rserve. Detaches into background before setting up socket, so wait for socket to appear.
+    R CMD Rserve --RS-socket /scratch/rserve.sock --no-save --RS-pidfile /scratch/rserve.pid
+    while [ ! -e /scratch/rserve.sock ]
+    do
+        sleep 0.5
+    done
+    RSERVE_PID=$(cat /scratch/rserve.pid)
+
+    echo Checking prerequisites...
+    head -n2 !{dataset.annotation} 2>&1 >/dev/null
+    echo "!{dataset.annotation} exists: $?  (should be 0)"
+    echo -n /scratch/rserve.sock exists and is readable:
+    if [ -S /scratch/rserve.sock ]; then
+       echo -n is a socket,
+    else
+       echo -n is not a socket,
+    fi
+    if [ -r /scratch/rserve.sock ]; then
+       echo is readable
+    else
+       echo is not readable
+    fi
+
+    MYPWD=$(pwd)
+    echo "setwd('$MYPWD')" >hf-local.r
+    cat !{r_script} >>hf-local.r
+
+    plink --bfile "!{dataset.bim.baseName}" --extract "!{chunk}" --R hf-local.r --R-socket /scratch/rserve.sock --allow-no-sex --out "!{params.collection_name}_SNPQCII_!{chunk}"
+
+    # Kill Rserve but give it a chance...
     sleep 0.5
+    if [ -e /scratch/rserve.sock ]; then
+        # Might fail as it could have been died by now but that's okay.
+        kill $RSERVE_PID
+    fi
+
+    # Retry if there are NAs
+    NAS=$(grep -c NA ${params.collection_name}_SNPQCII_${chunk}.auto.R)
+    if [ $NAS -gt 0 ]; then
+       rm -f /scratch/rserve.sock ${params.collection_name}_SNPQCII_${chunk}.auto.R /scratch/rserve.pid
+    else
+       RETRY=0
+    fi
 done
-RSERVE_PID=$(cat /scratch/rserve.pid)
 
-echo Checking prerequisites...
-head -n2 !{dataset.annotation} 2>&1 >/dev/null
-echo "!{dataset.annotation} exists: $?  (should be 0)"
-echo -n /scratch/rserve.sock exists and is readable:
-if [ -S /scratch/rserve.sock ]; then
-   echo -n is a socket,
-else
-   echo -n is not a socket,
-fi
-if [ -r /scratch/rserve.sock ]; then
-   echo is readable
-else
-   echo is not readable
-fi
-
-MYPWD=$(pwd)
-echo "setwd('$MYPWD')" >hf-local.r
-cat !{r_script} >>hf-local.r
-
-plink --bfile "!{dataset.bim.baseName}" --extract "!{chunk}" --R hf-local.r --R-socket /scratch/rserve.sock --allow-no-sex --out "!{params.collection_name}_SNPQCII_!{chunk}"
-
-# Kill Rserve but give it a chance...
-sleep 0.5
-if [ -e /scratch/rserve.sock ]; then
-    # Might fail as it could have been died by now but that's okay.
-    kill $RSERVE_PID
-fi
 '''
 }
 
@@ -212,6 +224,9 @@ process hf_test_merge {
 
     file chunks from hf_test_merge_chunks.collect()
     file SampleQCI_final_staged from Channel.from(SampleQCI_final).collect()
+
+    output:
+    file "!{params.collection_name}_SNPQCII_hf" into hf_test_results
 
     shell:
 
@@ -246,6 +261,7 @@ if [ $NAS_MERGED ne $NAS_ORIG ]; then
 fi
 '''
 }
+
 */
 
 // see part2.py: "TODO mit jan kaessens: auskommentieren wenn nur eine kontrollgruppe"
@@ -254,6 +270,7 @@ process generate_hf_excludes {
     input:
 
     file SampleQCI_final_staged from Channel.from(SampleQCI_final).collect()
+    //file hf_test_results
 
     output:
 
@@ -359,9 +376,33 @@ process merge_pruned_with_1kg {
     }
 '''
     module load "IKMB"
-    module load "Plink/1.7"
+    module load "Plink/1.9"
 echo Merge with 1kG
-python -c 'from SampleQCI_helpers import *; merge__new_plink_collection_pruned__1kG("!{dataset.bed.baseName}", "!{base_pruned_1kG}", "!{snpexclude}", "!{params.preQCIMDS_1kG}")'
+
+DONE=0
+BASE_PRUNED="!{dataset.bed.baseName}"
+
+while [ $DONE -lt 1 ]
+do
+    python -c 'from SampleQCI_helpers import *; merge__new_plink_collection_pruned__1kG("'$BASE_PRUNED'", "!{base_pruned_1kG}", "!{snpexclude}", "!{params.preQCIMDS_1kG}")' || true
+    
+    if [ -e "!{base_pruned_1kG}-merge.missnp" ]; then
+        NEW_PRUNED=${BASE_PRUNED}_clean
+        rm -f removelist
+        while read f
+        do
+            CHR=$(echo $f | cut -f1 -d:)
+            POS=$(echo $f | cut -f2 -d:)
+            grep -E "^$CHR\\\\s.*$POS" ${BASE_PRUNED}.bim | cut -f2 -d$'\\t' >>removelist
+            echo "$f" >>removelist
+        done <"!{base_pruned_1kG}-merge.missnp"
+        plink --bfile "$BASE_PRUNED" --exclude removelist --make-bed --out "$NEW_PRUNED"
+        BASE_PRUNED=$NEW_PRUNED
+        mv "!{base_pruned_1kG}-merge.missnp" "!{base_pruned_1kG}.missnp.removed"
+    else
+        DONE=1
+    fi
+done
 '''
 }
 
@@ -659,7 +700,7 @@ process final_cleaning {
 
     output:
 
-    file "${params.disease_data_set_prefix_release}_final{.bed,.bim,.fam,.log,_annotation.txt,_flag.relatives.txt}" into for_snprelate_prune,for_twstats_final_pruned_ann,for_draw_final_pca_histograms_ds,for_plot_maf,for_eigenstrat_convert_ann,for_snprelate_ann,for_twstats_final_pruned_eigenstrat_ann,for_sex_check
+    file "${params.disease_data_set_prefix_release}_final{.bed,.bim,.fam,.log,_annotation.txt,_flag.relatives.txt}" into for_snprelate_prune,for_twstats_final_pruned_ann,for_draw_final_pca_histograms_ds,for_plot_maf,for_eigenstrat_convert_ann,for_snprelate_ann,for_twstats_final_pruned_eigenstrat_ann,for_sex_check,for_ibd_verify,for_prepare_imputation
 shell:
     dataset = mapFileList(dataset_staged)
     prefix = params.disease_data_set_prefix_release
@@ -685,7 +726,7 @@ python -c 'from SNPQC_helpers import *; extract_QCsamples_annotationfile_relativ
 // TODO: nochmal überlegen, ob diese ganze SNPRelate-Sache überhaupt noch sinnvoll ist
 
 process prune_final {
-
+    time '2 h'
     input:
     file ds_staged from for_snprelate_prune
     
@@ -706,19 +747,20 @@ plink --bfile !{dataset.bed.baseName} --extract "!{params.PCA_SNPList}" --make-b
     } else {
 '''
     module load "IKMB"
-    module load "Plink/1.7"
+    module load "Plink/1.9"
 
-plink --noweb --bfile !{dataset.bed.baseName} --indep-pairwise 50 5 0.2 --out after-indep-pairwise --allow-no-sex
-plink --noweb --bfile !{dataset.bed.baseName} --extract after-indep-pairwise.prune.in --maf 0.05 --make-bed --out after-correlated-remove --allow-no-sex
+plink --bfile !{dataset.bed.baseName} --indep-pairwise 50 5 0.2 --out after-indep-pairwise --allow-no-sex
+plink --bfile !{dataset.bed.baseName} --extract after-indep-pairwise.prune.in --maf 0.05 --make-bed --out after-correlated-remove --allow-no-sex
 
 python -c 'from SampleQCI_helpers import *; write_snps_autosomes_noLDRegions_noATandGC_noIndels("!{dataset.bim}", "include-variants")'
-plink --noweb --bfile after-correlated-remove --extract include-variants --make-bed --out "!{prefix}" --allow-no-sex
+plink --bfile after-correlated-remove --extract include-variants --make-bed --out "!{prefix}" --allow-no-sex
 '''
     }
 }
 
 process final_pca_con_projection {
     publishDir params.qc_dir ?: '.', mode: 'copy', overwrite: true
+    memory 12.GB
 
     input:
     file ds_pruned_staged from for_snprelate
@@ -825,11 +867,13 @@ process twstats_final_pruned {
     '''
     module load 'IKMB'
     module load 'Eigensoft/4.2'
-NUM_CASES=$(grep -P 'After.*\\d+.cases' !{dataset.log} | cut -d' ' -f3)
-NUM_CONTROLS=$(grep -P 'After .*\\d+.controls' !{dataset.log} | cut -d' ' -f5)
+# NUM_CASES=$(grep -P 'After.*\\d+.cases' !{dataset.log} | cut -d' ' -f3)
+# NUM_CONTROLS=$(grep -P 'After .*\\d+.controls' !{dataset.log} | cut -d' ' -f5)
+NUM_CASES=$(grep controls !{dataset.log} | cut -d' ' -f4)
+NUM_CONTROLS=$(grep controls !{dataset.log} | cut -d' ' -f8)
 echo Cases: $NUM_CASES, controls: $NUM_CONTROLS
 NUM_SAMPLES=$(($NUM_CASES + $NUM_CONTROLS))
-NUM_SNPS=$(grep -P 'After.*\\d+.SNPs' !{dataset.log} | cut -d' ' -f8)
+NUM_SNPS=$(grep 'pass filters and QC' !{dataset.log} | cut -d' ' -f1)
 echo Samples: $NUM_SAMPLES, markers: $NUM_SNPS
 
 head -n 2000 !{pca.eval} >eval.tw
@@ -883,7 +927,7 @@ process ibd_verify {
     publishDir params.qc_dir ?: '.', mode: 'copy'
 
     input:
-    file ds_wr from Channel.from(SampleQCI_final_wr).collect()
+    file ds_wr from for_ibd_verify
 
     output:
     file "fail-IBD-percent-qc.txt"
@@ -927,6 +971,56 @@ module load Plink/1.9
 
     plink --bfile "!{ds.bim.baseName}" --freq --out "!{ds.bim.baseName}_freq" --allow-no-sex
     R --slave --args "!{ds.bim.baseName}_freq.frq" <"!{logmaf}"
+'''
+}
+
+process prepare_sanger_imputation {
+    publishDir params.qc_dir ?: '.', mode: 'copy'
+    
+    input:
+    file ds_staged from for_prepare_imputation
+    
+    output:
+    file "${params.disease_data_set_prefix_release}_final_sanger_{flip.txt,exclude.txt,clean.vcf}"
+    shell:
+    ds = mapFileList(ds_staged)
+    
+'''
+module load IKMB
+module load Plink/1.9
+
+ANNOTATION=/ifs/data/nfs_share/sukmb388/human_g1k_v37.fasta.gz
+
+awk '($5=="A" && $6=="T") || ($5=="T" && $6=="A")|| ($5=="C" && $6=="G") || ($5=="G" && $6=="C")' "!{ds.bim}" >atcg.bim
+sed 's/_/./g' <"!{ds.fam}" >nounderscore.fam
+
+plink --bed "!{ds.bed}" --bim "!{ds.bim}" --fam nounderscore.fam --maf 0.01 --chr 1-22 --exclude atcg.bim --recode-vcf --out "clean_sanger"
+
+bcftools norm -c w  -f $ANNOTATION clean_sanger.vcf &>tmp
+<tmp sed 's/REF_MIS/\\nREF_MIS/g' | grep REF_MIS | awk '{print "chr"$2":"$3"\t"$4}' > sanger_force.txt
+plink --vcf "clean_sanger.vcf" --reference-allele sanger_force.txt --recode-vcf --out "clean_sanger"
+
+<tmp sed 's/REF_MIS/\\nREF_MIS/g' | grep REF_MIS | awk '{print "chr"$2":"$3}' > sanger_flip.txt
+
+if [ -s sanger_flip.txt ]; then
+    comm -12 <(cut -f1 sanger_force.txt | sort) <(comm -3 <(sort sanger_flip.txt) <(cut -f1 sanger_force.txt | sort)) >sanger_force2.txt
+    plink --vcf clean_sanger.vcf --reference-allele sanger_force2.txt --flip sanger_flip.txt --recode vcf --out clean_sanger
+    <tmp sed 's/REF_MIS/\\nREF_MIS/g' | grep REF_MIS |  awk '{print "chr"$2":"$3}' > sanger_exclude.txt
+    if [ -s sanger_exclude.txt ]; then
+        plink --vcf clean_sanger.vcf --reference-allele sanger_force2.txt --exclude sanger_exclude.txt --recode vcf --out clean_sanger
+    else
+        echo "Data prepared. No exclude."
+    fi
+else
+    echo "Data prepared. No flip. No exclude."
+fi
+echo "Data prepared."
+touch sanger_flip.txt
+touch sanger_exclude.txt
+
+mv sanger_flip.txt "!{ds.bed.baseName}_sanger_flip.txt"
+mv sanger_exclude.txt "!{ds.bed.baseName}_sanger_exclude.txt"
+mv clean_sanger.vcf "!{ds.bed.baseName}_sanger_clean.vcf"
 '''
 }
 

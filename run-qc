@@ -89,16 +89,19 @@ my $opt_output = "./";
 my $opt_help = 0;
 my $opt_verbose = 0;
 my $opt_force = 0;
+my $opt_batchconf = 0;
 
 GetOptions("pause" => \$opt_pause,
            "help|?" => \$opt_help,
            "verbose|v" => \$opt_verbose,
            "force|f" => \$opt_force,
+           "batchconf" => \$opt_batchconf,
            "output=s" => \$opt_output);
 pod2usage(1) if $opt_help;
 pod2usage(1) if @ARGV == 0;
 
 $opt_output =~ s!/*$!/!; # Add trailing slash to output path, if not already done
+
 
 # Do some rudimentary parsing of the Nextflow config and variable substitution
 
@@ -115,10 +118,25 @@ $tempdir .= "/";
 
 print "Temp directory for reports: $tempdir\n" if $opt_verbose;
 
+if ($opt_batchconf) {
+    $config{"batches_config"} = $ENV{'BATCHES_CONFIG'};
+    $config{"batches_names"} = $ENV{'BATCHES_NAMES'};
+    $config{"batches_basenames"} = $ENV{'BATCHES_BASENAMES'};
+    $config{"batches_phony_names"} = $ENV{'BATCHES_PHONY_NAMES'};
+    $config{"batches_resultdir"} = $ENV{'BATCHES_RESULT_DIR'};
+
+    $config{"rs_dir"} = $config{'batches_resultdir'} . "/Rs";
+    $config{'snpqci_dir'} = $config{'batches_resultdir'} . "/SNPQCI";
+    $config{'final_dir'} = $config{'batches_resultdir'} . "/final";
+    $config{'qc_dir'} = $config{'batches_resultdir'} . "/final";
+    $config{'sampleqci_dir'} = $config{'batches_resultdir'} . "/SampleQC";
+    $config{'collection_name'} = $config{'batches_phony_names'};
+}
 
 mkdir $config{'snpqci_dir'} if !-e $config{'snpqci_dir'};
 mkdir $config{'sampleqci_dir'} if !-e $config{'sampleqci_dir'};
 mkdir $config{'qc_dir'} if !-e $config{'qc_dir'};
+mkdir $config{'final_dir'} if !-e $config{'final_dir'};
 
 my @trace_targets = ();
 
@@ -130,15 +148,18 @@ sub run_rs {
     say "--------------------------------------------";
 
     # Collect batches from configuration and launch Rs.nf for each batch
+
     my @batches = split (/,/, $config{"batches_names"});
     my @batches_basenames = split (/,/, $config{"batches_basenames"});
     my @batches_phony_names = split (/,/, $config{"batches_phony_names"});
+
+
     my $i = 0;
     for (@batches) {
         my $batch = $_;
         my $basename = $batches_basenames[$i];
         my $phony = $batches_phony_names[$i];
-        my %batchconf = parse_config($confdir . "/$phony.config");
+        my %batchconf = parse_config ( $config{"batches_config"} // ($confdir . "/$phony.config"));
         mkdir $config{'rs_dir'} if !-e $config{'rs_dir'};
         my @cmd = ("nextflow");
         push @cmd, '-c';
@@ -266,12 +287,12 @@ sub run_snpqcii {
 
 # TODO Should do some error handling here, i.e. catch IPC exceptions. Needs IPC::System::Simple support, though
 
-#run_rs;
-#pause if $opt_pause;
-#run_snpqci;
-#pause if $opt_pause;
-#run_sampleqc;
-#pause if $opt_pause;
+run_rs;
+pause if $opt_pause;
+run_snpqci;
+pause if $opt_pause;
+run_sampleqc;
+pause if $opt_pause;
 run_snpqcii;
 
 exit 0;

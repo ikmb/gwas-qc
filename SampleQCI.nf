@@ -221,6 +221,7 @@ plink --bfile ${dataset[0].baseName} --genome --parallel ${job} ${calc_imiss_job
 
 process ibs_merge_and_verify {
 publishDir params.sampleqci_dir ?: '.', mode: 'copy'  
+memory '8 GB'
     input:
     file chunks from for_ibs_merge_and_verify.collect()
     file dataset from for_ibs_merge_and_verify_ds
@@ -299,37 +300,53 @@ process merge_dataset_with_hapmap {
     input:
     file pruned from for_merge_hapmap
 
-
-    def hapmap = params.preQCIMDS_HapMap2
-
-
     output:
         set file(prefix+'pruned_hapmap.bed'), file(prefix+'pruned_hapmap.bim'), file(prefix+'pruned_hapmap.fam') into for_pca_convert_pruned_hapmap, for_pca_run_pruned_hapmap
 
-    script:
+    shell:
         base_pruned = pruned[0].baseName
         bim_pruned = pruned[1]
      
+     exclude = BATCH_DIR + "/" + params.PCA_SNPexcludeList
+    hapmap = params.preQCIMDS_HapMap2
 
-    if (params.PCA_SNPexcludeList != "" && params.PCA_SNPexcludeList != "nofileexists" && params.PCA_SNPexcludeList != "nothing.txt") {
-        snpexclude = BATCH_DIR + "/" + params.PCA_SNPexcludeList
-        """
-        module load "IKMB"
-        module load "Plink/1.9"
+'''
+module load IKMB
+module load Plink/1.9
 
-        plink --bfile "${base_pruned}" --extract "${hapmap}.bim" --exclude "${snpexclude}" --make-bed --out pruned_tmp --allow-no-sex --memory ${task.memory.toMega()} 
-        plink --bfile "${hapmap}" --extract "${bim_pruned}" --exclude "${snpexclude}" --make-bed --out hapmap_tmp --allow-no-sex --memory ${task.memory.toMega()} 
-        plink --bfile pruned_tmp --bmerge hapmap_tmp --out ${prefix}pruned_hapmap --allow-no-sex --memory ${task.memory.toMega()} 
-        """
-    } else {
-        """
-        module load "IKMB"
-        module load "Plink/1.9"
-        plink --bfile "${base_pruned}" --extract "${hapmap}.bim" --make-bed --out pruned_tmp --allow-no-sex --memory ${task.memory.toMega()} 
-        plink --bfile "${hapmap}" --extract "${bim_pruned}" --make-bed --out hapmap_tmp --allow-no-sex --memory ${task.memory.toMega()} 
-        plink --bfile pruned_tmp --bmerge hapmap_tmp --out ${prefix}pruned_hapmap --allow-no-sex --memory ${task.memory.toMega()} 
-        """
-    }
+if [ -e "!{exclude}" ]; then
+    plink --bfile "!{base_pruned}" --extract "!{hapmap}.bim" --exclude "!{exclude}" --make-bed --out pruned_tmp --allow-no-sex --memory !{task.memory.toMega()} 
+    plink --bfile "!{hapmap}" --extract "!{bim_pruned}" --exclude "!{exclude}" --make-bed --out hapmap_tmp --allow-no-sex --memory !{task.memory.toMega()} 
+else
+    plink --bfile "!{base_pruned}" --extract "!{hapmap}.bim" --make-bed --out pruned_tmp --allow-no-sex --memory !{task.memory.toMega()}
+    plink --bfile "!{hapmap}" --extract "!{bim_pruned}" --make-bed --out hapmap_tmp --allow-no-sex --memory !{task.memory.toMega()} 
+fi
+
+DONE=0
+MERGE_INPUT=pruned_tmp
+
+while [ $DONE -lt 1 ]
+do
+    plink --bfile $MERGE_INPUT --bmerge hapmap_tmp --out !{prefix}pruned_hapmap --allow-no-sex --memory !{task.memory.toMega()} || true
+    
+    if [ -e "!{prefix}pruned_hapmap.missnp" ]; then
+        rm -f removelist
+        while read f
+        do
+            CHR=$(echo $f | cut -f1 -d:)
+            POS=$(echo $f | cut -f2 -d:)
+            grep -E "^$CHR\\\\s.*$POS" ${MERGE_INPUT}.bim | cut -f2 -d$'\\t' >>removelist
+            echo "$f" >>removelist
+        done <"!{prefix}pruned_hapmap.missnp"
+        plink --bfile $MERGE_INPUT --exclude removelist --make-bed --out ${MERGE_INPUT}-clean
+        MERGE_INPUT=${MERGE_INPUT}-clean
+        rm "!{prefix}pruned_hapmap.missnp"
+    else
+        DONE=1
+    fi
+done
+
+'''
 }
 
 
@@ -490,9 +507,30 @@ process flashpca2_pruned_1kG {
     module load "IKMB"
     module load "FlashPCA"
     module load "Plink/1.9"
-if [ "${params.program_for_second_PCA}" == "FLASHPCA2" ]; then
-echo Merge with 1kG
-python -c 'from SampleQCI_helpers import *; merge__new_plink_collection_pruned__1kG("${base_pruned}", "${base_pruned_1kG}", "${PCA_SNPexcludeList}", "${params.preQCIMDS_1kG}")'
+
+DONE=0
+BASE_PRUNED="${base_pruned}"
+
+while [ \$DONE -lt 1 ]
+do
+    echo Merge with 1kG
+    python -c 'from SampleQCI_helpers import *; merge__new_plink_collection_pruned__1kG("'\$BASE_PRUNED'", "${base_pruned_1kG}", "${PCA_SNPexcludeList}", "${params.preQCIMDS_1kG}")' || true
+    if [ -e "${base_pruned_1kG}-merge.missnp" ]; then
+        NEW_PRUNED=\${BASE_PRUNED}_clean
+        rm -f removelist
+        while read f
+        do
+            CHR=\$(echo \$f | cut -f1 -d:)
+            POS=\$(echo \$f | cut -f2 -d:)
+            grep -E "^\$CHR\\\\s.*\$POS" \${BASE_PRUNED}.bim | cut -f2 -d\$'\\t' >>removelist
+        done <"${base_pruned_1kG}-merge.missnp"
+        plink --bfile "\$BASE_PRUNED" --exclude removelist --make-bed --out "\$NEW_PRUNED"
+        BASE_PRUNED=\$NEW_PRUNED
+        mv "${base_pruned_1kG}-merge.missnp" "${base_pruned_1kG}.missnp.removed"
+    else
+        DONE=1
+    fi
+done
 
 echo PCA of 1kG-merge
 flashpca2 -d ${params.numof_pc} --bfile "${base_pruned_1kG}" --outval "${base_pruned_1kG}_eigenvalues_flashpca2" --outvec "${base_pruned_1kG}_eigenvectors_flashpca2" --outpc "${base_pruned_1kG}_pcs_flashpca2" --outpve "${base_pruned_1kG}_pve_flashpca2" --numthreads 2 --outload "${base_pruned_1kG}_loadings_flashpca2" --outmeansd "${base_pruned_1kG}_meansd_flashpca2"
@@ -509,12 +547,13 @@ echo Drawing FLASHPCA2 eigenvectors for set with country info
 echo Calling R --slave --args "${plink_pca_1kG}.country" "${params.preQCIMDS_1kG_sample}" lt "${pcaplot_1KG}"
 R --slave --args "${plink_pca_1kG}.country" "${params.preQCIMDS_1kG_sample}" <"${pcaplot_1KG}"
 
-fi
+
 """
 }
 
 process detect_duplicates_related {
         publishDir params.sampleqci_dir ?: '.', mode: 'copy'
+        memory '8 GB'
     input:
     file pruned from for_detect_duplicates
     file ibs from for_detect_duplicates_genome
@@ -842,6 +881,7 @@ plink --noweb --bfile "${dataset[0].baseName}" --missing --out ${dataset[0].base
 
 process ibs_merge_and_verify_wr {
     publishDir params.sampleqci_dir ?: '.', mode: 'copy'
+    memory '8 GB'
     input:
     file chunks from for_ibs_merge_and_verify_wr.collect()
     file dataset from for_ibs_merge_and_verify_wr_ds

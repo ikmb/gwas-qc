@@ -31,7 +31,7 @@ process merge_batches {
     file "${params.collection_name}_Rs.bed" into merged_bed, to_split_bed, to_hwe_bed, to_verify_bed, to_exclude_bed, to_miss_bed, to_miss_batch_bed
     file "${params.collection_name}_Rs.fam" into merged_fam, to_split_fam, to_hwe_fam, to_verify_fam, to_exclude_fam, to_miss_fam, to_miss_batch_fam
     file "${params.collection_name}_Rs.log"
-
+    file "${params.collection_name}.indels" into preqc_hwe_indels,batchqc_hwe_indels,postqc_hwe_indels
 
     //.getAbsolutePath();
     shell:
@@ -64,12 +64,15 @@ echo idx: $idx
 echo name: ${NAMES[$idx]}
 echo prefix: ${PREFIXES[$idx]}
 
+cp ${BASEDIR}/!{params.collection_name}.indels !{params.collection_name}.indels
+
 if [ "$idx" -gt 0 ]; then
     echo -n !{params.rs_dir}/${PREFIXES[$idx]}.bed  >>merge-list
     echo -n " " >>merge-list
     echo -n !{params.rs_dir}/${PREFIXES[$idx]}.bim >>merge-list
     echo -n " " >>merge-list
     echo !{params.rs_dir}/${PREFIXES[$idx]}.fam >>merge-list
+    cat !{params.rs_dir}/${PREFIXES[$idx]}.indels >>!{params.collection_name}.indels
 fi
 done
 
@@ -99,11 +102,11 @@ process generate_hwe_diagrams {
     file merged_bim
     file merged_bed
     file merged_fam
-
+    file indels from preqc_hwe_indels
   output:
-    file "${params.collection_name}_controls_DeFinetti.jpg"
-    file "${params.collection_name}_cases_DeFinetti.jpg"
-    file "${params.collection_name}_cases_controls_DeFinetti.jpg"
+    file "${params.collection_name}_controls_DeFinetti_preQC.jpg"
+    file "${params.collection_name}_cases_DeFinetti_preQC.jpg"
+    file "${params.collection_name}_cases_controls_DeFinetti_preQC.jpg"
     file "${params.collection_name}_hardy.hwe"
 
 
@@ -115,16 +118,16 @@ process generate_hwe_diagrams {
     module load IKMB
     module load Plink/1.9
     
-# plink --noweb --bfile ${merged_bim.baseName} --hardy --out ${params.collection_name}_hardy --missing-phenotype 0 --hwe 0.0 --extract $autosomes
-plink --bfile ${merged_bim.baseName} --hardy --out ${params.collection_name}_hardy --hwe 0.0 --chr 1-22 --allow-no-sex
-R --slave --args ${params.collection_name}_hardy.hwe ${params.collection_name}_controls_DeFinetti ${params.collection_name}_cases_DeFinetti ${params.collection_name}_cases_controls_DeFinetti <$definetti_r
+plink --bfile ${merged_bim.baseName} --exclude ${indels} --make-bed --out no-indels
+plink --bfile no-indels --hardy --out ${params.collection_name}_hardy --hwe 0.0 --chr 1-22 --allow-no-sex
+R --slave --args ${params.collection_name}_hardy.hwe ${params.collection_name}_controls_DeFinetti_preQC ${params.collection_name}_cases_DeFinetti_preQC ${params.collection_name}_cases_controls_DeFinetti_preQC <$definetti_r
 """
 }
 
 /*
  Split the data set into 1000-SNP chunks so they can be evaluated in parallel.
  */
-/*
+
 process split_dataset {
   input:
     file input_bim from to_split_bim
@@ -133,14 +136,14 @@ process split_dataset {
     file 'chunk_*' into to_calc_hwe
 
   """
-  cut -f 2 $input_bim | split -l 10000 -a 3 -d - chunk_
+  cut -f 2 $input_bim | split -l 1000 -a 3 -d - chunk_
   """
 }
-*/
+
 /*
  Generate a HWE calculation R script to be used as a Plink slave.
  */
-/*
+
 process generate_hwe_script {
   input:
     file individuals_annotation
@@ -155,15 +158,16 @@ process generate_hwe_script {
   sed "s|INDIVIDUALS_ANNOTATION|!{individuals_annotation}|g" "!{hwe_template_script}" >hwe-script.r
   '''
 }
-*/
+
 /*
  Run the HWE calculation R script on every 1000-SNP chunk
  */
-/*
+
 process calculate_hwe {
   // Should have been zero, but killall -q returns 1 if it didn't find anything
   validExitStatus 0
   errorStrategy 'retry'
+  memory 4.GB
   input:
     set file(chunk), file('hwe-script.r') from to_calc_hwe.flatten().combine(to_calc_hwe_script)
     file input_bim from to_hwe_bim
@@ -223,18 +227,27 @@ while [ $RETRY -eq 1 ]; do
 		RETRY=1
 	}
 
+    # Did we create a result file? If not, retry.
 	if [ ! -e "!{chunk}-out.auto.R" ]; then
 		RETRY=1
-	fi
+	else
+        # Does our result file contain NAs? If so, retry.
+        LINES=$(grep -E '\\sNA\\s?$' "!{chunk}-out.auto.R" | wc -l)
+        if [ $LINES -gt 1 ]; then
+            RETRY=1
+        else
+            RETRY=0
+        fi
+    fi
 done
 '''
 }
-*/
+
 
 /*
  Merge all chunked HWE tables into a single file and screen for obvious errors (i.e. N/A HWE values or wrong SNP counts)
  */
-/*
+
 process merge_and_verify_chunked_hwe {
     input:
     file 'chunk' from from_calc_hwe.collect()
@@ -267,7 +280,7 @@ then
 fi
 '''
 }
-*/
+
 
 /*
 Make a lists of variants that
@@ -276,7 +289,7 @@ Make a lists of variants that
 
 Additionally, FDR values are ploted for both lists
 */
-/*
+
 process exclude_lists_for_failed_hwe {
 
     publishDir params.snpqci_dir ?: '.', mode: 'copy'
@@ -297,8 +310,8 @@ process exclude_lists_for_failed_hwe {
 SNPQCI_fdr_filter.py "$hwe_result" "$individuals_annotation" "$draw_fdr" ${params.collection_name}_exclude-whole-collection ${params.collection_name}_exclude-per-batch ${params.FDR_index_remove_variants}
 """
 }
-*/
 
+/*
 process dummy_hwe_replacement {
 output:
     file "${params.collection_name}_exclude-whole-collection" into excludes_whole
@@ -309,7 +322,7 @@ touch "${params.collection_name}_exclude-whole-collection"
 touch "${params.collection_name}_exclude-per-batch"
 """
 }
-
+*/
 /*
  Determine the missingness for the entire collection
  */
@@ -383,16 +396,17 @@ plink --noweb --bfile "${new File(input_bim.toString()).getBaseName()}" --exclud
 process draw_definetti_after_QCI {
     publishDir params.snpqci_dir ?: '.', mode: 'copy'
 
-    def prefix = "${params.collection_name}_entire_collection"
+    def prefix = "${params.collection_name}"
 
     input:
     file autosomes
     file new_plink from draw_definetti_after
     file definetti_r
+    file indels from postqc_hwe_indels
 
     output:
     file prefix+".hwe"
-    file prefix+"_{cases,controls,cases_controls}_DeFinetti.jpg"
+    file prefix+"_{cases,controls,cases_controls}_DeFinetti_postQC.jpg"
 //    file prefix+"_cases_DeFinetti.jpg"
 
 
@@ -400,9 +414,9 @@ process draw_definetti_after_QCI {
 """
     module load IKMB
     module load Plink/1.9
-#plink --noweb --bfile "${new File(new_plink[0].toString()).getBaseName()}" --hardy --out ${prefix} --hwe 0.0 --extract "$autosomes"
-plink --noweb --bfile "${new File(new_plink[0].toString()).getBaseName()}" --hardy --out ${prefix} --hwe 0.0 --chr 1-22 --allow-no-sex
-R --slave --args ${prefix}.hwe ${prefix}_controls_DeFinetti ${prefix}_cases_DeFinetti ${prefix}_cases_controls_DeFinetti <"$definetti_r"
+plink --bfile "${new File(new_plink[0].toString()).getBaseName()}" --exclude ${indels} --make-bed --out no-indels
+plink --bfile no-indels --hardy --out ${prefix} --hwe 0.0 --chr 1-22 --allow-no-sex
+R --slave --args ${prefix}.hwe ${prefix}_controls_DeFinetti_postQC ${prefix}_cases_DeFinetti_postQC ${prefix}_cases_controls_DeFinetti_postQC <"$definetti_r"
 """
 }
 

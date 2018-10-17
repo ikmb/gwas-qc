@@ -89,6 +89,7 @@ process normalize_variant_names {
 
     output:
     file 'flipfile' into to_plink_flip
+    file "${params.collection_name}.indels"
     file "${source[0].baseName}_updated.bim" into to_plink_flip_bim
     file "Rs-${params.collection_name}.RsTranslation.log"
 
@@ -128,6 +129,7 @@ my $num_flip_match = 0;
 my $num_flip_replaced = 0;
 my $num_flip_noname = 0;
 my $num_mismatch = 0;
+my $num_indels = 0;
 
 sub make_complement {
     my $orig = shift;
@@ -136,6 +138,7 @@ sub make_complement {
         case 'C' { return 'G' }
         case 'G' { return 'C' }
         case 'T' { return 'A' }
+        else { print STDERR "Setting invalid allele $orig to X"; return 'X' }
     }
 }
 
@@ -150,10 +153,13 @@ sub find_on_strand {
 
 }
 
+my $indels_file = "!{params.collection_name}.indels";
+
 open my $log, '>', $logtarget or die("Could not open $logtarget: $!");
 open my $flip, '>', "flipfile" or die("Could not open flipfile: $!");
 open my $newbim, '>', $new_bim or die("Could not open $new_bim: $!");
 open my $fh, '<', $bim or die("Could not open $bim: $!");
+open my $indels, '>', $indels_file or die("Could not open $indels_file: $!");
 
 print $log "OldID\tNewID\tReason\n";
 
@@ -163,13 +169,17 @@ while(<$fh>) {
 
    if($. % 1000 == 0) { print $. . "\\n"; }
 
-   my $result = $query_plus->execute($chr, $pos, $alla, $allb, make_complement($alla), make_complement($allb)) or die($!);
+
+   my $alla_c = make_complement($alla);
+   my $allb_c = make_complement($allb);
+
+   my $result = $query_plus->execute($chr, $pos, $alla, $allb, $alla_c, $allb_c) or die($!);
    my $rows = $query_plus->fetchrow_arrayref();
    if(!defined $rows) {
-       $result = $query_minus->execute($chr, $pos, $alla, $allb, make_complement($alla), make_complement($allb)) or die($!);
+       $result = $query_minus->execute($chr, $pos, $alla, $allb, $alla_c, $allb_c) or die($!);
        $rows = $query_minus->fetchrow_arrayref();
 
-       if(!defined $rows) { $num_mismatch++; print $log "$name\t"; $name = "unk_$chr:$pos"; print $log "$name\tMismatch\n"; }
+       if(!defined $rows) { $num_mismatch++; print $log "$name\t"; $name = "unk_$name"; print $log "$name\tMismatch\n"; }
        elsif(!defined $rows->[0]) { $num_flip_noname++; print $log "$name\t"; $name = "$chr:$pos"; print $log "$name\tNo_name_in_DB\n"; print $flip "$name\\n"; }
        elsif($rows->[0] eq $name) { $num_flip_match++; print $flip "$name\\n"; }
        else { $num_flip_replaced++; print $log "$name\t"; $name = $rows->[0]; print $log "$name\tName_replaced\n"; print $flip "$name\\n"; }
@@ -177,6 +187,11 @@ while(<$fh>) {
        if(!defined $rows->[0]) { $num_noname++; print $log "$name\t"; $name = "$chr:$pos"; print $log "$name\tNo_name_in_DB\n";}
        elsif($rows->[0] eq $name) { $num_match++;}
        else { $num_replaced++; print $log "$name\t"; $name = $rows->[0]; print $log "$name\tName_replaced\n"; }
+   }
+
+   if( (length($alla) > 1) || (length($allb) > 1) ) {
+      print $indels "$name\\n";
+      $num_indels++;
    }
 
    print $newbim "$chr\\t$name\\t$pos_cm\\t$pos\\t$alla\\t$allb\\n";
@@ -189,6 +204,7 @@ print "Flipped matches: $num_flip_match\\n";
 print "Flipped variants with new Rs ID: $num_flip_replaced\\n";
 print "Flipped variants without known Rs IDs: $num_flip_noname\\n";
 print "Unknown variants: $num_mismatch\\n";
+print "...of which are indels: $num_indels\\n";
 
 # copy("$scratch_dir/bim", $new_bim) or die($!);
 # copy("$scratch_dir/fliplist", "flipfile") or die($!);
@@ -239,6 +255,7 @@ process plink_flip {
     output:
     file "${bedfam[0].baseName}_flipped.{bed,fam}" into to_plink_exclude_plink
     file "${bedfam[0].baseName}_flipped.bim" into to_exclude_bim, to_find_duplicates_nn
+    file "duplicates"
 
     tag { params.disease_data_set_prefix }
 
@@ -246,8 +263,15 @@ shell:
 '''
 module load IKMB
 module load Plink/1.9
+
+echo Deduplicating "!{bim.baseName}"
+cut -f2 "!{bim}" | sort | uniq -d >duplicates
+echo Found $(wc -l <duplicates) duplicates.
+
+plink --bed "!{bedfam[0].baseName}.bed" --bim "!{bim}" --fam "!{bedfam[0].baseName}.fam" --exclude duplicates --make-bed --out dedup
+
 echo Flipping strands for "!{bim.baseName}"
-plink --bed "!{bedfam[0].baseName}.bed" --bim "!{bim}" --fam "!{bedfam[0].baseName}.fam" --flip "!{flip}" --threads 1 --memory 6144 --make-bed --out "!{bedfam[0].baseName}_flipped" --allow-no-sex
+plink --bfile dedup --flip "!{flip}" --threads 1 --memory 6144 --make-bed --out "!{bedfam[0].baseName}_flipped" --allow-no-sex
 '''
 }
 //
