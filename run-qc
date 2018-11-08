@@ -26,6 +26,8 @@ use Cwd;
 use strict;
 use warnings;
 
+$SIG{'INT'} = sub { exit(1); };
+
 # use autodie qw(:all); # no stable signal or error handling, yet
 
 # Trim leading and trailing whitespace from argument
@@ -112,7 +114,7 @@ update_env_paths(\%config);
 (undef, my $confdir, undef) = fileparse($ARGV[0]);
 print "Config directory: $confdir\n" if $opt_verbose;
 # my $tempdir = tempdir('nxf-qc-' . $config{'collection_name'} . '_XXXX', CLEANUP => 1);
-my $tempdir = tempdir('nxf-qc-' . $config{'collection_name'} . '_XXXX', CLEANUP => 0, TMPDIR => 1) or die($!);
+my $tempdir = tempdir('nxf-qc-' . $config{'collection_name'} . '_XXXX', CLEANUP => 1, TMPDIR => 1) or die($!);
 
 $tempdir .= "/";
 
@@ -130,7 +132,8 @@ if ($opt_batchconf) {
     $config{'final_dir'} = $config{'batches_resultdir'} . "/final";
     $config{'qc_dir'} = $config{'batches_resultdir'} . "/final";
     $config{'sampleqci_dir'} = $config{'batches_resultdir'} . "/SampleQC";
-    $config{'collection_name'} = $config{'batches_phony_names'};
+    
+    $config{'collection_name'} = $config{'batches_phony_names'} =~ s/,/_/gr;
 }
 
 mkdir $config{'snpqci_dir'} if !-e $config{'snpqci_dir'};

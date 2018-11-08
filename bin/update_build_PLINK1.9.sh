@@ -45,14 +45,18 @@ temp3="$temp_prefix-after-flip"
 
 #1. Apply the chr
 #plink --noweb --allow-no-sex --bfile $stem --update-map $chr_file --update-chr --make-bed --out $temp1
+echo Trying to update chromosomes
 plink --allow-no-sex --bfile $stem --update-chr $chr_file --make-bed --out $temp1
 #2. Apply the pos
+echo Trying to update positions
 #plink --noweb --allow-no-sex --bfile $temp1 --update-map $pos_file --make-bed --out $temp2
 plink --allow-no-sex --bfile $temp1 --update-map $pos_file --make-bed --out $temp2
 #3. Apply the flip
+echo Not flipping.
 #plink --noweb --allow-no-sex --bfile $temp2 --flip $flip_file --make-bed --out $temp3
 #plink --allow-no-sex --bfile $temp2 --flip $flip_file --make-bed --out $temp3
 #4. Extract the SNPs in the pos file, we don't want SNPs that aren't in the strand file
+echo Trying to filter out those SNPs without strand information
 #plink --noweb --allow-no-sex --bfile $temp3 --extract $pos_file --make-bed --out $outstem
 plink --allow-no-sex --bfile $temp2 --extract $pos_file --make-bed --out $outstem
 

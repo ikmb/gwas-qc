@@ -16,7 +16,7 @@ input_files_lift = Channel.create()
 // Prepare input file pairs from batches
 //Channel.fromFilePairs(params.input + ".{bim,bed,fam}", size:3, flat: true).separate(input_files_flip, input_files_ann, to_flipfile) { a -> [a, a, a] }
 
-println BATCH_DIR + "/" + params.collection_name + "/" + params.basename + ".{bim,bed,fam}"
+//println BATCH_DIR + "/" + params.collection_name + "/" + params.basename + ".{bim,bed,fam}"
 
 // 
 
@@ -49,10 +49,41 @@ params.collection_name = false
 // }
 
 // BEWARE: the first item in this list seems to be a "1". I have no clue why.
-input_files_lift =  Channel.fromFilePairs(BATCH_DIR + "/" + params.batch_name + "/" + params.basename + ".{bim,bed,fam}", size:3, flat: true)
+
+// input_files_check =  Channel.fromFilePairs(BATCH_DIR + "/" + params.batch_name + "/" + params.basename + ".{bim,bed,fam}", size:3, flat: true)
+//input_files_check =  Channel.fromFilePairs(BATCH_DIR + "/" + params.basename + ".{bim,bed,fam}", size:3, flat: true)
+
+Channel.fromFilePairs(BATCH_DIR + "/" + params.batch_name + "/" + params.basename + ".{bim,bed,fam}", size:3, flat: true).into {input_files_check; input_files_lift}
+
+println "Input files: " + BATCH_DIR + "/" + params.batch_name + "/" + params.basename + ".{bim,bed,fam}"
+
+process check_chip_type {
+    memory 4.GB
+    cpus 2
+    publishDir params.rs_dir ?: '.', mode: 'copy'
+
+    input:
+
+    file original from input_files_check
+
+    output:
+
+//    file "*.strand"
+//    file "${original[1].baseName}.{bed,bim,fam}" into input_files_lift
+    file "${original[1].baseName}.flag_atcg"
+    file "${original[1].baseName}.chip_detect.log"
+
+    shell:
+
+'''
+chipmatch --verbose --output !{original[1].baseName}.chip_detect.log --threads 2 !{original[1].baseName}.bim /work_beegfs/sukmb388/wayne_strands
+<!{original[1].baseName}.bim awk '{if(($5=="A" && $6=="T")||($5=="T" && $6=="A")) { printf("%s %s%s\\n", $2, $5, $6); }}' >!{original[1].baseName}.flag_atcg
+<!{original[1].baseName}.bim awk '{if(($5=="C" && $6=="G")||($5=="G" && $6=="C")) { printf("%s %s%s\\n", $2, $5, $6); }}' >>!{original[1].baseName}.flag_atcg
+'''
+}
 
 process lift_genome_build {
-
+    memory 8.GB
     input:
 
     file original from input_files_lift
@@ -69,19 +100,19 @@ TARGETNAME="!{original[1].baseName}_lift"
 BASENAME="!{original[1].baseName}"
 STRAND_FILE="!{params.lift_to}"
 
-
 if [ -e "$STRAND_FILE" ]; then
     $NXF_DIR/bin/update_build_PLINK1.9.sh "$BASENAME" "$STRAND_FILE" "$TARGETNAME"
 else
     echo "No strand file specified for lifting."
-    mv "!{original[1].baseName}.bed $TARGETNAME.bed"
-    mv "!{original[1].baseName}.bim $TARGETNAME.bim"
-    mv "!{original[1].baseName}.fam $TARGETNAME.fam"
+    mv "!{original[1].baseName}.bed" "$TARGETNAME.bed"
+    mv "!{original[1].baseName}.bim" "$TARGETNAME.bim"
+    mv "!{original[1].baseName}.fam" "$TARGETNAME.fam"
 fi
 '''
 }
 
 process normalize_variant_names {
+	time 24.h
     publishDir params.rs_dir ?: '.', mode: 'copy'
 
     input:
@@ -108,12 +139,24 @@ use Data::Dumper;
 
 my $logtarget = "Rs-!{params.collection_name}.RsTranslation.log";
 
-my $scratch_dir = $ENV{'TMPDIR'} // '/tmp';
+my $scratch_dir = $ENV{'TMPDIR'};
 
-print "Copying database to $scratch_dir}...\\n";
-copy("!{params.variant_annotation_db}", "$scratch_dir/annotation.sqlite") or die($!);
+# print "Copying database to $scratch_dir}...\\n";
 
-my $db = DBI->connect("dbi:SQLite:dbname=$ENV{TMPDIR}/annotation.sqlite", "", "", { sqlite_open_flags => SQLITE_OPEN_READONLY });
+my $variant_db = "!{params.variant_annotation_db}";
+my $db_in_scratch = 0;
+
+if(copy("!{params.variant_annotation_db}", "$scratch_dir/annotation.sqlite") == 0) {
+	print "Could not copy annotation DB, using remote DB instead. This will take a long time.\\n";
+	# Maybe copy() failed half-way through, so better unlink
+	unlink("$scratch_dir/annotation.sqlite");
+} else {
+	$variant_db = "$scratch_dir/annotation.sqlite";
+	print "Copied annotation database to local scratch.\\n";
+	$db_in_scratch = 1;
+}
+
+my $db = DBI->connect("dbi:SQLite:dbname=$variant_db", "", "", { sqlite_open_flags => SQLITE_OPEN_READONLY });
 my $query_plus = $db->prepare('SELECT name FROM annotation WHERE chrom=?1 AND position=?2 AND ((strand="+" AND alleleA=?3 AND alleleB=?4) OR (strand="+" AND alleleB=?3 AND alleleA=?4) OR (strand="-" AND alleleA=?5 AND alleleB=?6) OR (strand="-" AND alleleB=?5 AND alleleA=?6))');
 
 my $query_minus = $db->prepare('SELECT name FROM annotation WHERE chrom=?1 AND position=?2 AND ((strand="+" AND alleleA=?5 AND alleleB=?6) OR (strand="+" AND alleleB=?5 AND alleleA=?6) OR (strand="-" AND alleleA=?3 AND alleleB=?4) OR (strand="-" AND alleleB=?3 AND alleleA=?4))');
@@ -265,7 +308,7 @@ module load IKMB
 module load Plink/1.9
 
 echo Deduplicating "!{bim.baseName}"
-cut -f2 "!{bim}" | sort | uniq -d >duplicates
+cut -f2 "!{bim}" | sort -T . | uniq -d >duplicates
 echo Found $(wc -l <duplicates) duplicates.
 
 plink --bed "!{bedfam[0].baseName}.bed" --bim "!{bim}" --fam "!{bedfam[0].baseName}.fam" --exclude duplicates --make-bed --out dedup

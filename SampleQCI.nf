@@ -95,6 +95,9 @@ process apply_precalc_remove_list {
 
 process determine_miss_het {
 //    cpus 4
+	memory { 12.GB * task.attempt }
+	time { 4.h * task.attempt }
+	errorStrategy 'retry'
 
     input:
         file dataset from for_det_miss_het

@@ -26,6 +26,8 @@ to_calc_hwe = Channel.create()
 
 process merge_batches {
 
+    memory 12.GB
+
     output:
     file "${params.collection_name}_Rs.bim" into merged_bim, to_split_bim, to_hwe_bim, to_verify_bim, to_exclude_bim, to_miss_bim, to_miss_batch_bim
     file "${params.collection_name}_Rs.bed" into merged_bed, to_split_bed, to_hwe_bed, to_verify_bed, to_exclude_bed, to_miss_bed, to_miss_batch_bed
@@ -77,7 +79,7 @@ fi
 done
 
 if [ "${#PREFIXES[*]}" -gt 1 ]; then
-plink --bfile $BASE --merge-list merge-list --make-bed --out "!{params.collection_name}_Rs" --allow-no-sex
+plink --bfile $BASE --merge-list merge-list --make-bed --out "!{params.collection_name}_Rs" --allow-no-sex --memory 11000
 else
 cp $BASE.bim !{params.collection_name}_Rs.bim
 cp $BASE.bed !{params.collection_name}_Rs.bed
@@ -136,7 +138,7 @@ process split_dataset {
     file 'chunk_*' into to_calc_hwe
 
   """
-  cut -f 2 $input_bim | split -l 1000 -a 3 -d - chunk_
+  cut -f 2 $input_bim | split -l 10000 -a 5 -d - chunk_
   """
 }
 
@@ -167,7 +169,7 @@ process calculate_hwe {
   // Should have been zero, but killall -q returns 1 if it didn't find anything
   validExitStatus 0
   errorStrategy 'retry'
-  memory 4.GB
+    memory { 4.GB * task.attempt }
   input:
     set file(chunk), file('hwe-script.r') from to_calc_hwe.flatten().combine(to_calc_hwe_script)
     file input_bim from to_hwe_bim
@@ -327,6 +329,9 @@ touch "${params.collection_name}_exclude-per-batch"
  Determine the missingness for the entire collection
  */
 process determine_missingness_entire {
+    errorStrategy 'retry'
+    memory { 8.GB * task.attempt }
+
     input:
     file input_bim from to_miss_bim
     file input_bed from to_miss_bed
@@ -348,6 +353,9 @@ SNPQCI_extract_missingness_entire.py missingness_entire.lmiss ${params.geno_enti
 
 
 process determine_missingness_per_batch {
+    errorStrategy 'retry'
+    memory { 8.GB * task.attempt }
+
     input:
     file individuals_annotation
     file input_bim from to_miss_batch_bim
@@ -370,6 +378,8 @@ SNPQCI_extract_missingness_perbatch.py missingness_perbatch.lmiss ${params.geno_
 
 process exclude_bad_variants {
     publishDir params.snpqci_dir ?: '.', mode: 'copy'
+    errorStrategy 'retry'
+    memory { 8.GB * task.attempt }
 
     input:
     file input_bim from to_exclude_bim

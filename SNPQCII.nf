@@ -322,8 +322,9 @@ process prune {
 
     output:
 
-    file "*SNPQCII_final_pruned{.bed,.bim,.fam,.log}" into for_flashpca_pruned, for_draw_histograms_pruned, for_twstats_pruned, for_merge_1kg_pruned
-
+//    file "*SNPQCII_final_pruned{.bed,.bim,.fam,.log}" into for_flashpca_pruned, for_draw_histograms_pruned, for_twstats_pruned, for_merge_1kg_pruned
+    file "*SNPQCII_final_pruned{.bed,.bim,.fam,.log}" into for_merge_1kg_pruned
+//    file "*SNPQCII_final_pruned_with_atcg{.bed,.bim,.fam,.log}" into for_merge_1kg_pruned_atcg
 
 
     shell:
@@ -342,11 +343,16 @@ plink --bfile !{dataset.bed.baseName} --extract "!{params.PCA_SNPList}" --make-b
     module load "IKMB"
     module load "Plink/1.7"
 
-plink --noweb --bfile !{dataset.bed.baseName} --indep-pairwise 50 5 0.2 --out _prune --allow-no-sex
-plink --noweb --bfile !{dataset.bed.baseName} --extract _prune.prune.in --maf 0.05 --make-bed --out intermediate --allow-no-sex
+<!{dataset.bim} tr -s '\\t ' ' ' | cut -f2 -d' ' | grep ^unk_ >unknowns
+plink --bfile !{dataset.bed.baseName} --exclude unknowns --make-bed --out no-unknowns
 
-python -c 'from SampleQCI_helpers import *; write_snps_autosomes_noLDRegions_noATandGC_noIndels("!{dataset.bim}", "include_variants")'
+plink --noweb --bfile no-unknowns --indep-pairwise 50 5 0.2 --out _prune --allow-no-sex
+plink --noweb --bfile no-unknowns --extract _prune.prune.in --maf 0.05 --make-bed --out intermediate --allow-no-sex
+
+python -c 'from SampleQCI_helpers import *; write_snps_autosomes_noLDRegions_noATandGC_noIndels("no-unknowns.bim", "include_variants")'
+#python -c 'from SampleQCI_helpers import *; write_snps_autosomes_noLDRegions_noIndels("no-unknowns.bim", "include_variants_with_atcg")'
 plink --noweb --bfile intermediate --extract include_variants --make-bed --out "!{prefix}_pruned" --allow-no-sex
+#plink --noweb --bfile intermediate --extract include_variants_with_atcg --make-bed --out "!{prefix}_pruned_with_atcg" --allow-no-sex
 '''
     }
 }
@@ -700,7 +706,7 @@ process final_cleaning {
 
     output:
 
-    file "${params.disease_data_set_prefix_release}_final{.bed,.bim,.fam,.log,_annotation.txt,_flag.relatives.txt}" into for_snprelate_prune,for_twstats_final_pruned_ann,for_draw_final_pca_histograms_ds,for_plot_maf,for_eigenstrat_convert_ann,for_snprelate_ann,for_twstats_final_pruned_eigenstrat_ann,for_sex_check,for_ibd_verify,for_prepare_imputation
+    file "${params.disease_data_set_prefix_release}_final{.bed,.bim,.fam,.log,_annotation.txt,_flag.relatives.txt}" into for_snprelate_prune,for_twstats_final_pruned_ann,for_draw_final_pca_histograms_ds,for_plot_maf,for_eigenstrat_convert_ann,for_snprelate_ann,for_snprelate_ann_atcg,for_twstats_final_pruned_eigenstrat_ann,for_sex_check,for_ibd_verify,for_prepare_imputation
 shell:
     dataset = mapFileList(dataset_staged)
     prefix = params.disease_data_set_prefix_release
@@ -732,6 +738,7 @@ process prune_final {
     
     output:
     file "$prefix{.bed,.bim,.fam,.log}" into for_snprelate, for_twstats_final_pruned
+    file "${prefix}_with_atcg{.bed,.bim,.fam,.log}" into for_snprelate_atcg
 
     shell:
     dataset = mapFileList(ds_staged)
@@ -749,11 +756,16 @@ plink --bfile !{dataset.bed.baseName} --extract "!{params.PCA_SNPList}" --make-b
     module load "IKMB"
     module load "Plink/1.9"
 
-plink --bfile !{dataset.bed.baseName} --indep-pairwise 50 5 0.2 --out after-indep-pairwise --allow-no-sex
-plink --bfile !{dataset.bed.baseName} --extract after-indep-pairwise.prune.in --maf 0.05 --make-bed --out after-correlated-remove --allow-no-sex
+<!{dataset.bim} tr -s '\\t ' ' ' | cut -f2 -d' ' | grep ^unk_ >unknowns
+plink --bfile !{dataset.bed.baseName} --exclude unknowns --make-bed --out no-unknowns
 
-python -c 'from SampleQCI_helpers import *; write_snps_autosomes_noLDRegions_noATandGC_noIndels("!{dataset.bim}", "include-variants")'
+plink --bfile no-unknowns --indep-pairwise 50 5 0.2 --out after-indep-pairwise --allow-no-sex
+plink --bfile no-unknowns --extract after-indep-pairwise.prune.in --maf 0.05 --make-bed --out after-correlated-remove --allow-no-sex
+
+python -c 'from SampleQCI_helpers import *; write_snps_autosomes_noLDRegions_noATandGC_noIndels("no-unknowns.bim", "include-variants")'
+python -c 'from SampleQCI_helpers import *; write_snps_autosomes_noLDRegions_noIndels("no-unknowns.bim", "include-variants-with-atcg")'
 plink --bfile after-correlated-remove --extract include-variants --make-bed --out "!{prefix}" --allow-no-sex
+plink --bfile after-correlated-remove --extract include-variants-with-atcg --make-bed --out "!{prefix}_with_atcg" --allow-no-sex
 '''
     }
 }
@@ -809,6 +821,60 @@ R --slave --args "!{prefix}.country" "!{params.preQCIMDS_1kG_sample}" <"!{draw_e
 
 '''
 }
+
+
+process final_pca_con_projection_atcg {
+    publishDir params.qc_dir ?: '.', mode: 'copy', overwrite: true
+    memory 12.GB
+
+    input:
+    file ds_pruned_staged from for_snprelate_atcg
+    file ds_final_staged from for_snprelate_ann_atcg
+    
+    output:
+    file "${params.disease_data_set_prefix_release}_atcg.{pca.evec,eval}"
+    file "*.png"
+    
+    shell:
+    dataset = mapFileList(ds_pruned_staged)
+    ds_final = mapFileList(ds_final_staged)
+    prefix = params.disease_data_set_prefix_release + "_atcg"
+    draw_evec_FLASHPCA2 = SCRIPT_DIR + "/draw_evec_FLASHPCA2.r"
+    pcaplot_1KG = SCRIPT_DIR + "/pcaplot_1KG_v2.R"
+
+//    gds_script = SCRIPT_DIR + "/SNPRelate_convert2gds.r"
+//    snprelate_script = SCRIPT_DIR + "/SNPRelate_PCA_32PCAs.r"
+//    projection_samples = params.disease_data_set_prefix_release + "_pruned_PCAprojection_control_samples.txt"
+'''
+    module load "IKMB"
+    module load "FlashPCA/2.0"
+    module load "Eigensoft/4.2"
+flashpca2 -d 10 --bfile "!{dataset.bed.baseName}" \
+    --outval !{prefix}_eigenvalues_flashpca2 \
+    --outvec !{prefix}_eigenvectors_flashpca2 \
+    --outpc  !{prefix}_pcs_flashpca2 \
+    --numthreads !{task.cpus} \
+    --outload !{prefix}_loadings_flashpca2 \
+    --outmeansd !{prefix}_meansfd_flashpca2 \
+    --memory !{task.memory.toMega()}
+#    --memory 64000
+
+echo Adding batch info | ts
+python -c 'from SampleQCI_helpers import *; addphenoinfo_10PCs("!{prefix}_pcs_flashpca2", "!{prefix}_eigenvalues_flashpca2", "!{prefix}.pca.evec", "!{prefix}.eval", "!{ds_final.annotation}", "!{params.preQCIMDS_1kG_sample}")'
+
+echo Drawing FLASHPCA2 eigenvectors for set with batch info | ts
+R --slave --args "!{prefix}" "!{params.preQCIMDS_1kG_sample}" <"!{draw_evec_FLASHPCA2}"
+
+echo Adding country info | ts
+python -c 'from SampleQCI_helpers import *; addcountryinfo_10PCs("!{prefix}_pcs_flashpca2", "!{prefix}_eigenvalues_flashpca2", "!{prefix}.country.pca.evec", "!{prefix}.country.eval", "!{ds_final.annotation}", "!{params.preQCIMDS_1kG_sample}")'
+
+echo Drawing FLASHPCA2 eigenvectors for set with country info | ts
+R --slave --args "!{prefix}.country" "!{params.preQCIMDS_1kG_sample}" <"!{draw_evec_FLASHPCA2}"
+
+
+'''
+}
+
 
 process draw_final_pca_histograms {
     when:
