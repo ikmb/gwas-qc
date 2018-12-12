@@ -138,7 +138,7 @@ process split_dataset {
     file 'chunk_*' into to_calc_hwe
 
   """
-  cut -f 2 $input_bim | split -l 10000 -a 5 -d - chunk_
+  cut -f 2 $input_bim | split -l 5000 -a 5 -d - chunk_
   """
 }
 
@@ -169,7 +169,8 @@ process calculate_hwe {
   // Should have been zero, but killall -q returns 1 if it didn't find anything
   validExitStatus 0
   errorStrategy 'retry'
-    memory { 4.GB * task.attempt }
+  memory 2.GB
+
   input:
     set file(chunk), file('hwe-script.r') from to_calc_hwe.flatten().combine(to_calc_hwe_script)
     file input_bim from to_hwe_bim

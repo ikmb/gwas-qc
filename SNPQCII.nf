@@ -95,10 +95,10 @@ for_final_sample_cleaning = Channel.create()
  Default: 100 (as extracted from SNP_QCII_CON_PS_AS_CD_UC_PSC_parallel_part1.py)
 */
 hf_test_chunk_size = 1000
-/*
+
 // from SNP_QCII_CON_PS_AS_CD_UC_PSC_parallel_part1.py
 process hf_test_prepare {
-
+   memory 16.GB 
     // It is okay if kill could not successfully kill Rserve, it might have died on its own,
     // so allow an error-indicating return value.
     validExitStatus 0,1
@@ -111,6 +111,8 @@ process hf_test_prepare {
     output:
     file 'chunk_*' into hf_test_chunk
     file 'HF_PCA.R' into hf_test_script
+    file 'cleaned-annotation' into hf_test_anno, hf_test_excludes_anno
+    file 'cleaned-evec' into hf_test_evec
 
     shell:
 
@@ -120,25 +122,49 @@ process hf_test_prepare {
     module load "IKMB"
     module load "Plink/1.9"
 # hf_test(plink, new_plink, pcfile, qced_annotations)
+# 
+# Determine template based on number of batches:
+# #cases > 1 and #controls > 1 => HF_CasesControls
+# #cases > 1 and #controls =< 1 => HF_Cases
+# #cases =< 1 and #controls > 1 => HF_Controls
+# #cases =< 1 and #controls =< 1 => skip test
 
-# Generate script file from template
-TEMPLATE="!{SCRIPT_DIR + '/template_HF_PCA.CON_PS_AS_CD_UC_PSC.R'}"
-if [ "!{params.hf_test_CON_only}" == "True" ]; then
-    TEMPLATE="!{SCRIPT_DIR + '/template_HF_PCA.CON.R'}"
+# Fix annotations and evec file to match FAM file
+<!{dataset.fam} tr -s '\\t ' ' ' | cut -f2 -d" " >samples_to_be_used
+head -n1 !{dataset.annotation} >cleaned-annotation
+grep -f samples_to_be_used !{dataset.annotation} >>cleaned-annotation
+head -n1 !{dataset.evec} >cleaned-evec
+grep -f samples_to_be_used !{dataset.evec} >>cleaned-evec
+
+N_CASES=$(<cleaned-annotation tr -s '\\t ' ' ' | cut -f7,9 -d' ' | uniq | tail -n +2 | cut -f2 -d' ' | grep -v -c Control)
+N_CONTROLS=$(<cleaned-annotation tr -s '\\t ' ' ' | cut -f7,9 -d' ' | uniq | tail -n +2 | cut -f2 -d' ' | grep -c Control)
+
+echo "$N_CASES case batches and $N_CONTROLS control batches were detected."
+
+if (( ("$N_CASES" > "1") && ("$N_CONTROLS" > "1") )); then
+   TEMPLATE="!{SCRIPT_DIR}/template_HF_PCA.CaseControl.R"
+elif [ "$N_CASES" -gt "1" ]; then
+   TEMPLATE="!{SCRIPT_DIR}/template_HF_PCA.Case.R"
+elif [ "$N_CONTROLS" -gt "1" ]; then
+   TEMPLATE="!{SCRIPT_DIR}/template_HF_PCA.CON.R"
+else
+   echo "At least two case or two control batches are required for HF/ANOVA testing."
+   touch chunk_0
+   touch HF_PCA.R
+   exit 0
 fi
 
-# Replace placeholders in template. Note the use of '|' in the regex,
-# so we don't need to escape the replacement parameter.
+# Replace placeholders in template.
 sed 's|NUMOFPCS|!{params.numof_pc}|g' $TEMPLATE >HF_PCA.R
-sed 's|INDIVIDUALS_ANNOTATION|!{dataset.annotation}|g' HF_PCA.R | TMPDIR=. sponge HF_PCA.R
-sed 's|PCAEVECFILE|!{dataset.evec}|g' HF_PCA.R | TMPDIR=. sponge HF_PCA.R
+sed -i 's|INDIVIDUALS_ANNOTATION|cleaned-annotation|g' HF_PCA.R
+sed -i 's|PCAEVECFILE|cleaned-evec|g' HF_PCA.R
 
 # Likely not necessary
 # chmod u+x HF_PCA.R
 
 # Print batches information
 echo Found the following batches:
-cut -f7 "!{dataset.annotation}" | tail -n +2 | sort -u
+cut -f7 cleaned-annotation | tail -n +2 | sort -u
 
 cut -f2 "!{dataset.bim}" | split -l !{hf_test_chunk_size} -a 4 -d - chunk_
 '''
@@ -146,10 +172,16 @@ cut -f2 "!{dataset.bim}" | split -l !{hf_test_chunk_size} -a 4 -d - chunk_
 
 
 process hf_test {
+    // Keine Ahnung, wo das Script "1" produziert. Muss irgendwo beim NA-zaehlen sein
+    validExitStatus 0,1
+    errorStrategy 'retry'
+    memory 4.GB
     input:
     file SampleQCI_final_wr_staged from Channel.from(SampleQCI_final_wr).collect()
     file r_script from hf_test_script
     file(chunk)from hf_test_chunk.flatten()
+    file anno from hf_test_anno
+    file evec from hf_test_evec
 
     output:
     file "${params.collection_name}_SNPQCII_${chunk}.auto.R" into hf_test_merge_chunks
@@ -163,53 +195,61 @@ process hf_test {
     module load "IKMB"
     module load "Plink/1.9"
 
+# Empty R script -> no suitable template candidate for HF/ANOVA testing
+if [ ! -s "!{r_script}" ]; then
+    touch "!{params.collection_name}_SNPQCII_${chunk}.auto.R"
+    exit 0
+fi
+
+SOCKET=/scratch/rserve_$$.sock
+PIDFILE=/scratch/rserve_$$.pid
+
 RETRY=1
 while [ $RETRY -gt 0 ]
 do
-
+    echo Start $RETRY
     # Spawn Rserve. Detaches into background before setting up socket, so wait for socket to appear.
-    R CMD Rserve --RS-socket /scratch/rserve.sock --no-save --RS-pidfile /scratch/rserve.pid
-    while [ ! -e /scratch/rserve.sock ]
+    R CMD Rserve --RS-socket $SOCKET --no-save --RS-pidfile $PIDFILE
+    while [ ! -e $SOCKET ]
     do
         sleep 0.5
     done
-    RSERVE_PID=$(cat /scratch/rserve.pid)
-
-    echo Checking prerequisites...
-    head -n2 !{dataset.annotation} 2>&1 >/dev/null
-    echo "!{dataset.annotation} exists: $?  (should be 0)"
-    echo -n /scratch/rserve.sock exists and is readable:
-    if [ -S /scratch/rserve.sock ]; then
-       echo -n is a socket,
-    else
-       echo -n is not a socket,
-    fi
-    if [ -r /scratch/rserve.sock ]; then
-       echo is readable
-    else
-       echo is not readable
-    fi
+    RSERVE_PID=$(cat $PIDFILE)
 
     MYPWD=$(pwd)
     echo "setwd('$MYPWD')" >hf-local.r
     cat !{r_script} >>hf-local.r
-
-    plink --bfile "!{dataset.bim.baseName}" --extract "!{chunk}" --R hf-local.r --R-socket /scratch/rserve.sock --allow-no-sex --out "!{params.collection_name}_SNPQCII_!{chunk}"
-
+    echo Script generated $RETRY
+    plink --bfile "!{dataset.bim.baseName}" --extract "!{chunk}" --R hf-local.r --R-socket $SOCKET --allow-no-sex --out "!{params.collection_name}_SNPQCII_!{chunk}"
+    echo Plink done $RETRY
     # Kill Rserve but give it a chance...
-    sleep 0.5
-    if [ -e /scratch/rserve.sock ]; then
+    sleep 3
+    if [ -e $SOCKET ]; then
+        echo Killing Rserve
         # Might fail as it could have been died by now but that's okay.
-        kill $RSERVE_PID
-    fi
-
-    # Retry if there are NAs
-    NAS=$(grep -c NA ${params.collection_name}_SNPQCII_${chunk}.auto.R)
-    if [ $NAS -gt 0 ]; then
-       rm -f /scratch/rserve.sock ${params.collection_name}_SNPQCII_${chunk}.auto.R /scratch/rserve.pid
+        kill -9 $RSERVE_PID || true
+        rm -f $SOCKET
     else
+        # Socket is closed but maybe the process is still running
+        kill -9 $RSERVE_PID || true
+        echo Rserve terminated on its own.
+    fi
+    
+    echo Socket removed or killed $RETRY
+    touch !{params.collection_name}_SNPQCII_!{chunk}.auto.R
+    echo Result file touched $RETRY
+    # Retry if there are NAs (only check score columns, names might (rightfully) contain "NA")
+    NAS=$(tr -s '\\t ' ' ' <!{params.collection_name}_SNPQCII_!{chunk}.auto.R | cut -f6,7 -d" " | grep -c NA)
+    echo NAs counted $RETRY
+    if [ "$NAS" -gt "0" ]; then
+       echo Found $NAS NAs
+       echo Removing files $RETRY
+       rm -f $SOCKET !{params.collection_name}_SNPQCII_!{chunk}.auto.R $PIDFILE || true
+    else
+       echo Resetting retry counter $RETRY
        RETRY=0
     fi
+    echo NAs counted $RETRY
 done
 
 '''
@@ -218,6 +258,8 @@ done
 // SNP_QCII_CON_PS_AS_CD_UC_PSC_parallel_part2.py starts here
 
 process hf_test_merge {
+    validExitStatus 0,1
+
         publishDir params.qc_dir ?: '.', mode: 'copy', overwrite: true
 
     input:
@@ -226,7 +268,7 @@ process hf_test_merge {
     file SampleQCI_final_staged from Channel.from(SampleQCI_final).collect()
 
     output:
-    file "!{params.collection_name}_SNPQCII_hf" into hf_test_results
+    file "${params.collection_name}_SNPQCII_hf" into hf_test_results
 
     shell:
 
@@ -236,52 +278,66 @@ CHUNKS=$(ls -X !{params.collection_name}_SNPQCII_chunk_*)
 OUTFILE="!{params.collection_name}_SNPQCII_hf"
 BIMFILE="!{dataset.bim}"
 
+rm -f $OUTFILE
+
 for chunk in $CHUNKS; do
     cat $chunk >>$OUTFILE
 done
 
+if [ ! -s "$OUTFILE" ]; then
+    touch "!{params.collection_name}_SNPQCII_hf"
+    exit 0
+fi
+
 # Count number of variants in split/merged and original files
 LINES_MERGED=$(wc -l $OUTFILE | cut -d " " -f 1)
-LINES_ORIG=$(wc -l $BIMFILE} | cut -d " " -f 1)
+LINES_ORIG=$(wc -l $BIMFILE | cut -d " " -f 1)
 
-if [ $LINES_MERGED ne $LINES_ORIG ]; then
+if [ "$LINES_MERGED" -ne "$LINES_ORIG" ]; then
     echo Unexpected difference in merged HF file.
     echo Expected $LINES_ORIG variants in $OUTFILE
     echo Observed $LINES_MERGED variants in $OUTFILE
+    exit 5
 fi
 
 # Count number if NAs in split/merged and original files
-NAS_MERGED=$(gawk '{ print $5 }' <$OUTFILE | grep NA | wc -l | cut -d " " -f 1)
-NAS_ORIG=$(grep NA <$BIMFILE | wc -l | cut -d " " -f 1)
+NAS_MERGED=$(tr -s '\\t ' ' ' <$OUTFILE | cut -d" " -f6,7 | grep -c NA)
+NAS_ORIG=$(tr -s '\\t ' ' ' <$BIMFILE | cut -d" " -f1,3,4,5,6 | grep -c NA)
 
-if [ $NAS_MERGED ne $NAS_ORIG ]; then
+if [ "$NAS_MERGED" -ne "$NAS_ORIG" ]; then
    echo Unexpected difference in 'NA' valiues in HD file.
    echo Expected $NAS_ORIG NAs in $OUTFILE
    echo Observed $NAS_MERGED NAs in $OUTFILE
+   exit 5
+else
+   echo Successful
+   exit 0
 fi
+
 '''
 }
 
-*/
-
-// see part2.py: "TODO mit jan kaessens: auskommentieren wenn nur eine kontrollgruppe"
-
 process generate_hf_excludes {
+    publishDir params.qc_dir ?: '.', mode: 'copy', overwrite: true
     input:
 
     file SampleQCI_final_staged from Channel.from(SampleQCI_final).collect()
-    //file hf_test_results
+    file results from hf_test_results
+    file hf_test_excludes_anno
 
     output:
-
+    file "*.png"
     file 'hf-excludes' into for_exclude_variants
 
     shell:
-    dataset = mapFileList(SampleQCI_final_staged)
+        dataset = mapFileList(SampleQCI_final_staged)
+    plotscript = SCRIPT_DIR + "/SNP_QCII_draw_FDR_CaseControl.r"
 '''
 touch hf-excludes
+python -c 'from SNPQC_helpers import *; generate_exclude_file_CaseControl("!{results}", "!{hf_test_excludes_anno}", "hf-excludes", "!{params.batches_names}", "!{params.prefix_merged_SNPQCII}", !{params.FDR_index_remove_variants}, "!{plotscript}")'
 '''
 }
+
 
 
 process exclude_variants {

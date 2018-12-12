@@ -729,7 +729,7 @@ fi
 
 process pca_without_projection {
     publishDir params.sampleqci_dir ?: '.', mode: 'copy'
-    
+
     input:
     file pruned_1kg from for_pca_without_projection
     file remove_list from for_pca_without_projection_removelist
