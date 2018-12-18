@@ -53,9 +53,9 @@ params.collection_name = false
 // input_files_check =  Channel.fromFilePairs(BATCH_DIR + "/" + params.batch_name + "/" + params.basename + ".{bim,bed,fam}", size:3, flat: true)
 //input_files_check =  Channel.fromFilePairs(BATCH_DIR + "/" + params.basename + ".{bim,bed,fam}", size:3, flat: true)
 
-Channel.fromFilePairs(BATCH_DIR + "/" + params.batch_name + "/" + params.basename + ".{bim,bed,fam}", size:3, flat: true).into {input_files_check; input_files_lift}
+Channel.fromFilePairs(BATCH_DIR + "/" + params.batch_name + "/orig_files/" + params.basename + ".{bim,bed,fam}", size:3, flat: true).into {input_files_check; input_files_lift}
 
-println "Input files: " + BATCH_DIR + "/" + params.batch_name + "/" + params.basename + ".{bim,bed,fam}"
+println "Input files: " + BATCH_DIR + "/" + params.batch_name + "/orig_files/" + params.basename + ".{bim,bed,fam}"
 
 process check_chip_type {
     memory 4.GB

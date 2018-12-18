@@ -305,12 +305,13 @@ process exclude_lists_for_failed_hwe {
     output:
     file "${params.collection_name}_exclude-whole-collection" into excludes_whole
     file "${params.collection_name}_exclude-per-batch" into excludes_perbatch
+    file "${params.collection_name}_exclude-all-batches" into excludes_allbatches
     file "${params.collection_name}_exclude-whole-collection.FDRthresholds.SNPQCI.1.txt.png"
     file "${params.collection_name}_exclude-per-batch.FDRthresholds.SNPQCI.2.txt.png"
 
 //    script:
 """
-SNPQCI_fdr_filter.py "$hwe_result" "$individuals_annotation" "$draw_fdr" ${params.collection_name}_exclude-whole-collection ${params.collection_name}_exclude-per-batch ${params.FDR_index_remove_variants}
+SNPQCI_fdr_filter.py "$hwe_result" "$individuals_annotation" "$draw_fdr" ${params.collection_name}_exclude-whole-collection ${params.collection_name}_exclude-per-batch ${params.collection_name}_exclude-all-batches ${params.FDR_index_remove_variants}
 """
 }
 
@@ -383,11 +384,13 @@ process exclude_bad_variants {
     memory { 8.GB * task.attempt }
 
     input:
+    file individuals_annotation
     file input_bim from to_exclude_bim
     file input_bed from to_exclude_bed
     file input_fam from to_exclude_fam
     file excludes_whole from excludes_whole
     file excludes_perbatch from excludes_perbatch
+    file excludes_allbatches from excludes_allbatches
     file missingness_excludes_entire from excludes_miss_entire
     file missingness_excludes_perbatch from excludes_miss_perbatch
 
@@ -399,7 +402,18 @@ process exclude_bad_variants {
 """
     module load IKMB
     module load Plink/1.7
-(tail -n +2 "$excludes_whole" | cut -f1; cat "$excludes_perbatch"; cat "$missingness_excludes_entire"; cat "$missingness_excludes_perbatch") | sort -n | uniq >variant-excludes
+
+# TODO: check annotations and count control batches. if >= 5, use {excludes_entire/perbatch}, else use excludes_allbatches.
+NUM_CTRL_BATCHES=\$(tr -s '\\t ' ' ' <${individuals_annotation} | cut -f7,9 -d" " | grep Control | uniq | wc -l)
+
+if [ "\$NUM_CTRL_BATCHES" -gt "4" ]; then
+    echo "Found \$NUM_CTRL_BATCHES control batches."
+    (tail -n +2 "$excludes_whole" | cut -f1; cat "$excludes_perbatch"; cat "$missingness_excludes_entire"; cat "$missingness_excludes_perbatch") | sort -n | uniq >variant-excludes
+else
+    echo "Found \$NUM_CTRL_BATCHES control batches. Skipping 'worst batch removed' excludes from HWE testing."
+    (tail -n +2 "$excludes_allbatches" | cut -f1; cat "$missingness_excludes_entire"; cat "$missingness_excludes_perbatch") | sort -n | uniq >variant-excludes
+fi
+
 plink --noweb --bfile "${new File(input_bim.toString()).getBaseName()}" --exclude variant-excludes --make-bed --out ${params.collection_name}_QCI
 """
 }

@@ -5,7 +5,7 @@ import re
 import os
 
 
-def generate_exclude_file1_file2(HWEresults_file, batches_list, draw_script, all_output, perbatch_output, FDR_index_remove_variants):
+def generate_exclude_file1_file2(HWEresults_file, batches_list, draw_script, all_output, perbatch_output, allbatches_output, FDR_index_remove_variants):
     """generate exclude file 1: From HWE calculations across the entire
     collection, remove variants for which HWE fails even if the worst batch
     removed (i.e. even if we remove the batch with the smallest p_value (below
@@ -166,6 +166,7 @@ def generate_exclude_file1_file2(HWEresults_file, batches_list, draw_script, all
 
     try:
         fh_worst_batch_removed_w  = file(all_output, "w")
+        fh_allbatches_w = file(allbatches_output, "w")
     except IOError, e:
         print e
         sys.exit(1)
@@ -173,12 +174,18 @@ def generate_exclude_file1_file2(HWEresults_file, batches_list, draw_script, all
     sep = "\t"
     header = "Variant" + sep + "P_HWE\n"
     fh_worst_batch_removed_w.writelines(header)
+    fh_allbatches_w.writelines(header)
 
     for i in xrange(counts_rejected_FDR_worstbatchremoved[FDR_index_remove_variants]):
         fh_worst_batch_removed_w.writelines(HWE_Pval_vector_worstbatchremoved[i][1] + sep +
                                             str(HWE_Pval_vector_worstbatchremoved[i][0]) + "\n")
 
+    for i in xrange(counts_rejected_FDR_allbatches[FDR_index_remove_variants]):
+        fh_allbatches_w.writelines(HWE_Pval_vector_allbatches[i][1] + sep +
+                                            str(HWE_Pval_vector_allbatches[i][0]) + "\n")
+
     fh_worst_batch_removed_w.close()
+    fh_allbatches_w.close()
 
     # ----------------------------------------------------------------------------------- #
     # -- write #rejected variants for FDRs at different thresholds for plotting with R -- #
@@ -280,8 +287,8 @@ def generate_exclude_file1_file2(HWEresults_file, batches_list, draw_script, all
 if __name__ == "__main__":
 
     # check args
-    if len(sys.argv) != 7:
-        print "Usage: " + sys.argv[0] + " <hwe-file> <individuals-annotation> <fdr-draw-script.R> <excluded-all> <excluded-perbatch> <fdr-index-remove-variants>\n"
+    if len(sys.argv) != 8:
+        print "Usage: " + sys.argv[0] + " <hwe-file> <individuals-annotation> <fdr-draw-script.R> <excluded-all> <excluded-perbatch> <excluded-allbatches> <fdr-index-remove-variants>\n"
         print "\twhere:\n"
         print "\t<hwe-file> HWE result file written by the Plink/Rserve HWE calculation template\n"
         print "\t<individuals-annotation> individuals annotation file that contains batches information\n"
@@ -322,4 +329,4 @@ if __name__ == "__main__":
     individuals_fh.close()
 
     # generate exclusion files
-    generate_exclude_file1_file2(sys.argv[1], batches_list, sys.argv[3], sys.argv[4], sys.argv[5], int(sys.argv[6]))
+    generate_exclude_file1_file2(sys.argv[1], batches_list, sys.argv[3], sys.argv[4], sys.argv[5], sys.argv[6], int(sys.argv[7]))

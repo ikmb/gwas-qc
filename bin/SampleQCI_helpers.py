@@ -443,13 +443,13 @@ def merge__new_plink_collection_pruned__1kG(new_plink_pruned, new_plink_pruned_1
     # remove some variants if specified in file PCA_SNPexcludeList, SNPIDs in chr:pos format required
     if os.path.isfile(PCA_SNPexcludeList):
 
-        cmd = Command("plink --noweb --bfile %s.chrpos --extract %s.bim.chrpos --exclude %s.chrpos --make-bed --out %s --allow-no-sex" \
+        cmd = Command("plink --noweb --bfile %s.chrpos --extract %s.bim.chrpos --exclude %s --make-bed --out %s --allow-no-sex" \
                    %(new_plink_pruned,\
                      preQCIMDS_1kG,\
                      PCA_SNPexcludeList,\
                      new_plink_pruned + "_tmp") )
         cmd.run() ; del cmd
-        cmd = Command("plink --noweb --bfile %s --extract %s.chrpos.bim.txt --exclude %s.chrpos --make-bed --out %s --allow-no-sex" \
+        cmd = Command("plink --noweb --bfile %s --extract %s.chrpos.bim.txt --exclude %s --make-bed --out %s --allow-no-sex" \
                    %(preQCIMDS_1kG,\
                      new_plink_pruned,\
                      PCA_SNPexcludeList,\

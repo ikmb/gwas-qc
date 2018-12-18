@@ -197,7 +197,7 @@ process hf_test {
 
 # Empty R script -> no suitable template candidate for HF/ANOVA testing
 if [ ! -s "!{r_script}" ]; then
-    touch "!{params.collection_name}_SNPQCII_${chunk}.auto.R"
+    touch "!{params.collection_name}_SNPQCII_!{chunk}.auto.R"
     exit 0
 fi
 
