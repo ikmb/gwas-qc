@@ -55,7 +55,7 @@ params.collection_name = false
 
 Channel.fromFilePairs(BATCH_DIR + "/" + params.batch_name + "/orig_files/" + params.basename + ".{bim,bed,fam}", size:3, flat: true).into {input_files_check; input_files_lift}
 
-println "Input files: " + BATCH_DIR + "/" + params.batch_name + "/orig_files/" + params.basename + ".{bim,bed,fam}"
+println "Input files: " + BATCH_DIR + "/" + params.batch_name + "/" + params.basename + ".{bim,bed,fam}"
 
 process check_chip_type {
     memory 4.GB
@@ -95,7 +95,6 @@ process lift_genome_build {
 
 '''
 module load Plink/1.9
-
 TARGETNAME="!{original[1].baseName}_lift"
 BASENAME="!{original[1].baseName}"
 STRAND_FILE="!{params.lift_to}"
@@ -370,6 +369,7 @@ fi
 '''
 }
 
+individuals_annotation = file(ANNOTATION_DIR + "/" + params.individuals_annotation)
 
 /*
  Apply an exclude list to the translated Plink data set
@@ -378,12 +378,14 @@ process plink_exclude {
     publishDir params.rs_dir ?: '.', mode: 'copy'
 
     input:
+//    file individuals_annotation
     file exclude from to_plink_exclude_list
     file plink from to_plink_exclude_plink
     file bim from to_exclude_bim
 
     output:
     file "${params.disease_data_set_prefix_rs}.{bim,bed,fam,log}"
+//    file individuals_annotation
 
     tag { params.disease_data_set_prefix }
     // Note that Plink 1.07 only excludes the first of duplicates, while 1.9+ removes all duplicates

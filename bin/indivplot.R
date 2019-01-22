@@ -1,5 +1,6 @@
 ## Frauke Degenhardt 05092013 - Qualtiy control of gwas (control) data according to Anderson et al. 2010, Nature Protocols
 ## Jan Kässens       31082018 - Adapation for IKMB QC Pipeline integration
+#  Jan Kässens       11012019 - Disabled sex check and outlier tables by request
 ## Vizualisation of STEP 1: qualitiy control on sample
 
 # Read file
@@ -133,29 +134,29 @@ legend("topright",
 
 # Plot 4 - IBD
 
-if(class(ibd.coeff)!="try-error"){
-  hist(ibd.coeff$kinship,ylim=c(0,100),breaks=100,xlab="Estimated IBD (MLE)",main="")
-
-  ## Grenze
-  abline(v=0.185, lty=2, col="RED")
-  legend("topright", "0.185", col=c("RED"), lty = 1,  cex=0.8, bg="transparent")
-}
+#if(class(ibd.coeff)!="try-error"){
+#  hist(ibd.coeff$kinship,ylim=c(0,100),breaks=100,xlab="Estimated IBD (MLE)",main="")
+#
+#  ## Grenze
+#  abline(v=0.185, lty=2, col="RED")
+#  legend("topright", "0.185", col=c("RED"), lty = 1,  cex=0.8, bg="transparent")
+#}
 
 # Plot 5 - SEXCHECK
-plot(sumsX, sumsY,
-     col = col_sexcheck,
-     pch = pch_sexcheck,
-     xlab = "sum (homozygous counts X)",
-     ylab = "sum (homozygous counts Y)",
-     cex= 0.8, main="")
-points(sumsX[fam$out], sumsY[fam$out], col = "red", pch = pch_sexcheck[fam$out], bg= "red")
-
-legend("topright",
-       pch = c(1,2) ,
-       col = "grey" ,
-       c("male", "female"),
-       cex = 0.8,
-       bg = "transparent")
+#plot(sumsX, sumsY,
+#     col = col_sexcheck,
+#     pch = pch_sexcheck,
+#     xlab = "sum (homozygous counts X)",
+#     ylab = "sum (homozygous counts Y)",
+#     cex= 0.8, main="")
+#points(sumsX[fam$out], sumsY[fam$out], col = "red", pch = pch_sexcheck[fam$out], bg= "red")
+#
+#legend("topright",
+#       pch = c(1,2) ,
+#       col = "grey" ,
+#       c("male", "female"),
+#       cex = 0.8,
+#       bg = "transparent")
 
 dev.off()
 quit()

@@ -4,7 +4,7 @@ Rplink <- function(PHENO,GENO,CLUSTER,COVAR){
 	library(hwde)
 	
         # annotation file that has the affection status, ethnic group and batch information
-	annotation  <- read.csv("INDIVIDUALS_ANNOTATION", sep="\t", header=T)  
+	annotation  <- read.csv("INDIVIDUALS_ANNOTATION", sep=" ", header=T)  
 
 	runHWE <- function(x, ii){
 		obs_hom1 <- sum(x[ii]==0, na.rm=T)
@@ -35,7 +35,6 @@ Rplink <- function(PHENO,GENO,CLUSTER,COVAR){
 		nsample[i] <- ret$sample
 		i<-i+1
 		for (batch in batch){
-
 			# calculate HWE for particular batch
 			ii <- annotation$phenotype=="1" & annotation$ethnicity_predicted ==eth & annotation$batch==batch
 			ret <- runHWE(x, ii)

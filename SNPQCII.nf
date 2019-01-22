@@ -70,17 +70,17 @@ if (params.PCA_SNPexcludeList == "nofileexists") {
 params.projection_on_populations_CON_only = "False"
 
 // original, "final" SampleQCI dataset
-SampleQCI_final = ["${params.sampleqci_dir}/${params.collection_name}_SampleQCI_final.bed", 
-                   "${params.sampleqci_dir}/${params.collection_name}_SampleQCI_final.bim", 
-                   "${params.sampleqci_dir}/${params.collection_name}_SampleQCI_final.fam", 
-                   "${params.sampleqci_dir}/${params.collection_name}_SampleQCI_final_flag_relatives.txt", 
+SampleQCI_final = ["${params.sampleqci_dir}/${params.collection_name}_SampleQCI_final.bed",
+                   "${params.sampleqci_dir}/${params.collection_name}_SampleQCI_final.bim",
+                   "${params.sampleqci_dir}/${params.collection_name}_SampleQCI_final.fam",
+                   "${params.sampleqci_dir}/${params.collection_name}_SampleQCI_final_flag_relatives.txt",
                    "${params.sampleqci_dir}/${params.collection_name}_SampleQCI_final_annotation.txt"].collect { fileExists(file(it)) }
 
 // based on "original" but without relatives
-SampleQCI_final_wr = ["${params.sampleqci_dir}/${params.collection_name}_SampleQCI_final_withoutRelatives.bed", 
-                      "${params.sampleqci_dir}/${params.collection_name}_SampleQCI_final_withoutRelatives.bim", 
-                      "${params.sampleqci_dir}/${params.collection_name}_SampleQCI_final_withoutRelatives.fam", 
-                      "${params.sampleqci_dir}/${params.collection_name}_SampleQCI_final_withoutRelatives.annotation.txt", 
+SampleQCI_final_wr = ["${params.sampleqci_dir}/${params.collection_name}_SampleQCI_final_withoutRelatives.bed",
+                      "${params.sampleqci_dir}/${params.collection_name}_SampleQCI_final_withoutRelatives.bim",
+                      "${params.sampleqci_dir}/${params.collection_name}_SampleQCI_final_withoutRelatives.fam",
+                      "${params.sampleqci_dir}/${params.collection_name}_SampleQCI_final_withoutRelatives.annotation.txt",
                       "${params.sampleqci_dir}/${params.collection_name}_SampleQCI_final_withoutRelatives.pca.evec" ].collect { fileExists(file(it)) }
 
 for_prune = Channel.create()
@@ -98,7 +98,7 @@ hf_test_chunk_size = 1000
 
 // from SNP_QCII_CON_PS_AS_CD_UC_PSC_parallel_part1.py
 process hf_test_prepare {
-   memory 16.GB 
+   memory 16.GB
     // It is okay if kill could not successfully kill Rserve, it might have died on its own,
     // so allow an error-indicating return value.
     validExitStatus 0,1
@@ -122,7 +122,7 @@ process hf_test_prepare {
     module load "IKMB"
     module load "Plink/1.9"
 # hf_test(plink, new_plink, pcfile, qced_annotations)
-# 
+#
 # Determine template based on number of batches:
 # #cases > 1 and #controls > 1 => HF_CasesControls
 # #cases > 1 and #controls =< 1 => HF_Cases
@@ -141,14 +141,14 @@ N_CONTROLS=$(<cleaned-annotation tr -s '\\t ' ' ' | cut -f7,9 -d' ' | uniq | tai
 
 echo "$N_CASES case batches and $N_CONTROLS control batches were detected."
 
-if (( ("$N_CASES" > "1") && ("$N_CONTROLS" > "1") )); then
+if (( ("$N_CASES" > "4") && ("$N_CONTROLS" > "4") )); then
    TEMPLATE="!{SCRIPT_DIR}/template_HF_PCA.CaseControl.R"
-elif [ "$N_CASES" -gt "1" ]; then
+elif [ "$N_CASES" -gt "4" ]; then
    TEMPLATE="!{SCRIPT_DIR}/template_HF_PCA.Case.R"
-elif [ "$N_CONTROLS" -gt "1" ]; then
+elif [ "$N_CONTROLS" -gt "4" ]; then
    TEMPLATE="!{SCRIPT_DIR}/template_HF_PCA.CON.R"
 else
-   echo "At least two case or two control batches are required for HF/ANOVA testing."
+   echo "At least 5 case or two control batches are required for HF/ANOVA testing."
    touch chunk_0
    touch HF_PCA.R
    exit 0
@@ -234,7 +234,7 @@ do
         kill -9 $RSERVE_PID || true
         echo Rserve terminated on its own.
     fi
-    
+
     echo Socket removed or killed $RETRY
     touch !{params.collection_name}_SNPQCII_!{chunk}.auto.R
     echo Result file touched $RETRY
@@ -372,6 +372,7 @@ plink --noweb --bfile "!{dataset.bed.baseName}" --test-missing --out !{prefix}_t
 
 
 process prune {
+    publishDir params.qc_dir ?: '.', mode: 'copy', overwrite: true
     input:
 
     file dataset_staged from for_prune.collect() // output from exclude_variants
@@ -379,14 +380,15 @@ process prune {
     output:
 
 //    file "*SNPQCII_final_pruned{.bed,.bim,.fam,.log}" into for_flashpca_pruned, for_draw_histograms_pruned, for_twstats_pruned, for_merge_1kg_pruned
-    file "*SNPQCII_final_pruned{.bed,.bim,.fam,.log}" into for_merge_1kg_pruned
+    file "*QCed_pruned{.bed,.bim,.fam,.log}" into for_merge_1kg_pruned
 //    file "*SNPQCII_final_pruned_with_atcg{.bed,.bim,.fam,.log}" into for_merge_1kg_pruned_atcg
-
+    file "*.prune.in"
+    file "*.prune.out"
 
     shell:
 
     dataset = mapFileList(dataset_staged)
-    prefix = params.collection_name + "_SNPQCII_final"
+    prefix = params.collection_name + "_QCed"
     if (params.PCA_SNPList != "" && params.PCA_SNPList != "nofileexists") {
 '''
     module load "IKMB"
@@ -409,6 +411,10 @@ python -c 'from SampleQCI_helpers import *; write_snps_autosomes_noLDRegions_noA
 #python -c 'from SampleQCI_helpers import *; write_snps_autosomes_noLDRegions_noIndels("no-unknowns.bim", "include_variants_with_atcg")'
 plink --noweb --bfile intermediate --extract include_variants --make-bed --out "!{prefix}_pruned" --allow-no-sex
 #plink --noweb --bfile intermediate --extract include_variants_with_atcg --make-bed --out "!{prefix}_pruned_with_atcg" --allow-no-sex
+
+mv _prune.prune.in !{dataset.bed.baseName}.prune.in
+mv _prune.prune.out !{dataset.bed.baseName}.prune.out
+
 '''
     }
 }
@@ -447,7 +453,7 @@ BASE_PRUNED="!{dataset.bed.baseName}"
 while [ $DONE -lt 1 ]
 do
     python -c 'from SampleQCI_helpers import *; merge__new_plink_collection_pruned__1kG("'$BASE_PRUNED'", "!{base_pruned_1kG}", "!{snpexclude}", "!{params.preQCIMDS_1kG}")' || true
-    
+
     if [ -e "!{base_pruned_1kG}-merge.missnp" ]; then
         NEW_PRUNED=${BASE_PRUNED}_clean
         rm -f removelist
@@ -486,7 +492,7 @@ process flashpca_1kg {
 
     dataset = mapFileList(dataset_staged)
     annotation = mapFileList(dataset_final).annotation
-    prefix = params.collection_name + "_SNPQCII_final_pruned_1kG"
+    prefix = params.collection_name + "_QCed_pruned_1kG"
     evec = prefix + "_" + params.numof_pc + "PC.pca.evec"
     eval = prefix + "_" + params.numof_pc + "PC.eval"
     draw_evec_FLASHPCA2 = SCRIPT_DIR + "/draw_evec_FLASHPCA2.r"
@@ -529,7 +535,7 @@ process pca_plot_1kg_frauke {
 
     output:
     file "*.pdf"
-    file "outliers" into for_final_sample_cleaning_outliers
+    file "*.sample-excludes" into for_final_sample_cleaning_outliers
 
     shell:
     dataset = mapFileList(dataset_staged)
@@ -553,6 +559,7 @@ Rscript "!{pcaplot_1KG}" "!{plink_pca_1kG}.country" 5 "!{params.preQCIMDS_1kG_sa
 mv fail-pca-1KG-qc.txt  fail-pca-1KG-qc.txt-country
 
 cat fail-pca-1KG-qc.txt-batch fail-pca-1KG-qc.txt-country | sort | uniq >outliers
+mv outliers "!{dataset.bim.baseName}.sample-excludes"
 '''
 }
 /*
@@ -588,13 +595,16 @@ R --slave --args "!{plink_pca_1kG}.country" "!{params.preQCIMDS_1kG_sample}" <"!
 
 // (1) and (2): determine monomorphic variants and nearly monomorphic variants
 process det_monomorphics {
+publishDir params.qc_dir ?: '.', mode: 'copy', overwrite: true
     input:
 
     file dataset_staged from for_det_monomorphics // SNPQCII_final
 
     output:
 
-    file "${params.collection_name}_SNPQCII.{nearly_,}monomorphic" into for_compile_variants_exclusion_monomorphics
+    file "${params.collection_name}_SNPQCII.flag.{nearly_,}monomorphic"
+    //file "${params.collection_name}_QCed_final.flag.{nearly_,}monomorphic"
+    // into for_compile_variants_exclusion_monomorphics
 
     shell:
 
@@ -609,7 +619,7 @@ echo "PYTHONPATH: $PYTHONPATH"
 
 # determine monomorphic variants
 plink --noweb --bfile "!{dataset.bed.baseName}" --freq --out "!{prefix}_freq" --allow-no-sex
-python -c 'from SNPQC_helpers import *; frq =  Frq(frq_file="!{prefix}_freq.frq", write_monomorphic_file="!{prefix}.monomorphic"); frq.write_monomorphic_variants_file(); del frq'
+python -c 'from SNPQC_helpers import *; frq =  Frq(frq_file="!{prefix}_freq.frq", write_monomorphic_file="!{prefix}.flag.monomorphic"); frq.write_monomorphic_variants_file(); del frq'
 
 # determine nearly monomorphic variants
 if [ "!{params.hf_test_CON_only}" != "True" ]; then
@@ -617,17 +627,20 @@ if [ "!{params.hf_test_CON_only}" != "True" ]; then
     module switch Plink/1.7 Plink/1.9
     plink --bfile "!{dataset.bed.baseName}" --freq --mwithin 7 --within clean-annotations --out "!{prefix}_freq" --allow-no-sex
     python -c 'from SNPQC_helpers import *; \
-        frq = FrqStrat(frq_file="!{prefix}_freq.frq.strat", write_nearly_monomorphic_file="!{prefix}.nearly_monomorphic", maf_thresh=!{params.maf_thresh}); \
+        frq = FrqStrat(frq_file="!{prefix}_freq.frq.strat", write_nearly_monomorphic_file="!{prefix}.flag.nearly_monomorphic", maf_thresh=!{params.maf_thresh}); \
         frq.write_nearly_monomorphic_variants_PS_AS_IBD_PSC_file()'
 else
-    touch "!{prefix}.nearly_monomorphic"
+    touch "!{prefix}.flag.nearly_monomorphic"
 fi
+
+#cp !{prefix}.flag.nearly_monomorphic !{params.collection_name}_QCed_final.flag.nearly_monomorphic
+#cp !{prefix}.flag.monomorphic !{params.collection_name}_QCed_final.flag.monomorphic
 '''
 }
 
 
 process det_diff_missingness {
-
+    publishDir params.qc_dir ?: '.', mode: 'copy', overwrite: true
     prefix = "${params.collection_name}_SNPQCII"
 
     input:
@@ -659,6 +672,7 @@ del test_missing;
 }
 
 process det_unknown_diagnosis {
+publishDir params.qc_dir ?: '.', mode: 'copy', overwrite: true
     prefix = "${params.collection_name}_SNPQCII"
 
     input:
@@ -668,6 +682,7 @@ process det_unknown_diagnosis {
     output:
 
     file "${prefix}.individuals_remove_final" into for_final_cleaning_individuals
+    file "${prefix}.unknown_diagnosis"
 
     shell:
 
@@ -689,11 +704,12 @@ gawk '{ print $1, $2 }' "!{prefix}.unknown_diagnosis" "!{prefix}.invididuals_rem
 
 
 process compile_variants_exclusion {
+    publishDir params.qc_dir ?: '.', mode: 'copy', overwrite: true
 
     input:
 
     file differential_missingness from for_compile_variants_exclusion_diff_missingness
-    file monomorphics_staged from for_compile_variants_exclusion_monomorphics
+    //file monomorphics_staged from for_compile_variants_exclusion_monomorphics
 
     output:
 
@@ -701,13 +717,9 @@ process compile_variants_exclusion {
 
     shell:
     prefix = "${params.collection_name}_SNPQCII"
-    monomorphics = mapFileList(monomorphics_staged)
+    //monomorphics = mapFileList(monomorphics_staged)
 '''
-if [ "!{params.hf_test_CON_only}" == "True" ]; then
     gawk '{ print $1 }' "!{differential_missingness}" | sort | uniq >"!{params.collection_name}.variants_exclude_final"
-else
-    gawk '{ print $1 }' "!{monomorphics.monomorphic}" "!{monomorphics.nearly_monomorphic}" "!{differential_missingness}" | sort | uniq >"!{params.collection_name}.variants_exclude_final"
-fi
 '''
 }
 
@@ -725,7 +737,7 @@ process final_snp_cleaning {
 //    file "${params.disease_data_set_prefix_release}{.bed,.bim,.fam,.log,_annotation.txt,_flag.relatives.txt}" into for_snprelate_prune,for_twstats_final_pruned_ann,for_draw_final_pca_histograms_ds,for_plot_maf,for_eigenstrat_convert_ann,for_snprelate_ann,for_twstats_final_pruned_eigenstrat_ann
 
     file "${params.disease_data_set_prefix_release}{.bed,.bim,.fam,.log,_annotation.txt,_flag.relatives.txt}" into for_prune, for_flashpca_1kg_final, for_final_sample_cleaning
-    
+
     shell:
 
     annotation = ANNOTATION_DIR + "/${params.individuals_annotation}"
@@ -733,7 +745,7 @@ process final_snp_cleaning {
     prefix = params.disease_data_set_prefix_release
 '''
     module load "IKMB"
-    module load "Plink/1.7" 
+    module load "Plink/1.7"
 
 # Remove sample and SNP outliers
 plink --noweb --bfile "!{dataset.bed.baseName}" --remove "!{individuals}" --exclude "!{variants}" --make-bed --out "!{prefix}" --allow-no-sex
@@ -762,7 +774,8 @@ process final_cleaning {
 
     output:
 
-    file "${params.disease_data_set_prefix_release}_final{.bed,.bim,.fam,.log,_annotation.txt,_flag.relatives.txt}" into for_snprelate_prune,for_twstats_final_pruned_ann,for_draw_final_pca_histograms_ds,for_plot_maf,for_eigenstrat_convert_ann,for_snprelate_ann,for_snprelate_ann_atcg,for_twstats_final_pruned_eigenstrat_ann,for_sex_check,for_ibd_verify,for_prepare_imputation
+    file "${params.disease_data_set_prefix_release}_final{.bed,.bim,.fam,.log,_annotation.txt,_flag.relatives.txt}" into for_snprelate_prune,for_twstats_final_pruned_ann,for_draw_final_pca_histograms_ds,for_plot_maf,for_eigenstrat_convert_ann,for_snprelate_ann,for_snprelate_ann_atcg,for_twstats_final_pruned_eigenstrat_ann,for_sex_check,for_ibd_verify,for_prepare_imputation,for_final_pca_1kg_frauke_ann,for_det_monomorphics_final
+
 shell:
     dataset = mapFileList(dataset_staged)
     prefix = params.disease_data_set_prefix_release
@@ -791,9 +804,9 @@ process prune_final {
     time '2 h'
     input:
     file ds_staged from for_snprelate_prune
-    
+
     output:
-    file "$prefix{.bed,.bim,.fam,.log}" into for_snprelate, for_twstats_final_pruned
+    file "$prefix{.bed,.bim,.fam,.log}" into for_snprelate, for_twstats_final_pruned, for_merge_1kg_pruned_final
     file "${prefix}_with_atcg{.bed,.bim,.fam,.log}" into for_snprelate_atcg
 
     shell:
@@ -833,15 +846,15 @@ process final_pca_con_projection {
     input:
     file ds_pruned_staged from for_snprelate
     file ds_final_staged from for_snprelate_ann
-    
+
     output:
-    file "${params.disease_data_set_prefix_release}.{pca.evec,eval}" into for_draw_final_pca_histograms, for_twstats_final_pruned_pcaresults
+    file "${params.disease_data_set_prefix_release}_final.{pca.evec,eval}" into for_draw_final_pca_histograms, for_twstats_final_pruned_pcaresults
     file "*.png"
-    
+
     shell:
     dataset = mapFileList(ds_pruned_staged)
     ds_final = mapFileList(ds_final_staged)
-    prefix = params.disease_data_set_prefix_release
+    prefix = params.disease_data_set_prefix_release + "_final"
     draw_evec_FLASHPCA2 = SCRIPT_DIR + "/draw_evec_FLASHPCA2.r"
     pcaplot_1KG = SCRIPT_DIR + "/pcaplot_1KG_v2.R"
 
@@ -886,15 +899,15 @@ process final_pca_con_projection_atcg {
     input:
     file ds_pruned_staged from for_snprelate_atcg
     file ds_final_staged from for_snprelate_ann_atcg
-    
+
     output:
-    file "${params.disease_data_set_prefix_release}_atcg.{pca.evec,eval}"
+    file "${params.disease_data_set_prefix_release}_final_atcg.{pca.evec,eval}"
     file "*.png"
-    
+
     shell:
     dataset = mapFileList(ds_pruned_staged)
     ds_final = mapFileList(ds_final_staged)
-    prefix = params.disease_data_set_prefix_release + "_atcg"
+    prefix = params.disease_data_set_prefix_release + "_final_atcg"
     draw_evec_FLASHPCA2 = SCRIPT_DIR + "/draw_evec_FLASHPCA2.r"
     pcaplot_1KG = SCRIPT_DIR + "/pcaplot_1KG_v2.R"
 
@@ -938,14 +951,14 @@ process draw_final_pca_histograms {
 
     publishDir params.qc_dir ?: '.', mode: 'copy', overwrite: true
     cpus 2
-    
+
     input:
     file ds_staged from for_draw_final_pca_histograms_ds
     file pca_staged from for_draw_final_pca_histograms
-    
+
     output:
     file "*.png"
-    
+
     shell:
     ds = mapFileList(ds_staged)
     pca = mapFileList(pca_staged)
@@ -959,6 +972,118 @@ if [ "!{params.hf_test_CON_only}" == "True" ]; then
 else
     R --slave --args "!{pca.evec}" "!{ds.annotation}" < "!{con_all_script}"
 fi
+'''
+}
+
+process final_merge_pruned_with_1kg {
+
+    input:
+
+    file dataset_pruned_staged from for_merge_1kg_pruned_final
+
+    output:
+
+    file "*_1kG.{bed,bim,fam,log}" into for_pca_plot_1KG_frauke_final
+
+
+
+    shell:
+
+    dataset = mapFileList(dataset_pruned_staged)
+    base_pruned_1kG = "${dataset.bed.baseName}_1kG"
+    if(params.PCA_SNPexcludeList == "") {
+        snpexclude = ""
+    } else {
+        snpexclude = BATCH_DIR + "/${params.PCA_SNPexcludeList}"
+    }
+'''
+    module load "IKMB"
+    module load "Plink/1.9"
+echo Merge with 1kG
+
+DONE=0
+BASE_PRUNED="!{dataset.bed.baseName}"
+
+while [ $DONE -lt 1 ]
+do
+    python -c 'from SampleQCI_helpers import *; merge__new_plink_collection_pruned__1kG("'$BASE_PRUNED'", "!{base_pruned_1kG}", "!{snpexclude}", "!{params.preQCIMDS_1kG}")' || true
+
+    if [ -e "!{base_pruned_1kG}-merge.missnp" ]; then
+        NEW_PRUNED=${BASE_PRUNED}_clean
+        rm -f removelist
+        while read f
+        do
+            CHR=$(echo $f | cut -f1 -d:)
+            POS=$(echo $f | cut -f2 -d:)
+            grep -E "^$CHR\\\\s.*$POS" ${BASE_PRUNED}.bim | cut -f2 -d$'\\t' >>removelist
+            echo "$f" >>removelist
+        done <"!{base_pruned_1kG}-merge.missnp"
+        plink --bfile "$BASE_PRUNED" --exclude removelist --make-bed --out "$NEW_PRUNED"
+        BASE_PRUNED=$NEW_PRUNED
+        mv "!{base_pruned_1kG}-merge.missnp" "!{base_pruned_1kG}.missnp.removed"
+    else
+        DONE=1
+    fi
+done
+'''
+}
+
+process pca_plot_1kg_frauke_final {
+    publishDir params.qc_dir ?: '.', mode: 'copy', overwrite: true
+    memory "16 G"
+
+    input:
+        file dataset_staged from for_pca_plot_1KG_frauke_final
+    file ds_original from for_final_pca_1kg_frauke_ann
+
+// need to run 1kg-merge and flashpca manually
+//    file pcaresults_staged from for_pca_plot_1KG_frauke_evec_final
+
+    output:
+    file "*.pdf"
+
+    shell:
+        dataset = mapFileList(dataset_staged)
+    dataset_orig = mapFileList(ds_original)
+
+    pcaplot_1KG = NXF_DIR + "/bin/pcaplot_1KG.R"
+    prefix = dataset.bed.baseName
+'''
+# Rscript $NXF_DIR/bin/pcaplot_1KG.R "!{dataset.bim.baseName}" "!{params.numof_pc}" "!{params.preQCIMDS_1kG_sample}"
+
+# Run PCA
+
+    module load "IKMB"
+    module load "FlashPCA/2.0"
+    module load "Eigensoft/4.2"
+flashpca2 -d 10 --bfile "!{dataset.bed.baseName}" \
+    --outval !{prefix}_eigenvalues_flashpca2 \
+    --outvec !{prefix}_eigenvectors_flashpca2 \
+    --outpc  !{prefix}_pcs_flashpca2 \
+    --numthreads !{task.cpus} \
+    --outload !{prefix}_loadings_flashpca2 \
+    --outmeansd !{prefix}_meansfd_flashpca2 \
+    --memory !{task.memory.toMega()}
+#    --memory 64000
+
+echo Adding batch info | ts
+
+python -c 'from SampleQCI_helpers import *; addphenoinfo_10PCs("!{prefix}_pcs_flashpca2", "!{prefix}_eigenvalues_flashpca2", "!{prefix}.pca.evec", "!{prefix}.eval", \
+ "!{dataset_orig.annotation}", "!{params.preQCIMDS_1kG_sample}")'
+
+
+echo Adding country info | ts
+python -c 'from SampleQCI_helpers import *; addcountryinfo_10PCs("!{prefix}_pcs_flashpca2", "!{prefix}_eigenvalues_flashpca2", "!{prefix}.country.pca.evec", "!{prefix}.country.eval", "!{dataset_orig.annotation}", "!{params.preQCIMDS_1kG_sample}")'
+
+echo Drawing FLASHPCA2 eigenvectors for set with batch info
+Rscript "!{pcaplot_1KG}" "!{prefix}" 5 "!{params.preQCIMDS_1kG_sample}"
+mv fail-pca-1KG-qc.txt fail-pca-1KG-qc.txt-batch
+
+echo Drawing FLASHPCA2 eigenvectors for set with country info
+Rscript "!{pcaplot_1KG}" "!{prefix}.country" 5 "!{params.preQCIMDS_1kG_sample}"
+mv fail-pca-1KG-qc.txt  fail-pca-1KG-qc.txt-country
+
+cat fail-pca-1KG-qc.txt-batch fail-pca-1KG-qc.txt-country | sort | uniq >outliers_final
 '''
 }
 
@@ -1034,20 +1159,68 @@ module load IKMB
 module load Plink/1.9
 
 # Check if we have data on both X and Y chromosomes
-plink --allow-no-sex --bfile "!{ds.bim.baseName}" --chr X --recode --out /scratch/"!{ds.bim.baseName}"_sex.X.ped || true
-plink --allow-no-sex --bfile "!{ds.bim.baseName}" --chr Y --recode --out /scratch/"!{ds.bim.baseName}"_sex.Y.ped || true
+plink --allow-no-sex --bfile "!{ds.bim.baseName}" --missing --out !{ds.bim.baseName}
+plink --allow-no-sex --bfile "!{ds.bim.baseName}" --het --out !{ds.bim.baseName}
+plink --allow-no-sex --bfile "!{ds.bim.baseName}" --chr X --recode --out !{ds.bim.baseName}_sex.X || true
+plink --allow-no-sex --bfile "!{ds.bim.baseName}" --chr Y --recode --out !{ds.bim.baseName}_sex.Y || true
 
-if [ -e /scratch/"!{ds.bim.baseName}"_sex.X.ped -a -e /scratch/"!{ds.bim.baseName}"_sex.Y.ped ]; then
-    Rscript $NXF_DIR/bin/indivplot.R "!{ds.bed.baseName}" /scratch/"!{ds.bim.baseName}"_sex.X.ped /scratch/"!{ds.bim.baseName}"_sex.Y.ped
+if [ -e "!{ds.bim.baseName}"_sex.X.ped -a -e "!{ds.bim.baseName}"_sex.Y.ped ]; then
+    Rscript $NXF_DIR/bin/indivplot.R "!{ds.bed.baseName}" "!{ds.bim.baseName}"_sex.X.ped "!{ds.bim.baseName}"_sex.Y.ped
 else
     echo "Sex check requires X and Y chromosomes to be present in the dataset" | tee sex-check-not-possible.txt
 fi
+rm -f "!{ds.bim.baseName}.log"
+
 '''
 }
 
+process det_monomorphics_final {
+publishDir params.qc_dir ?: '.', mode: 'copy', overwrite: true
+    input:
+
+    file dataset_staged from for_det_monomorphics_final // SNPQCII_final
+
+    output:
+
+    //file "${params.collection_name}_SNPQCII.flag.{nearly_,}monomorphic"
+    file "${params.collection_name}_QCed_final.flag.{nearly_,}monomorphic"
+    // into for_compile_variants_exclusion_monomorphics
+
+    shell:
+
+    dataset = mapFileList(dataset_staged)
+    prefix = "${params.collection_name}_QCed_final"
+'''
+module load IKMB
+module load Plink/1.7
+
+echo "PYLIB_DIR: $PYLIB_DIR"
+echo "PYTHONPATH: $PYTHONPATH"
+
+# determine monomorphic variants
+plink --noweb --bfile "!{dataset.bed.baseName}" --freq --out "!{prefix}_freq" --allow-no-sex
+python -c 'from SNPQC_helpers import *; frq =  Frq(frq_file="!{prefix}_freq.frq", write_monomorphic_file="!{prefix}.flag.monomorphic"); frq.write_monomorphic_variants_file(); del frq'
+
+# determine nearly monomorphic variants
+if [ "!{params.hf_test_CON_only}" != "True" ]; then
+    grep -v -e "Unknown" "!{dataset.annotation}" >clean-annotations
+    module switch Plink/1.7 Plink/1.9
+    plink --bfile "!{dataset.bed.baseName}" --freq --mwithin 7 --within clean-annotations --out "!{prefix}_freq" --allow-no-sex
+    python -c 'from SNPQC_helpers import *; \
+        frq = FrqStrat(frq_file="!{prefix}_freq.frq.strat", write_nearly_monomorphic_file="!{prefix}.flag.nearly_monomorphic", maf_thresh=!{params.maf_thresh}); \
+        frq.write_nearly_monomorphic_variants_PS_AS_IBD_PSC_file()'
+else
+    touch "!{prefix}.flag.nearly_monomorphic"
+fi
+
+'''
+}
+
+
 process ibd_verify {
     publishDir params.qc_dir ?: '.', mode: 'copy'
-
+    cpus 8
+    time 8.h
     input:
     file ds_wr from for_ibd_verify
 
@@ -1074,13 +1247,13 @@ fi
 
 process plot_maf {
     publishDir params.qc_dir ?: '.', mode: 'copy'
-    
+
     input:
     file ds_staged from for_plot_maf
-    
+
     output:
     file "*.{frq,png}"
-    
+
     shell:
     ds = mapFileList(ds_staged)
     logmaf = SCRIPT_DIR + "/logmaf.r"
@@ -1096,17 +1269,55 @@ module load Plink/1.9
 '''
 }
 
+
 process prepare_sanger_imputation {
     publishDir params.qc_dir ?: '.', mode: 'copy'
-    
+
     input:
     file ds_staged from for_prepare_imputation
-    
+
+    output:
+    file "${ds.bim.baseName}.vcf.refchecked.gz"
+    file "${ds.bim.baseName}.vcf.refchecked.gz.tbi"
+
+    shell:
+    ds = mapFileList(ds_staged)
+
+    '''
+module load IKMB
+module load Plink/1.9
+
+ANNOTATION=/ifs/data/nfs_share/sukmb388/human_g1k_v37.fasta.gz
+
+grep D !{ds.bim} | awk '{ print $2 }' >!{ds.bim}.indels.txt
+plink --allow-no-sex --bfile !{ds.bim.baseName} --chr 1-22 --exclude !{ds.bim}.indels.txt --make-bed --out final_noindels
+plink --allow-no-sex --bfile final_noindels --recode vcf --out !{ds.bim.baseName}_tmp1
+bgzip !{ds.bim.baseName}_tmp1.vcf || true
+
+echo "Check the REF allele ...";
+bcftools norm --check-ref w -f $ANNOTATION !{ds.bim.baseName}_tmp1.vcf.gz >/dev/null || true
+echo "Fix the REF allele ...";
+bcftools norm --check-ref s -f $ANNOTATION !{ds.bim.baseName}_tmp1.vcf.gz >!{ds.bim.baseName}.vcf.refchecked || true
+bgzip !{ds.bim.baseName}.vcf.refchecked || true
+
+echo "Tabix ...";
+tabix -p vcf !{ds.bim.baseName}.vcf.refchecked.gz
+
+    '''
+}
+
+/* Frauke's version.
+process prepare_sanger_imputation {
+    publishDir params.qc_dir ?: '.', mode: 'copy'
+
+    input:
+    file ds_staged from for_prepare_imputation
+
     output:
     file "${params.disease_data_set_prefix_release}_final_sanger_{flip.txt,exclude.txt,clean.vcf}"
     shell:
     ds = mapFileList(ds_staged)
-    
+
 '''
 module load IKMB
 module load Plink/1.9
@@ -1145,7 +1356,7 @@ mv sanger_exclude.txt "!{ds.bed.baseName}_sanger_exclude.txt"
 mv clean_sanger.vcf "!{ds.bed.baseName}_sanger_clean.vcf"
 '''
 }
-
+*/
 workflow.onComplete {
     println "Generating phase summary..."
     def cmd = ["./generate-phase-summary", "SNPQCII", params.collection_name ?: params.disease_data_set_prefix, workflow.workDir, params.trace_target].join(' ')

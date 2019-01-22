@@ -312,6 +312,7 @@ if __name__ == "__main__":
     list = re.split("\s+", line)
     # assert annotation file validity
     assert(list[6] == "batch")
+    assert(list[8] == "diagnosis")
 
     line = individuals_fh.readline().rstrip('\n')
     while line:
@@ -320,6 +321,9 @@ if __name__ == "__main__":
             del list[0]
         if list[-1] == "":
             del list[-1]
+        if list[8] != "Control":
+            line = individuals_fh.readline().rstrip('\n')
+            continue
 
         if not list[6] in batches_dict:
             batches_dict[list[6]] = True

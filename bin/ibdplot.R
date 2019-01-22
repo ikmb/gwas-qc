@@ -16,7 +16,7 @@ system(try(cmd))
 
 cmd = paste("plink --allow-no-sex --noweb",
             "--bfile",file,
-            "--extract eins.prune.in",
+            "--extract tmp.prune.in",
 	    "--make-bed --out tmp")
 system(try(cmd))
 

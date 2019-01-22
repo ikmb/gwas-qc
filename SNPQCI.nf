@@ -17,6 +17,7 @@ individuals_annotation = file(ANNOTATION_DIR + "/" + params.individuals_annotati
 definetti_r = file(SCRIPT_DIR + "/DeFinetti_hardy.r")
 autosomes = file(ANNOTATION_DIR + "/" + params.chip_build + "/" + ChipDefinitions.Producer(params.chip_producer) + "/" + ChipDefinitions.RsAutosomes(params.chip_version))
 draw_fdr = file("bin/SNP_QCI_draw_FDR.r")
+draw_fdr_allbatches = file("bin/SNP_QCI_draw_FDR_Fail_allbatches.r")
 
 // println "Autosomes: " + ANNOTATION_DIR + "/" + params.chip_build + "/" + ChipDefinitions.Producer(params.chip_producer) + "/" + ChipDefinitions.RsAutosomes(params.chip_version)
 
@@ -106,10 +107,11 @@ process generate_hwe_diagrams {
     file merged_fam
     file indels from preqc_hwe_indels
   output:
-    file "${params.collection_name}_controls_DeFinetti_preQC.jpg"
-    file "${params.collection_name}_cases_DeFinetti_preQC.jpg"
-    file "${params.collection_name}_cases_controls_DeFinetti_preQC.jpg"
+    file "${params.collection_name}_controls_DeFinetti.jpg"
+    file "${params.collection_name}_cases_DeFinetti.jpg"
+    file "${params.collection_name}_cases_controls_DeFinetti.jpg"
     file "${params.collection_name}_hardy.hwe"
+    file "${params.collection_name}_hardy.log"
 
 
 //    memory '8 GB'
@@ -119,10 +121,10 @@ process generate_hwe_diagrams {
 """
     module load IKMB
     module load Plink/1.9
-    
+
 plink --bfile ${merged_bim.baseName} --exclude ${indels} --make-bed --out no-indels
 plink --bfile no-indels --hardy --out ${params.collection_name}_hardy --hwe 0.0 --chr 1-22 --allow-no-sex
-R --slave --args ${params.collection_name}_hardy.hwe ${params.collection_name}_controls_DeFinetti_preQC ${params.collection_name}_cases_DeFinetti_preQC ${params.collection_name}_cases_controls_DeFinetti_preQC <$definetti_r
+R --slave --args ${params.collection_name}_hardy.hwe ${params.collection_name}_controls_DeFinetti ${params.collection_name}_cases_DeFinetti ${params.collection_name}_cases_controls_DeFinetti <$definetti_r
 """
 }
 
@@ -157,7 +159,8 @@ process generate_hwe_script {
 
   shell:
   '''
-  sed "s|INDIVIDUALS_ANNOTATION|!{individuals_annotation}|g" "!{hwe_template_script}" >hwe-script.r
+
+  sed "s|INDIVIDUALS_ANNOTATION|individuals_annotation.txt|g" "!{hwe_template_script}" >hwe-script.r
   '''
 }
 
@@ -170,6 +173,7 @@ process calculate_hwe {
   validExitStatus 0
   errorStrategy 'retry'
   memory 2.GB
+  time 1.h
 
   input:
     set file(chunk), file('hwe-script.r') from to_calc_hwe.flatten().combine(to_calc_hwe_script)
@@ -191,49 +195,51 @@ shell:
 
     module load IKMB
     module load Plink/1.9
-    
+
+<!{individuals_annotation} awk ' { if($9 == "Control" || $9 == "diagnosis") print $1,$2,$3,$4,$5,$6,$7,$8,$9,$10 }' >individuals_annotation.txt
+
 RETRY=1
 while [ $RETRY -eq 1 ]; do
-	rm -f /scratch/rserve.sock /scratch/rserve.pid "!{chunk}-out.auto.R"
-	
-	# Start Rserve process in background. Keep in mind that --RS-pidfile is an undocumented feature that writes the PID after daemonizing (that is, not the R pid but the Rserve pid) into the specified file. It might be changed in the future
-	R CMD Rserve --RS-socket /scratch/rserve.sock --no-save --RS-pidfile /scratch/rserve.pid
+    rm -f /scratch/rserve.sock /scratch/rserve.pid "!{chunk}-out.auto.R"
 
-	# Wait for R to spawn the Rserve daemon and open its socket. Rule out race conditions with plink not finding the Rserve socket on time
-	echo Waiting for Rserve to create the socket
-	while [ ! -e /scratch/rserve.sock ]
-	do
-	   sleep 0.5
-	done
+    # Start Rserve process in background. Keep in mind that --RS-pidfile is an undocumented feature that writes the PID after daemonizing (that is, not the R pid but the Rserve pid) into the specified file. It might be changed in the future
+    R CMD Rserve --RS-socket /scratch/rserve.sock --no-save --RS-pidfile /scratch/rserve.pid
 
-	# File is there but it does not need to be populated on slow nodes. Wait for that to happen.
-	echo Waiting for Rserve to create the pid file
-	while [ ! -s /scratch/rserve.pid ]
-	do
-	   sleep 1
-	done
+    # Wait for R to spawn the Rserve daemon and open its socket. Rule out race conditions with plink not finding the Rserve socket on time
+    echo Waiting for Rserve to create the socket
+    while [ ! -e /scratch/rserve.sock ]
+    do
+       sleep 0.5
+    done
 
-	RSERVE_PID=$(cat /scratch/rserve.pid)
-	echo Rserve process spawned with pid $RSERVE_PID
+    # File is there but it does not need to be populated on slow nodes. Wait for that to happen.
+    echo Waiting for Rserve to create the pid file
+    while [ ! -s /scratch/rserve.pid ]
+    do
+        sleep 1
+    done
 
-	# Cwd to the staging directory where the scripts and chunks are stored
-	THEPWD=$(pwd)
-	echo "setwd('$THEPWD')" >hwe-script-local.r
-	cat hwe-script.r >>hwe-script-local.r
-	plink --bfile "!{new File(input_bim.toString()).getBaseName()}" --R-socket /scratch/rserve.sock --R hwe-script-local.r --threads 1 --memory 512 --allow-no-sex --extract !{chunk} --out !{chunk}-out
-	sleep 1
+    RSERVE_PID=$(cat /scratch/rserve.pid)
+    echo Rserve process spawned with pid $RSERVE_PID
 
-	RETRY=0
-	kill $RSERVE_PID || {
-		echo "Rserve/PLINK failed. Retrying."
-		rm -f /scratch/rserve.sock /scratch/rserve.pid "!{chunk}-out.auto.R"
-		RETRY=1
-	}
+    # Cwd to the staging directory where the scripts and chunks are stored
+    THEPWD=$(pwd)
+    echo "setwd('$THEPWD')" >hwe-script-local.r
+    cat hwe-script.r >>hwe-script-local.r
+    plink --bfile "!{new File(input_bim.toString()).getBaseName()}" --filter-controls --R-socket /scratch/rserve.sock --R hwe-script-local.r --threads 1 --memory 512 --allow-no-sex --extract !{chunk} --out !{chunk}-out
+    sleep 1
+
+    RETRY=0
+    kill $RSERVE_PID || {
+        echo "Rserve/PLINK failed. Retrying."
+        rm -f /scratch/rserve.sock /scratch/rserve.pid "!{chunk}-out.auto.R"
+        RETRY=1
+    }
 
     # Did we create a result file? If not, retry.
-	if [ ! -e "!{chunk}-out.auto.R" ]; then
-		RETRY=1
-	else
+    if [ ! -e "!{chunk}-out.auto.R" ]; then
+        RETRY=1
+    else
         # Does our result file contain NAs? If so, retry.
         LINES=$(grep -E '\\sNA\\s?$' "!{chunk}-out.auto.R" | wc -l)
         if [ $LINES -gt 1 ]; then
@@ -303,34 +309,41 @@ process exclude_lists_for_failed_hwe {
     file draw_fdr
 
     output:
-    file "${params.collection_name}_exclude-whole-collection" into excludes_whole
-    file "${params.collection_name}_exclude-per-batch" into excludes_perbatch
-    file "${params.collection_name}_exclude-all-batches" into excludes_allbatches
-    file "${params.collection_name}_exclude-whole-collection.FDRthresholds.SNPQCI.1.txt.png"
-    file "${params.collection_name}_exclude-per-batch.FDRthresholds.SNPQCI.2.txt.png"
+    file "${params.collection_name}_exclude-whole-collection-worst-batch-removed" into excludes_whole
+    file "${params.collection_name}_exclude-per-batch-fail-in-2-plus-batches" into excludes_perbatch
+    file "${params.collection_name}_exclude-whole-collection-all-batches" into excludes_allbatches
+    file "${params.collection_name}_exclude-whole-collection-worst-batch-removed.FDRthresholds.SNPQCI.1.txt.png"
+    file "${params.collection_name}_exclude-per-batch-fail-in-2-plus-batches.FDRthresholds.SNPQCI.2.txt.png"
+    file "${params.collection_name}_exclude-whole-collection-worst-batch-removed.FDRthresholds.SNPQCI.1.txt"
+    file "${params.collection_name}_exclude-per-batch-fail-in-2-plus-batches.FDRthresholds.SNPQCI.2.txt"
 
-//    script:
-"""
-SNPQCI_fdr_filter.py "$hwe_result" "$individuals_annotation" "$draw_fdr" ${params.collection_name}_exclude-whole-collection ${params.collection_name}_exclude-per-batch ${params.collection_name}_exclude-all-batches ${params.FDR_index_remove_variants}
-"""
+shell:
+'''
+N_CONTROLS=$(<!{individuals_annotation} tr -s '\\t ' ' ' | cut -f7,9 -d' ' | uniq | tail -n +2 | cut -f2 -d' ' | grep -c Control)
+
+echo Found $N_CONTROLS control batches
+
+if [ "$N_CONTROLS" -gt 2 ]; then
+    SNPQCI_fdr_filter.py "!{hwe_result}" "!{individuals_annotation}" "!{draw_fdr}" \
+       !{params.collection_name}_exclude-whole-collection-worst-batch-removed \
+       !{params.collection_name}_exclude-per-batch-fail-in-2-plus-batches \
+       !{params.collection_name}_exclude-whole-collection-all-batches \
+       !{params.FDR_index_remove_variants}
+else
+    SNPQCI_fdr_filter.py "!{hwe_result}" "!{individuals_annotation}" "!{draw_fdr_allbatches}"\
+       !{params.collection_name}_exclude-whole-collection-worst-batch-removed\
+       !{params.collection_name}_exclude-per-batch-fail-in-2-plus-batches \
+       !{params.collection_name}_exclude-whole-collection-all-batches \
+       !{params.FDR_index_remove_variants}
+fi
+'''
 }
 
-/*
-process dummy_hwe_replacement {
-output:
-    file "${params.collection_name}_exclude-whole-collection" into excludes_whole
-    file "${params.collection_name}_exclude-per-batch" into excludes_perbatch
-script:
-"""
-touch "${params.collection_name}_exclude-whole-collection"
-touch "${params.collection_name}_exclude-per-batch"
-"""
-}
-*/
 /*
  Determine the missingness for the entire collection
  */
 process determine_missingness_entire {
+    publishDir params.snpqci_dir ?: '.', mode: 'copy'
     errorStrategy 'retry'
     memory { 8.GB * task.attempt }
 
@@ -344,7 +357,7 @@ process determine_missingness_entire {
 
 
 
-"""    
+"""
 module load IKMB
 module load Plink/1.7
 
@@ -355,6 +368,7 @@ SNPQCI_extract_missingness_entire.py missingness_entire.lmiss ${params.geno_enti
 
 
 process determine_missingness_per_batch {
+    publishDir params.snpqci_dir ?: '.', mode: 'copy'
     errorStrategy 'retry'
     memory { 8.GB * task.attempt }
 
@@ -396,7 +410,8 @@ process exclude_bad_variants {
 
     output:
     file "${params.collection_name}_QCI.{bim,bed,fam}" into draw_definetti_after
-
+    file "${params.collection_name}_QCI.log"
+    file "variant-excludes"
 
 
 """
@@ -421,7 +436,7 @@ plink --noweb --bfile "${new File(input_bim.toString()).getBaseName()}" --exclud
 process draw_definetti_after_QCI {
     publishDir params.snpqci_dir ?: '.', mode: 'copy'
 
-    def prefix = "${params.collection_name}"
+    def prefix = "${params.collection_name}_QCI_hardy"
 
     input:
     file autosomes
@@ -431,8 +446,8 @@ process draw_definetti_after_QCI {
 
     output:
     file prefix+".hwe"
-    file prefix+"_{cases,controls,cases_controls}_DeFinetti_postQC.jpg"
-//    file prefix+"_cases_DeFinetti.jpg"
+    file prefix+"_{cases,controls,cases_controls}_DeFinetti.jpg"
+    file prefix+".log"
 
 
 
@@ -441,7 +456,8 @@ process draw_definetti_after_QCI {
     module load Plink/1.9
 plink --bfile "${new File(new_plink[0].toString()).getBaseName()}" --exclude ${indels} --make-bed --out no-indels
 plink --bfile no-indels --hardy --out ${prefix} --hwe 0.0 --chr 1-22 --allow-no-sex
-R --slave --args ${prefix}.hwe ${prefix}_controls_DeFinetti_postQC ${prefix}_cases_DeFinetti_postQC ${prefix}_cases_controls_DeFinetti_postQC <"$definetti_r"
+mv no-indels.log ${prefix}.log
+R --slave --args ${prefix}.hwe ${prefix}_controls_DeFinetti ${prefix}_cases_DeFinetti ${prefix}_cases_controls_DeFinetti <"$definetti_r"
 """
 }
 

@@ -55,7 +55,7 @@ options(stringsAsFactors=F)
 
 
 print("Reading pca.evec")
-pcs= read.table(paste(filename,".pca.evec",sep=""),h=T,col.names=c("FID","IID","PC1","PC2", "PC3", "PC4", "PC5", "PC6", "PC7", "PC8", "PC9", "PC10", "group"),sep="\t")
+pcs= read.table(paste(filename, ".pca.evec", sep=""),h=T,col.names=c("FID","IID","PC1","PC2", "PC3", "PC4", "PC5", "PC6", "PC7", "PC8", "PC9", "PC10", "group"),sep="\t")
 print("Done!")
 print(head(pcs))
 
@@ -96,7 +96,7 @@ data =data.frame(pcs[,3:(pc_columns-1)],
                  col = as.matrix(col),
                  pch=as.matrix(pch))
 data$assigned=get.origin(data[!is.na(data$pop),],data)
-write.table(cbind(pcs[,1:2], data$assigned), paste(filename,".origin", sep=""), quote=F, row.names=F)
+# write.table(cbind(pcs[,1:2], data$assigned), paste(filename,".origin", sep=""), quote=F, row.names=F)
 
 medians = apply(data[,1:10],2,function(x){
   x=tapply(x,data$group, function(x){return(median(x,na.rm=T))})

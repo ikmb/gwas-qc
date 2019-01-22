@@ -1,0 +1,29 @@
+#!/bin/bash
+
+export BATCHCONF=$1
+export BATCHES_CONFIG="DECODEDK/DECODEDK.config"
+#export BATCHES_CONFIG="REGENERON/REGENERON.config"
+#export BATCHES_CONFIG="JOSTINS/JOSTINS.config"
+#export BATCHES_CONFIG="FOCUSRegeneron_BSPSPCKiel/FOCUSRegeneron_BSPSPCKiel.config"
+
+while read line
+do
+      export BATCHES_NAMES=$(echo "$line" | cut -d$'\t' -f1)
+      export BATCHES_BASENAMES=$(echo "$line" | cut -d$'\t' -f2)
+      export BATCHES_PHONY_NAMES=$(echo "$line" | cut -d$'\t' -f3)
+      export BATCHES_RESULT_DIR=$(echo "$line" | cut -d$'\t' -f4)
+
+#      if [ ! -e "$(dirname $BATCHES_CONFIG)/$BATCHES_PHONY_NAMES.config" ]; then
+          cp "$BATCHES_CONFIG" "$(dirname $BATCHES_CONFIG)/$BATCHES_PHONY_NAMES.config"
+          echo COPY "$BATCHES_CONFIG" "$(dirname $BATCHES_CONFIG)/$BATCHES_PHONY_NAMES.config"
+          echo "*** Launching QC for $BATCHES_PHONY_NAMES.config ***"
+          ./run-qc --batchconf "$(dirname $BATCHES_CONFIG)/$BATCHES_PHONY_NAMES.config"
+          # rm "$(dirname $BATCHES_CONFIG)/$BATCHES_PHONY_NAMES.config"
+#      else
+          echo File exists: $(dirname $BATCHES_CONFIG)/$BATCHES_PHONY_NAMES.config
+#      fi
+done <$BATCHCONF
+
+# ./run-qc CD_BEL1_EUR/CD_BEL1_EUR.config
+
+

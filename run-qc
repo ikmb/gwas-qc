@@ -189,6 +189,7 @@ sub run_rs {
         say "Calling @cmd";
         call_nextflow(@cmd);
         $i++;
+        system("mv trace.txt Rs-$batch.trace.txt") if -e "trace.txt";
     }
 
     say "Stage 1 completed. Output files have been copied to " . $config{"rs_dir"} ;
@@ -221,7 +222,7 @@ sub run_snpqci {
 
     say "Calling @cmd";
     call_nextflow(@cmd);
-
+	system("mv trace.txt SNPQCI-$config{collection_name}.trace.txt") if -e 'trace.txt';
     say "Stage 2 completed. Output files have been copied to " . $config{"snpqci_dir"};
 }
 
@@ -253,7 +254,7 @@ sub run_sampleqc {
 
     say "Calling @cmd";
     call_nextflow(@cmd);
-
+	system("mv trace.txt SampleQC-$config{collection_name}.trace.txt") if -e 'trace.txt';
     say "Stage 3 completed. Output files have been copied to " . $config{"sampleqci_dir"};
 }
 
@@ -283,7 +284,7 @@ sub run_snpqcii {
 
     say "Calling @cmd";
     call_nextflow(@cmd);
-
+	system("mv trace.txt SNPQCII-$config{collection_name}.trace.txt") if -e 'trace.txt';
     say "Stage 4 completed. Output files have been copied to " . $config{"qc_dir"} ;
     say "The final QC'ed dataset can now be found in " . $config{"qc_dir"};
 }

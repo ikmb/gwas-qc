@@ -224,7 +224,7 @@ plink --bfile ${dataset[0].baseName} --genome --parallel ${job} ${calc_imiss_job
 
 process ibs_merge_and_verify {
 publishDir params.sampleqci_dir ?: '.', mode: 'copy'  
-memory '8 GB'
+memory '16 GB'
     input:
     file chunks from for_ibs_merge_and_verify.collect()
     file dataset from for_ibs_merge_and_verify_ds
@@ -884,7 +884,7 @@ plink --noweb --bfile "${dataset[0].baseName}" --missing --out ${dataset[0].base
 
 process ibs_merge_and_verify_wr {
     publishDir params.sampleqci_dir ?: '.', mode: 'copy'
-    memory '8 GB'
+    memory '16 GB'
     input:
     file chunks from for_ibs_merge_and_verify_wr.collect()
     file dataset from for_ibs_merge_and_verify_wr_ds
