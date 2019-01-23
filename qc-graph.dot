@@ -12,7 +12,7 @@ digraph {
     SampleQC_final [label="collection_SampleQCI_final"];
     SampleQC_final_wr [label="collection_SampleQCI_final_withoutRelated"];
 
-    final [label="collection_QCed"];
+    final [label="collection_QCed_final"];
     
   }
 
@@ -131,32 +131,35 @@ digraph {
     label="SNP QC II";
     "HF test";
     qc2_prune [label="Prune individuals by LD, Missingness and regions"];
+    qc2_prune_atcg [label="Prune individuals, keep AT/CG"];
     qc2_merge_1kg [label="Merge with 1kG"];
+    qc2_merge_1kg_atcg [label="Merge with 1kG (with AT/CG)"];
     qc2_1kg_flashpca [label="FlashPCA"];
+    qc2_1kg_flashpca_atcg [label="FlashPCA (with AT/CG)"];
 
     # SampleQC_final -> qc2_prune;
     "HF test" -> "Remove HF test outliers";
     #-> qc2_prune [label="Outliers"];
     qc2_prune -> qc2_merge_1kg -> qc2_1kg_flashpca;
-    qc2_1kg_flashpca -> "Final cleaning" [label="Outliers"];
+    qc2_prune_atcg -> qc2_merge_1kg_atcg -> qc2_1kg_flashpca_atcg;
+    qc2_1kg_flashpca -> "Final Sample cleaning" [label="Outliers"];
     
-
-#    qc2_flashpca_prune -> qc2_tracy_widom;
 
     "Remove HF test outliers" -> "Determine monomorphics" -> "Final SNP cleaning";
     "Remove HF test outliers" -> "Determine differential missingness" -> "Final SNP cleaning";
     "Remove HF test outliers" -> "Find unknown diagnoses" -> "Final SNP cleaning";
 
-    "Remove HF test outliers" -> "Final SNP cleaning" [color="blue", label="Dataset"];
+    "Remove HF test outliers" -> "Final SNP cleaning" [color="blue", label="Dataset_SNPQCII"];
     "Final SNP cleaning" -> qc2_prune;
-    "Final SNP cleaning" -> "Final cleaning" [color="blue", label="Dataset"];
+    "Final SNP cleaning" -> qc2_prune_atcg;
+    "Final SNP cleaning" -> "Final Sample cleaning" [color="blue", label="Dataset_QCed"];
 
-    qc2_final_flashpca [label="FlashPCA with CON projection"];
+    qc2_final_flashpca [label="Prune & FlashPCA with CON projection"];
     qc2_final_tw [label="Tracy Widom stats"];
     qc2_final_histos [label="Draw histograms"];
     
-    "Final cleaning" -> "Plot MAF";
-    "Final cleaning" -> qc2_final_flashpca;
+    "Final Sample cleaning" -> "Plot MAF";
+    "Final Sample cleaning" -> qc2_final_flashpca;
     qc2_final_flashpca -> qc2_final_tw;
     qc2_final_flashpca -> qc2_final_histos;
     
@@ -164,7 +167,7 @@ digraph {
 
   SampleQC_final -> "Remove HF test outliers" [color=blue];
 
-  "Final cleaning" -> final [color="blue"];
+  "Final Sample cleaning" -> final [color="blue"];
   
   
 }
