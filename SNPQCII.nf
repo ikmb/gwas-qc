@@ -351,7 +351,7 @@ process exclude_variants {
 
     output:
 
-    file "*SNPQCII_final{.bed,.bim,.fam,.log,_flag.relatives.txt,_annotation.txt}" into for_final_cleaning, for_det_monomorphics, for_det_unknown_diagnosis
+    file "*SNPQCII_final{.bed,.bim,.fam,.log,_annotation.txt}" into for_final_cleaning, for_det_monomorphics, for_det_unknown_diagnosis
     file "*test_missingness.*" into for_det_diff_missingness
 
     shell:
@@ -363,7 +363,7 @@ process exclude_variants {
     module load "IKMB"
     module load "Plink/1.7"
 plink --noweb --bfile "!{dataset.bed.baseName}" --exclude "!{exclude}" --make-bed --out "!{prefix}" --allow-no-sex
-cp "!{dataset.relatives}" "!{prefix}_flag.relatives.txt"
+
 cp "!{dataset.annotation}" "!{prefix}_annotation.txt"
 
 plink --noweb --bfile "!{dataset.bed.baseName}" --test-missing --out !{prefix}_test_missingness
@@ -443,7 +443,7 @@ process det_diff_missingness {
 
 from SNPQC_helpers import *
 
-test_missing = Test_missing(missing_file="!{missingness.missing}", write_file="!{prefix}.differential_missingness", threshold=!{params.test_missing_thresh})
+test_missing = Test_missing(missing_file="!{missingness.missing}", write_file="!{prefix}.variants_exclude_diff_missingness", threshold=!{params.test_missing_thresh})
 test_missing.write_variants_file();
 del test_missing;
 
@@ -452,8 +452,6 @@ del test_missing;
 #    test_missing.write_variants_file(); \
 #    del test_missing'
 
-
-    gawk '{ print $1 }' "!{prefix}.differential_missingness" | sort | uniq >"!{params.collection_name}.variants_exclude_diff_missingness"
 '''
 }
 
@@ -463,15 +461,15 @@ publishDir params.qc_dir ?: '.', mode: 'copy', overwrite: true
 
     input:
 
-    file dataset from for_det_unknown_diagnosis
+    file ds_staged from for_det_unknown_diagnosis
 
     output:
-
-    file "${prefix}.remove_unknown_diagnosis" into for_final_cleaning_individuals
+    
+    file "${prefix}.individuals_remove_final" into for_final_cleaning_individuals
     file "${prefix}.unknown_diagnosis"
 
     shell:
-
+    dataset = mapFileList(ds_staged)
 //    annotation = ANNOTATION_DIR + "/${params.individuals_annotation}"
     annotation = dataset.annotation
     prefix = "${params.collection_name}_SNPQCII"
@@ -485,7 +483,7 @@ else
     touch "!{prefix}.individuals_remove_manually"
 fi
 
-gawk '{ print $1, $2 }' "!{prefix}.unknown_diagnosis" "!{prefix}.invididuals_remove_manually" | sort | uniq >"!{prefix}.individuals_remove_final"
+gawk '{ print $1, $2 }' "!{prefix}.unknown_diagnosis" "!{prefix}.individuals_remove_manually" | sort | uniq >"!{prefix}.individuals_remove_final"
 '''
 }
 
@@ -510,7 +508,7 @@ process compile_variants_exclusion {
 '''
 }
 
-process final_snp_cleaning {
+process final_cleaning {
     publishDir params.qc_dir ?: '.', mode: 'copy', overwrite: true
     input:
 
@@ -521,7 +519,7 @@ process final_snp_cleaning {
 
     output:
 
-    file "${params.disease_data_set_prefix_release}{.bed,.bim,.fam,.log,_annotation.txt,_flag.relatives.txt}" into for_snprelate_prune,for_twstats_final_pruned_ann,for_draw_final_pca_histograms_ds,for_plot_maf,for_eigenstrat_convert_ann,for_snprelate_ann,for_snprelate_ann_atcg,for_twstats_final_pruned_eigenstrat_ann,for_sex_check,for_prepare_imputation,for_final_pca_1kg_frauke_ann,for_det_monomorphics_final
+    file "${params.disease_data_set_prefix_release}{.bed,.bim,.fam,.log,_annotation.txt}" into for_snprelate_prune,for_twstats_final_pruned_ann,for_draw_final_pca_histograms_ds,for_plot_maf,for_eigenstrat_convert_ann,for_snprelate_ann,for_snprelate_ann_atcg,for_twstats_final_pruned_eigenstrat_ann,for_sex_check,for_prepare_imputation,for_final_pca_1kg_frauke_ann,for_det_monomorphics_final
     shell:
 
     annotation = ANNOTATION_DIR + "/${params.individuals_annotation}"
@@ -534,6 +532,8 @@ process final_snp_cleaning {
 # Remove sample and SNP outliers
 plink --noweb --bfile "!{dataset.bed.baseName}" --remove "!{individuals}" --exclude "!{variants}" --make-bed --out "!{prefix}" --allow-no-sex
 
+touch !{params.collection_name}_SNPQCII_final_flag.relatives.txt
+
 # Fix annotations
 python -c 'from SNPQC_helpers import *; extract_QCsamples_annotationfile_relativesfile( \
     fam="!{prefix}.fam", individuals_annotation_QCed="!{prefix}_annotation.txt", \
@@ -545,9 +545,8 @@ python -c 'from SNPQC_helpers import *; extract_QCsamples_annotationfile_relativ
 }
 
 // part 4
-// TODO: nochmal überlegen, ob diese ganze SNPRelate-Sache überhaupt noch sinnvoll ist
-
 process prune_final {
+    publishDir params.qc_dir ?: '.', mode: 'copy', overwrite: true, pattern: '*.prune.{in,out,out.unknown_variants}'
     time '2 h'
     input:
     file ds_staged from for_snprelate_prune
@@ -555,9 +554,9 @@ process prune_final {
     output:
     file "$prefix{.bed,.bim,.fam,.log}" into for_snprelate, for_twstats_final_pruned, for_merge_1kg_pruned_final
     file "${prefix}_with_atcg{.bed,.bim,.fam,.log}" into for_snprelate_atcg
-    file "${prefix}.prune.in"
-    file "${prefix}.prune.out"
-    file "${prefix}.prune.out.unknown_variants"
+    file "${params.disease_data_set_prefix_release}.prune.in"
+    file "${params.disease_data_set_prefix_release}.prune.out"
+    file "${params.disease_data_set_prefix_release}.prune.out.unknown_variants"
 
     shell:
     dataset = mapFileList(ds_staged)
@@ -582,12 +581,13 @@ plink --bfile no-unknowns --indep-pairwise 50 5 0.2 --out after-indep-pairwise -
 plink --bfile no-unknowns --extract after-indep-pairwise.prune.in --maf 0.05 --make-bed --out after-correlated-remove --allow-no-sex
 mv after-indep-pairwise.prune.in "!{params.disease_data_set_prefix_release}.prune.in"
 mv after-indep-pairwise.prune.out "!{params.disease_data_set_prefix_release}.prune.out"
-mv unknowns "!{prefix}.prune.out.unknown_variants"
+mv unknowns "!{params.disease_data_set_prefix_release}.prune.out.unknown_variants"
 
 python -c 'from SampleQCI_helpers import *; write_snps_autosomes_noLDRegions_noATandGC_noIndels("no-unknowns.bim", "include-variants")'
 python -c 'from SampleQCI_helpers import *; write_snps_autosomes_noLDRegions_noIndels("no-unknowns.bim", "include-variants-with-atcg")'
 plink --bfile after-correlated-remove --extract include-variants --make-bed --out "!{prefix}" --allow-no-sex
-plink --bfile after-correlated-remove --extract include-variants-with-atcg --make-bed --out "!{prefix}_with_atcg" --allow-no-sex n'''
+plink --bfile after-correlated-remove --extract include-variants-with-atcg --make-bed --out "!{prefix}_with_atcg" --allow-no-sex
+'''
     }
 }
 
@@ -825,9 +825,7 @@ python -c 'from SampleQCI_helpers import *; addphenoinfo_10PCs("!{prefix}_pcs_fl
 
 echo Drawing FLASHPCA2 eigenvectors for set with batch info
 Rscript "!{pcaplot_1KG}" "!{prefix}" 5 "!{params.preQCIMDS_1kG_sample}"
-mv fail-pca-1KG-qc.txt fail-pca-1KG-qc.txt-batch
 
-cat fail-pca-1KG-qc.txt-batch fail-pca-1KG-qc.txt-country | sort | uniq >outliers_final
 '''
 }
 
@@ -988,6 +986,7 @@ module load Plink/1.9
 
 process prepare_sanger_imputation {
     publishDir params.qc_dir ?: '.', mode: 'copy'
+    time 4.h
 
     input:
     file ds_staged from for_prepare_imputation

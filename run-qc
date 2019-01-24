@@ -131,7 +131,7 @@ if ($opt_batchconf) {
     $config{'snpqci_dir'} = $config{'batches_resultdir'} . "/SNPQCI";
     $config{'final_dir'} = $config{'batches_resultdir'} . "/final";
     $config{'qc_dir'} = $config{'batches_resultdir'} . "/final";
-    $config{'sampleqci_dir'} = $config{'batches_resultdir'} . "/SampleQC";
+    $config{'sampleqci_dir'} = $config{'batches_resultdir'} . "/SampleQCI";
     
     $config{'collection_name'} = $config{'batches_phony_names'} =~ s/,/_/gr;
 }

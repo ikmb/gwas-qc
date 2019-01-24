@@ -122,12 +122,12 @@ plot.data = function(data, medians, cols, pci,write=F){
   data = pcs[is.na(data$group),]
 
 
-  out =calc.outlier(data[3:(dim(data)[2]-1)], pci)
-  if(length(cols)==2){
-  points(data[,3:(dim(data)[2]-1)][out,cols], col="red", pch=16)}
-  if(write==T){
-    write.table(data[out,1:2],"fail-pca-1KG-qc.txt", quote=F, col.names=F, row.names=F)
-  }
+  #out =calc.outlier(data[3:(dim(data)[2]-1)], pci)
+  #if(length(cols)==2){
+  #points(data[,3:(dim(data)[2]-1)][out,cols], col="red", pch=16)}
+  #if(write==T){
+  #  write.table(data[out,1:2],"fail-pca-1KG-qc.txt", quote=F, col.names=F, row.names=F)
+  #}
 
 }
 

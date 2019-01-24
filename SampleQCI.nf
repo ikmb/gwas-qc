@@ -42,10 +42,6 @@ Channel.fromFilePairs("${params.snpqci_dir}/${params.collection_name}_QCI.{bed,b
     .map { a -> [fileExists(a[1]), fileExists(a[2]), fileExists(a[3])] }
     .separate (for_remove_bad_samples) { a -> [a] }
 
-// sampleqci_variant_filter = file("bin/SampleQCI_variant_filter.py")
-// sampleqci_pca_convert = file("bin/SampleQCI_pca_convert.py")
-// sampleqci_pca_run = file("bin/SampleQCI_pca_run.py")
-
 sampleqci_helpers = file("bin/SampleQCI_helpers.py")
 
 
@@ -152,8 +148,6 @@ process prune {
     input:
     file dataset from for_calc_pi_hat
     file outliers from for_calc_pi_hat_outliers
-//    file sampleqci_variant_filter
-//    file sampleqci_helpers
 
     output:
         set file(prefix+'pruned.bed'), file(prefix+'pruned.bim'), file(prefix+'pruned.fam') into for_calc_imiss,for_detect_duplicates,for_calc_imiss_ibs,for_ibs_merge_and_verify_ds,for_merge_hapmap,for_pca_convert_pruned,for_second_pca_eigen,for_second_pca_flashpca,for_second_pca_flashpca_1kg
@@ -781,7 +775,7 @@ R --slave --args "!{kg_pca}.country" "!{params.preQCIMDS_1kG_sample}" <"!{pcaplo
 }
 
 // SampleQCI_parallel_part3 starts here
-process prune_related {
+process remove_relatives {
     publishDir params.sampleqci_dir ?: '.', mode: 'copy'
 
 
@@ -810,7 +804,7 @@ python -c 'from SampleQCI_helpers import *; extract_QCsamples_from_annotationfil
 
 }
 
-process prune_outliers_without_related {
+process prune_withoutRelatives {
 
     input:
     file dataset from for_prune_wr
@@ -866,7 +860,7 @@ plink --bfile ${dataset[0].baseName} --genome --parallel ${job} ${calc_imiss_job
 """
 }
 
-process calc_imiss_wr {
+process calc_imiss_withoutRelatives {
 
     input:
         file dataset from for_calc_imiss_wr

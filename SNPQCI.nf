@@ -93,7 +93,7 @@ fi
 /*
  Generate HWE tables and draw DeFinetti plots of the whole data set
  */
-process generate_hwe_diagrams {
+process hwe_definetti_preqc {
   memory 8192.MB
   cpus 1
   publishDir params.snpqci_dir ?: '.', mode: 'copy', overwrite: true
@@ -140,29 +140,10 @@ process split_dataset {
     file 'chunk_*' into to_calc_hwe
 
   """
-  cut -f 2 $input_bim | split -l 5000 -a 5 -d - chunk_
+  cut -f 2 $input_bim | split -l 10000 -a 5 -d - chunk_
   """
 }
 
-/*
- Generate a HWE calculation R script to be used as a Plink slave.
- */
-
-process generate_hwe_script {
-  input:
-    file individuals_annotation
-    file hwe_template_script
-
-  output:
-    file "hwe-script.r" into to_calc_hwe_script
-
-
-  shell:
-  '''
-
-  sed "s|INDIVIDUALS_ANNOTATION|individuals_annotation.txt|g" "!{hwe_template_script}" >hwe-script.r
-  '''
-}
 
 /*
  Run the HWE calculation R script on every 1000-SNP chunk
@@ -176,11 +157,12 @@ process calculate_hwe {
   time 1.h
 
   input:
-    set file(chunk), file('hwe-script.r') from to_calc_hwe.flatten().combine(to_calc_hwe_script)
+    each file(chunk) from to_calc_hwe.flatten()
     file input_bim from to_hwe_bim
     file input_bed from to_hwe_bed
     file input_fam from to_hwe_fam
     file individuals_annotation // not directly used in the script below but hwe-script.r expects this to be staged
+    file hwe_template_script
 
   output:
   file "${chunk}-out.auto.R" into from_calc_hwe
@@ -225,7 +207,7 @@ while [ $RETRY -eq 1 ]; do
     # Cwd to the staging directory where the scripts and chunks are stored
     THEPWD=$(pwd)
     echo "setwd('$THEPWD')" >hwe-script-local.r
-    cat hwe-script.r >>hwe-script-local.r
+    cat !{hwe_template_script} >>hwe-script-local.r
     plink --bfile "!{new File(input_bim.toString()).getBaseName()}" --filter-controls --R-socket /scratch/rserve.sock --R hwe-script-local.r --threads 1 --memory 512 --allow-no-sex --extract !{chunk} --out !{chunk}-out
     sleep 1
 
@@ -257,54 +239,14 @@ done
  Merge all chunked HWE tables into a single file and screen for obvious errors (i.e. N/A HWE values or wrong SNP counts)
  */
 
-process merge_and_verify_chunked_hwe {
+process hwe_fdr_filter {
+    publishDir params.snpqci_dir ?: '.', mode: 'copy'
     input:
     file 'chunk' from from_calc_hwe.collect()
     file input_bim from to_verify_bim
     file input_bed from to_verify_bed
     file input_fam from to_verify_fam
 
-    output:
-    file "${params.collection_name}_chunks_combined.hwe" into excl_failed_hwe, excl_miss_whole, excl_miss_batch
-
-    shell:
-'''
-#!/usr/bin/env bash
-cat chunk[0-9]* >!{params.collection_name}_chunks_combined.hwe
-
-combined_hwe_nas=`grep -c NA !{params.collection_name}_chunks_combined.hwe`
-input_nas=`grep -c NA !{input_bim}`
-if [ "$combined_hwe_nas" -ne "$input_nas" ]
-then
-   echo "There are missing HWE calculations, $combined_hwe_nas NAs in chunked HWE calculations and $input_nas in input."
-   exit 1
-fi
-
-chunked_snps=`wc -l !{params.collection_name}_chunks_combined.hwe | cut -f1 -d" "`
-input_snps=`wc -l !{input_bim} | cut -f1 -d" "`
-if [ "$chunked_snps" -ne "$input_snps" ]
-then
-   echo "Some SNPs have gone missing during input splitting. I was expecting $input_snps but got only $chunked_snps."
-   exit 1
-fi
-'''
-}
-
-
-/*
-Make a lists of variants that
- a) fail a HWE test over the entire collection with its worst batch removed
- b) fail at least two tests where the HWE is calculated for each batch
-
-Additionally, FDR values are ploted for both lists
-*/
-
-process exclude_lists_for_failed_hwe {
-
-    publishDir params.snpqci_dir ?: '.', mode: 'copy'
-
-    input:
-    file hwe_result from excl_failed_hwe
     file individuals_annotation
     file draw_fdr
 
@@ -317,27 +259,50 @@ process exclude_lists_for_failed_hwe {
     file "${params.collection_name}_exclude-whole-collection-worst-batch-removed.FDRthresholds.SNPQCI.1.txt"
     file "${params.collection_name}_exclude-per-batch-fail-in-2-plus-batches.FDRthresholds.SNPQCI.2.txt"
 
-shell:
+    shell:
+    hwe_result = file("${params.collection_name}_chunks_combined.hwe")
 '''
+#!/usr/bin/env bash
+HWE_RESULTS="!{params.collection_name}_chunks_combined.hwe"
+cat chunk[0-9]* >$HWE_RESULTS
+
+combined_hwe_nas=`grep -c NA $HWE_RESULTS`
+input_nas=`grep -c NA !{input_bim}`
+if [ "$combined_hwe_nas" -ne "$input_nas" ]
+then
+   echo "There are missing HWE calculations, $combined_hwe_nas NAs in chunked HWE calculations and $input_nas in input."
+   exit 1
+fi
+
+chunked_snps=`wc -l $HWE_RESULTS | cut -f1 -d" "`
+input_snps=`wc -l !{input_bim} | cut -f1 -d" "`
+if [ "$chunked_snps" -ne "$input_snps" ]
+then
+   echo "Some SNPs have gone missing during input splitting. I was expecting $input_snps but got only $chunked_snps."
+   exit 1
+fi
+
 N_CONTROLS=$(<!{individuals_annotation} tr -s '\\t ' ' ' | cut -f7,9 -d' ' | uniq | tail -n +2 | cut -f2 -d' ' | grep -c Control)
 
 echo Found $N_CONTROLS control batches
 
 if [ "$N_CONTROLS" -gt 2 ]; then
-    SNPQCI_fdr_filter.py "!{hwe_result}" "!{individuals_annotation}" "!{draw_fdr}" \
+    SNPQCI_fdr_filter.py "$HWE_RESULTS" "!{individuals_annotation}" "!{draw_fdr}" \
        !{params.collection_name}_exclude-whole-collection-worst-batch-removed \
        !{params.collection_name}_exclude-per-batch-fail-in-2-plus-batches \
        !{params.collection_name}_exclude-whole-collection-all-batches \
        !{params.FDR_index_remove_variants}
 else
-    SNPQCI_fdr_filter.py "!{hwe_result}" "!{individuals_annotation}" "!{draw_fdr_allbatches}"\
+    SNPQCI_fdr_filter.py "$HWE_RESULTS" "!{individuals_annotation}" "!{draw_fdr_allbatches}"\
        !{params.collection_name}_exclude-whole-collection-worst-batch-removed\
        !{params.collection_name}_exclude-per-batch-fail-in-2-plus-batches \
        !{params.collection_name}_exclude-whole-collection-all-batches \
        !{params.FDR_index_remove_variants}
 fi
+
 '''
 }
+
 
 /*
  Determine the missingness for the entire collection
@@ -418,7 +383,6 @@ process exclude_bad_variants {
     module load IKMB
     module load Plink/1.7
 
-# TODO: check annotations and count control batches. if >= 5, use {excludes_entire/perbatch}, else use excludes_allbatches.
 NUM_CTRL_BATCHES=\$(tr -s '\\t ' ' ' <${individuals_annotation} | cut -f7,9 -d" " | grep Control | uniq | wc -l)
 
 if [ "\$NUM_CTRL_BATCHES" -gt "4" ]; then
@@ -433,7 +397,7 @@ plink --noweb --bfile "${new File(input_bim.toString()).getBaseName()}" --exclud
 """
 }
 
-process draw_definetti_after_QCI {
+process hwe_definetti_qci {
     publishDir params.snpqci_dir ?: '.', mode: 'copy'
 
     def prefix = "${params.collection_name}_QCI_hardy"
