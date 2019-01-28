@@ -1,7 +1,7 @@
 // -*- mode:groovy -*-
 
 // If you need to add a new chip definition, take a look into the ChipDefinitions.groovy file
-def ChipDefinitions = this.class.classLoader.parseClass(new File("config/ChipDefinitions.groovy"))
+def ChipDefinitions = this.class.classLoader.parseClass(new File(params.chip_defs))
 
 // Set default output directory, overwritten by --output=<dir>
 params.output = "."
@@ -13,49 +13,10 @@ to_flipfile = Channel.create()
 
 input_files_lift = Channel.create()
 
-// Prepare input file pairs from batches
-//Channel.fromFilePairs(params.input + ".{bim,bed,fam}", size:3, flat: true).separate(input_files_flip, input_files_ann, to_flipfile) { a -> [a, a, a] }
 
-//println BATCH_DIR + "/" + params.collection_name + "/" + params.basename + ".{bim,bed,fam}"
+Channel.fromFilePairs(params.filebase + ".{bim,bed,fam}", size:3, flat: true).into {input_files_check; input_files_lift}
 
-// 
-
-params.collection_name = false
-
-/*
- Transform a chip-specific annotations file into a format that is easier to process by the following stages.
- */
-// process generate_annotations {
-//     input:
-//     // Process results without inputs will not get cached, so force caching of results by providing a predictable dummy parameter
-//     val dummy from Channel.from(1);
-
-//     output:
-//     file 'annotations.list' into to_flipfile_ann, to_translate_ann
-
-//     def annotation_file = ANNOTATION_DIR + "/" + params.switch_to_chip_build+'/'+ChipDefinitions.Producer(params.chip_producer)+'/'+ChipDefinitions.SNPAnnotations(params.chip_version)
-
-//     tag { params.disease_data_set_prefix }
-// """
-// echo -n Generating annotations.list from ${annotation_file}
-// if [ "${params.chip_version}" == "Immunochip" ]; then
-//     echo " for Immunochip"
-//     perl -ne '@l=split(/\\s+/);print "\$l[3] \$l[4] \$l[7] \$l[8] \$l[5] \$l[1] \$l[2]\\n";' $annotation_file >annotations.list
-// else
-//     echo " for ${params.chip_version}"
-//     perl -ne '@l=split(/\\s+/);print "\$l[2] \$l[3] \$l[6] \$l[7] \$l[4] \$l[1] \$l[1]\\n";' $annotation_file >annotations.list
-// fi
-// """
-// }
-
-// BEWARE: the first item in this list seems to be a "1". I have no clue why.
-
-// input_files_check =  Channel.fromFilePairs(BATCH_DIR + "/" + params.batch_name + "/" + params.basename + ".{bim,bed,fam}", size:3, flat: true)
-//input_files_check =  Channel.fromFilePairs(BATCH_DIR + "/" + params.basename + ".{bim,bed,fam}", size:3, flat: true)
-
-Channel.fromFilePairs(BATCH_DIR + "/" + params.batch_name + "/" + params.basename + ".{bim,bed,fam}", size:3, flat: true).into {input_files_check; input_files_lift}
-
-println "Input files: " + BATCH_DIR + "/" + params.batch_name + "/" + params.basename + ".{bim,bed,fam}"
+println "Input files: " + params.filebase + ".{bim,bed,fam}"
 
 process check_chip_type {
     memory 4.GB
@@ -67,9 +28,6 @@ process check_chip_type {
     file original from input_files_check
 
     output:
-
-//    file "*.strand"
-//    file "${original[1].baseName}.{bed,bim,fam}" into input_files_lift
     file "${original[1].baseName}.flag_atcg"
     file "${original[1].baseName}.chip_detect.log"
 
@@ -119,9 +77,9 @@ process normalize_variant_names {
 
     output:
     file 'flipfile' into to_plink_flip
-    file "${params.collection_name}.indels"
+    file "${params.batch_name}.indels"
     file "${source[0].baseName}_updated.bim" into to_plink_flip_bim
-    file "Rs-${params.collection_name}.RsTranslation.log"
+    file "Rs-${params.batch_name}.RsTranslation.log"
 
     shell:
 '''
@@ -136,7 +94,7 @@ use DBD::SQLite::Constants qw/:file_open/;
 use File::Copy;
 use Data::Dumper;
 
-my $logtarget = "Rs-!{params.collection_name}.RsTranslation.log";
+my $logtarget = "Rs-!{params.batch_name}.RsTranslation.log";
 
 my $scratch_dir = $ENV{'TMPDIR'};
 
@@ -195,7 +153,7 @@ sub find_on_strand {
 
 }
 
-my $indels_file = "!{params.collection_name}.indels";
+my $indels_file = "!{params.batch_name}.indels";
 
 open my $log, '>', $logtarget or die("Could not open $logtarget: $!");
 open my $flip, '>', "flipfile" or die("Could not open flipfile: $!");
@@ -257,32 +215,6 @@ unlink("$scratch_dir/annotation.sqlite");
 '''
 }
 
-// /*
-//  Generate a Plink flipfile based on annotations and strand info
-//  */
-// process generate_flipfile {
-// //    echo true
-
-//     input:
-//     file ann from to_flipfile_ann
-//     file ds from to_flipfile
-
-//     output:
-//     file 'flipfile' into to_plink_flip
-
-//     def source = file(ANNOTATION_DIR+'/'+params.switch_to_chip_build+'/'+ChipDefinitions.Producer(params.chip_producer)+'/'+ChipDefinitions.StrandInfo(params.chip_strand_info)).toAbsolutePath()
-//     tag { params.disease_data_set_prefix }
-// """
-// if [ -e $source ]; then
-//   echo Using ${source} as flipfile
-//   cp "$source" flipfile
-// else
-//   echo Generating flipfile from ${ann}
-//   generate_flipfile.pl "${ds[0].baseName}.bim" "$ann" >flipfile
-// fi
-// """
-// }
-
 /*
  Call Plink to actually flip alleles based on strand information
  */
@@ -316,25 +248,6 @@ echo Flipping strands for "!{bim.baseName}"
 plink --bfile dedup --flip "!{flip}" --threads 1 --memory 6144 --make-bed --out "!{bedfam[0].baseName}_flipped" --allow-no-sex
 '''
 }
-//
-// /*
-//  Translate Immunochop IDs to Rs names
-//  */
-// process translate_ids {
-//     input:
-//     file bim from to_translate_bim
-//     file ann from to_translate_ann
-
-//     output:
-//     file "${bim.baseName}_translated.bim" into to_find_duplicates_nn, to_exclude_bim
-
-//     tag { params.disease_data_set_prefix }
-
-// """
-// echo Translating SNP names for ${params.chip_version}
-// translate_ichip_to_rs.pl ${params.chip_version} "$bim" "$ann" ${params.chip_build} ${params.switch_to_chip_build} >"${bim.baseName}_translated.bim"
-// """
-// }
 
 /*
  Create a list of duplicate SNPs now that all SNPs have standardized Rs names
@@ -384,7 +297,7 @@ process plink_exclude {
     file bim from to_exclude_bim
 
     output:
-    file "${params.disease_data_set_prefix_rs}.{bim,bed,fam,log}"
+    file "${params.batch_name}_Rs.{bim,bed,fam,log}"
 //    file individuals_annotation
 
     tag { params.disease_data_set_prefix }
@@ -395,14 +308,7 @@ process plink_exclude {
 module load 'IKMB'
 module load 'Plink/1.9'
 echo Excluding SNP list ${exclude} from ${plink} ${bim}
-plink  --bed ${plink[0]} --bim $bim --fam ${plink[1]} --exclude $exclude --make-bed --out ${params.disease_data_set_prefix_rs} --allow-no-sex
+plink  --bed ${plink[0]} --bim $bim --fam ${plink[1]} --exclude $exclude --make-bed --out ${params.batch_name}_Rs --allow-no-sex
 """
-}
-
-workflow.onComplete {
-    println "Generating phase summary..."
-    def cmd = ["./generate-phase-summary", "Rs", params.collection_name ?: params.disease_data_set_prefix, workflow.workDir, params.trace_target].join(' ')
-    def gensummary = ["bash", "-c", cmd].execute()
-    gensummary.waitFor()
 }
 

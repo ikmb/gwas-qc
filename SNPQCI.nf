@@ -4,10 +4,9 @@
  Author: Jan Kässens <j.kaessens@ikmb.uni-kiel.de>
 */
 
-def ChipDefinitions = this.class.classLoader.parseClass(new File("config/ChipDefinitions.groovy"))
+def ChipDefinitions = this.class.classLoader.parseClass(new File(params.chip_defs))
 
 // initialize configuration
-params.rs_dir = "." // Not initialized if we skipped Rs
 params.snpqci_dir = "."
 hwe_template_script = file(params.hwe_template)
 
@@ -38,47 +37,39 @@ process merge_batches {
 '''
 #!/usr/bin/env bash
 
-IFS=','
-NAMES=($(echo "!{params.disease_names}"))
-PREFIXES=($(echo "!{params.disease_data_set_prefix_rs}"))
-
-BASEDIR="!{params.rs_dir}"
-if [[ ${BASEDIR:0:1} == "/" ]]; then
-    echo "$BASEDIR seems to be absolute. No change necessary."
-else
-    BASEDIR="$NXF_DIR/$BASEDIR"
-fi
-
-BASE="$BASEDIR/${PREFIXES[0]}"
-
 module load IKMB
 module load Plink/1.9
 
-for idx in ${!PREFIXES[@]}; do
-echo idx: $idx
-echo name: ${NAMES[$idx]}
-echo prefix: ${PREFIXES[$idx]}
+# Param input: space-separated file names, relative to params.rs_dir
+BIMS=(!{params.rs_bims})
+BEDS=(!{params.rs_beds})
+FAMS=(!{params.rs_fams})
+INDELS=(!{params.rs_indels})
 
-cp ${BASEDIR}/!{params.collection_name}.indels !{params.collection_name}.indels
+IFS=' '
 
-if [ "$idx" -gt 0 ]; then
-    echo -n !{params.rs_dir}/${PREFIXES[$idx]}.bed  >>merge-list
-    echo -n " " >>merge-list
-    echo -n !{params.rs_dir}/${PREFIXES[$idx]}.bim >>merge-list
-    echo -n " " >>merge-list
-    echo !{params.rs_dir}/${PREFIXES[$idx]}.fam >>merge-list
-    cat !{params.rs_dir}/${PREFIXES[$idx]}.indels >>!{params.collection_name}.indels
-fi
+rm -f merge-list
+for idx in ${!BIMS[@]}; do
+    # All values except the first go into the merge list
+    if [ "$idx" -gt 0 ]; then
+        echo -n !{params.rs_dir}/${BEDS[$idx]} >>merge-list
+        echo -n " " >>merge-list
+        echo -n !{params.rs_dir}/${BIMS[$idx]} >>merge-list
+        echo -n " " >>merge-list
+        echo !{params.rs_dir}/${FAMS[$idx]} >>merge-list
+    fi
 done
 
-if [ "${#PREFIXES[*]}" -gt 1 ]; then
-plink --bfile $BASE --merge-list merge-list --make-bed --out "!{params.collection_name}_Rs" --allow-no-sex --memory 11000
+if [ "${#BIMS[*]}" -gt 1 ]; then
+    plink --bed !{params.rs_dir}/${BIMS[0]} --bim !{params.rs_dir}/${BIM[0]} --fam !{params.rs_dir}/${FAM[0]} --make-bed --out !{params.collection_name}_Rs --allow-no-sex
 else
-cp $BASE.bim !{params.collection_name}_Rs.bim
-cp $BASE.bed !{params.collection_name}_Rs.bed
-cp $BASE.fam !{params.collection_name}_Rs.fam
-echo "No merge perfomed, only one disease name found" >!{params.collection_name}_Rs.log
+    echo "No merge necessary, only one batch found." | tee !{params.collection_name}_Rs.log
+    ln -s !{params.rs_dir}/${BIMS[0]} !{params.collection_name}_Rs.bim
+    ln -s !{params.rs_dir}/${BEDS[0]} !{params.collection_name}_Rs.bed
+    ln -s !{params.rs_dir}/${FAMS[0]} !{params.collection_name}_Rs.fam
 fi
+ln -s !{params.rs_dir}/${INDELS[0]} !{params.collection_name}.indels
+
 '''
 }
 

@@ -25,6 +25,7 @@ params.dataset_prefixes.each { key, value ->
         input_datasets << [key, b, file(b+".bim").getBaseName()]
     }
 }
+input_datasets.close()
 
 /* Additional external files */
 hapmap2_samples = file("/ifs/data/nfs_share/sukmb388/regeneron_annotations/hapmap2-annotations.txt")
@@ -55,29 +56,74 @@ cat "!{filebase}_individuals_annotation.txt" "!{hapmap2_samples}" >"!{batch}_ind
 
 process Rs {
     tag "$dataset/$batch"
-echo true
 input:
     set dataset,filebase,batch from Rs_datasets
 
+output:
+    file "Rs-${dataset}-${batch}.trace.txt" into trace_reports_rs
+    set val(dataset), file("${batch}_Rs.bed"), file("${batch}_Rs.bim"), file("${batch}_Rs.fam"), file("${batch}.indels") into SNPQCI_batches
+    //set dataset,batch into SNPQCI_info
 shell:
     dsconfig = params.dataset_config[dataset]
 '''
-NXF_PARAMS="!{Rs_script} -c !{params.qc_config} -c !{dsconfig}"
+echo !{task}
+echo !{workflow}
+MYPWD=$(pwd)
+mkdir -p !{workflow.workDir}/!{dataset}-!{batch}-Rs
+cd !{workflow.workDir}/!{dataset}-!{batch}-Rs
+
+NXF_PARAMS="!{Rs_script} -c !{params.qc_config} \\
+    -c !{dsconfig} \\
+    --filebase=!{filebase} \\
+    --batch_name=!{batch} \\
+    --chip_defs=!{workflow.projectDir}/config/ChipDefinitions.groovy \\
+    --rs_dir=!{params.output}/Rs \\
+    -resume"
+
 echo "Would run 'nextflow $NXF_PARAMS'"
-nextflow $NXF_PARAMS
+nextflow run $NXF_PARAMS
+mv trace.txt $MYPWD/Rs-!{dataset}-!{batch}.trace.txt
+cd $MYPWD
+ln -s !{params.output}/Rs/!{batch}_Rs.bed
+ln -s !{params.output}/Rs/!{batch}_Rs.bim
+ln -s !{params.output}/Rs/!{batch}_Rs.fam
+ln -s !{params.output}/Rs/!{batch}.indels
+
 '''
 }
 
 process SNPQCI {
-echo true
+    tag "${dataset}"
+input:
+    set val(dataset), file(bed), file(bim), file(fam), file(indels) from SNPQCI_batches.groupTuple()
 shell:
 '''
-echo !{task}
+echo Checking !{dataset}:
+echo BEDs: "!{bed}"
+echo BIMs: "!{bim}"
+echo FAMs: "!{fam}"
+echo INDELS: "!{indels}"
+
+MYPWD=$(pwd)
+mkdir -p !{workflow.workDir}/!{dataset}-SNPQCI
+cd !{workflow.workDir}/!{dataset}-SNPQCI
+
+nextflow run !{SNPQCI_script} -c !{params.qc_config} \\
+    --rs_dir=$MYPWD \\
+    --collection_name=!{dataset} \\
+    --chip_defs=!{workflow.projectDir}/config/ChipDefinitions.groovy \\
+    --rs_bims="!{bim}" \\
+    --rs_beds="!{bed}" \\
+    --rs_fams="!{fam}" \\
+    --rs_indels="!{indels}"
+
+mv trace.txt $MYPWD/SNPQCI-!{dataset}.trace.txt
+
 '''
 }
 
 process SampleQC {
-echo true
+//echo true
     input:
     // bla
     set file(hapmap), file(hapmap_cc) from SampleQC_hapmap
@@ -88,7 +134,7 @@ echo "Would run 'nextflow run !{SampleQC_script} --individuals_annotation_hapmap
 }
 
 process SNPQCII {
-echo true
+//echo true
 shell:
 '''
 echo !{task}
@@ -97,7 +143,7 @@ echo !{task}
 }
 
 process FinalAnalysis {
-echo true
+//echo true
 shell:
 '''
 echo !{task}
@@ -105,7 +151,7 @@ echo !{task}
 }
 
 process Report {
-echo true
+//echo true
 shell:
 '''
 echo !{task}
