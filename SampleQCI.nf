@@ -217,8 +217,12 @@ plink --bfile ${dataset[0].baseName} --genome --parallel ${job} ${calc_imiss_job
 }
 
 process ibs_merge_and_verify {
+
 publishDir params.sampleqci_dir ?: '.', mode: 'copy'  
-memory '16 GB'
+
+maxRetries 5
+memory { 20.GB * (task.attempt+1)/2 }
+errorStrategy { task.exitStatus == 143 ? 'retry' : 'terminate' }
     input:
     file chunks from for_ibs_merge_and_verify.collect()
     file dataset from for_ibs_merge_and_verify_ds
@@ -282,16 +286,6 @@ R --slave --args $OUTFILE.Z0.Z1 < !{ibdplot}
 
 '''
 }
-
-
-/*
- *
- *
- * Imported from SampleQCI_parallel_part2
- *
- *
- *
- */
 
 process merge_dataset_with_hapmap {
     input:
@@ -374,8 +368,6 @@ process pca_convert {
 """
 }
 
-//projection_on_populations_controls =          file(script_dir + '/' + params.projection_on_populations_controls)
-//projection_on_populations_hapmap  =     file(script_dir + '/' + params.projection_on_populations_hapmap)
 
 process pca_run {
          publishDir params.sampleqci_dir ?: '.', mode: 'copy'   
@@ -383,7 +375,6 @@ process pca_run {
 
     input:
     file pruned_hapmap from for_pca_run_pruned_hapmap
-//    file projection_on_populations_hapmap
 
     set file(prefix+'pruned_hapmap.eigenstratgeno'), file(prefix+'pruned_hapmap.ind'), file(prefix+'pruned_hapmap.snp') from for_pca_run
 
@@ -410,15 +401,12 @@ python -c 'from SampleQCI_helpers import *; pca_run("${base_pruned}", ${sigma_th
 
 process second_pca_eigenstrat {
     publishDir params.sampleqci_dir ?: '.', mode: 'copy' 
-//    when params.program_for_second_PCA == "EIGENSTRAT"
 
     input:
     file pruned from for_second_pca_eigen
-//    file projection_on_populations_controls
 
     output:
     file "${pruned[0].baseName}_${params.numof_pc}PC.outlier.txt" into for_remove_bad_samples_eigenstrat
-//    file "*.png"
 
     script:
     sigma_threshold = 6.0
@@ -435,20 +423,15 @@ fi
 
 process flashpca2_pruned {
      publishDir params.sampleqci_dir ?: '.', mode: 'copy'   
-//    when params.program_for_second_PCA == "FLASHPCA2"
-
-
 
     input:
     file pruned from for_second_pca_flashpca
 
     output:
     def target = "${params.collection_name}_SampleQCI_pruned_${params.numof_pc}PC"
-//    set file("${params.collection_name}_SampleQCI_pruned_${params.numof_pc}PC.pca.evec"), file( "${params.collection_name}_SampleQCI_pruned_${params.numof_pc}PC.country.pca.evec") into for_extract_qced_samples_evec
     set file("${target}.pca.evec"), file( "${target}.country.pca.evec") into for_extract_qced_samples_evec
     set file("${target}.eval"), file("${target}.country.eval") into for_tracy_widom_stats_eval
     file "*.png"
-//    file "*.pdf"
 
     script:
     base_pruned = pruned[0].baseName
@@ -484,7 +467,6 @@ process flashpca2_pruned_1kG {
     file "${pruned[0].baseName}_1kG_${params.numof_pc}PC.fail-pca-1KG-qc.txt" into for_remove_bad_samples_flashpca
     set file("${pruned[0].baseName}_1kG.bed"), file("${pruned[0].baseName}_1kG.bim"), file("${pruned[0].baseName}_1kG.fam") into for_pca_without_projection
     file "*.pdf"
-//    file "*.png"
 
     script:
     base_pruned = pruned[0].baseName
@@ -550,7 +532,7 @@ R --slave --args "${plink_pca_1kG}.country" "${params.preQCIMDS_1kG_sample}" <"$
 
 process detect_duplicates_related {
         publishDir params.sampleqci_dir ?: '.', mode: 'copy'
-        memory '8 GB'
+        memory '12 GB'
     input:
     file pruned from for_detect_duplicates
     file ibs from for_detect_duplicates_genome
@@ -651,7 +633,6 @@ process draw_histograms {
         publishDir params.sampleqci_dir ?: '.', mode: 'copy'
     input:
     file dataset from for_draw_histograms
-//    file eval from for_draw_histograms_eval // 0 is without and 1 is with country
     file evec from for_draw_histograms_evec // same here
     file annotations from for_draw_histograms_ann
 
@@ -729,7 +710,6 @@ process pca_without_projection {
     file remove_list from for_pca_without_projection_removelist
 
     output:
-//    file "*_flashpca2"
     file "${params.collection_name}_SampleQCI_pruned_1kG_${params.numof_pc}PC.fail-pca-1KG-qc.txt"
     file "${params.collection_name}_SampleQCI_pruned_1kG_${params.numof_pc}PC.country.fail-pca-1KG-qc.txt"
 
@@ -876,22 +856,18 @@ plink --noweb --bfile "${dataset[0].baseName}" --missing --out ${dataset[0].base
 """
 }
 
-process ibs_merge_and_verify_wr {
+process ibs_merge_and_verify_withoutRelatives {
     publishDir params.sampleqci_dir ?: '.', mode: 'copy'
     memory '16 GB'
     input:
     file chunks from for_ibs_merge_and_verify_wr.collect()
     file dataset from for_ibs_merge_and_verify_wr_ds
 
-//    output:
-//    file "${dataset[0].baseName}_IBS.genome" into for_detect_duplicates_genome_wr
-
     output:
         file "*.png"
 
 
     shell:
-        //        sorted_chunks = chunks.sort({ a, b -> a.toString() <=> b.toString() })
     ibdplot = SCRIPT_DIR + "/IBD-plot-genomefile.r"
 '''
 

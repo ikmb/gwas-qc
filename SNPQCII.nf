@@ -785,17 +785,14 @@ process pca_plot_1kg_frauke_final {
     memory "16 G"
 
     input:
-        file dataset_staged from for_pca_plot_1KG_frauke_final
+    file dataset_staged from for_pca_plot_1KG_frauke_final
     file ds_original from for_final_pca_1kg_frauke_ann
-
-// need to run 1kg-merge and flashpca manually
-//    file pcaresults_staged from for_pca_plot_1KG_frauke_evec_final
 
     output:
     file "*.pdf"
 
     shell:
-        dataset = mapFileList(dataset_staged)
+    dataset = mapFileList(dataset_staged)
     dataset_orig = mapFileList(ds_original)
 
     pcaplot_1KG = NXF_DIR + "/bin/pcaplot_1KG.R"
@@ -892,7 +889,8 @@ process sex_check {
     file ds_staged from for_sex_check
 
     output:
-    file "*.pdf"
+    file("*.pdf") optional true
+    file("sex-check-not-possible.txt") optional true
 
     shell:
     ds = mapFileList(ds_staged)

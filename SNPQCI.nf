@@ -9,7 +9,6 @@ def ChipDefinitions = this.class.classLoader.parseClass(new File("config/ChipDef
 // initialize configuration
 params.rs_dir = "." // Not initialized if we skipped Rs
 params.snpqci_dir = "."
-//input_basename = params.input
 hwe_template_script = file(params.hwe_template)
 
 // Lots of indirection layers require lots of backslash escaping
@@ -18,8 +17,6 @@ definetti_r = file(SCRIPT_DIR + "/DeFinetti_hardy.r")
 autosomes = file(ANNOTATION_DIR + "/" + params.chip_build + "/" + ChipDefinitions.Producer(params.chip_producer) + "/" + ChipDefinitions.RsAutosomes(params.chip_version))
 draw_fdr = file("bin/SNP_QCI_draw_FDR.r")
 draw_fdr_allbatches = file("bin/SNP_QCI_draw_FDR_Fail_allbatches.r")
-
-// println "Autosomes: " + ANNOTATION_DIR + "/" + params.chip_build + "/" + ChipDefinitions.Producer(params.chip_producer) + "/" + ChipDefinitions.RsAutosomes(params.chip_version)
 
 // set up channels
 to_calc_hwe_script = Channel.create()
@@ -31,18 +28,13 @@ process merge_batches {
 
     output:
     file "${params.collection_name}_Rs.bim" into merged_bim, to_split_bim, to_hwe_bim, to_verify_bim, to_exclude_bim, to_miss_bim, to_miss_batch_bim
-    file "${params.collection_name}_Rs.bed" into merged_bed, to_split_bed, to_hwe_bed, to_verify_bed, to_exclude_bed, to_miss_bed, to_miss_batch_bed
-    file "${params.collection_name}_Rs.fam" into merged_fam, to_split_fam, to_hwe_fam, to_verify_fam, to_exclude_fam, to_miss_fam, to_miss_batch_fam
+    file "${params.collection_name}_Rs.bed" into merged_bed, to_hwe_bed, to_verify_bed, to_exclude_bed, to_miss_bed, to_miss_batch_bed
+    file "${params.collection_name}_Rs.fam" into merged_fam, to_hwe_fam, to_verify_fam, to_exclude_fam, to_miss_fam, to_miss_batch_fam
     file "${params.collection_name}_Rs.log"
-    file "${params.collection_name}.indels" into preqc_hwe_indels,batchqc_hwe_indels,postqc_hwe_indels
+    file "${params.collection_name}.indels" into preqc_hwe_indels,postqc_hwe_indels
 
-    //.getAbsolutePath();
     shell:
-//    if(params.skip_rs == 1) {
-//    	rsdir = file(".")
-//    } else {
-//	    rsdir = file(params.rs_dir)
-//	}
+
 '''
 #!/usr/bin/env bash
 
@@ -113,11 +105,6 @@ process hwe_definetti_preqc {
     file "${params.collection_name}_hardy.hwe"
     file "${params.collection_name}_hardy.log"
 
-
-//    memory '8 GB'
-//    cpus 1
-
-//    def basename = new File(merged_bim.toString()).getBaseName()
 """
     module load IKMB
     module load Plink/1.9
