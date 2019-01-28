@@ -532,7 +532,10 @@ R --slave --args "${plink_pca_1kG}.country" "${params.preQCIMDS_1kG_sample}" <"$
 
 process detect_duplicates_related {
         publishDir params.sampleqci_dir ?: '.', mode: 'copy'
-        memory '12 GB'
+maxRetries 5
+memory { 12.GB * (task.attempt+1)/2 }
+errorStrategy { task.exitStatus == 143 ? 'retry' : 'terminate' }
+
     input:
     file pruned from for_detect_duplicates
     file ibs from for_detect_duplicates_genome
