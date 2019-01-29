@@ -6,12 +6,14 @@
 # Read file
 args = commandArgs(TRUE)
 if (length(args) < 3) {
-  stop("Usage: Rscript example_script.R <file> <x-ped> <y-ped>")
+  stop("Usage: Rscript example_script.R <file> <x-ped> <y-ped> <imiss> <het>")
 }
 
 # .libPaths("~/R/x86_64-redhat-linux-gnu-library/3.2")
 ## Save arguments in variables
 file= args[1]
+imissfile= args[4]
+hetfile=args[5]
 
 library("R.utils")
 library("SNPRelate")
@@ -61,12 +63,12 @@ col_sexcheck =  adjustcolor("grey", alpha=0.5)
 
 # GENOTPYE
 
-imiss=read.table(paste(file,".imiss",sep = ""),h=T, fill=TRUE)
+imiss=read.table(imissfile,h=T, fill=TRUE)
 
 
 # HETEROZYGOSITY
 
-het=read.table( paste(file,".het",sep = ""),h=T,fill=TRUE)
+het=read.table(hetfile,h=T,fill=TRUE)
 het$meanHet = (het$N.NM. - het$O.HOM.)/het$N.NM.
 
 

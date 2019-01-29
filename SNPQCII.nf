@@ -99,7 +99,7 @@ hf_test_chunk_size = 1000
 
 // from SNP_QCII_CON_PS_AS_CD_UC_PSC_parallel_part1.py
 process hf_test_prepare {
-   memory 16.GB
+   memory 20.GB
     // It is okay if kill could not successfully kill Rserve, it might have died on its own,
     // so allow an error-indicating return value.
     validExitStatus 0,1
@@ -457,7 +457,7 @@ del test_missing;
 
 process det_unknown_diagnosis {
 publishDir params.qc_dir ?: '.', mode: 'copy', overwrite: true
-    prefix = "${params.collection_name}_SNPQCII"
+    prefix = "${params.collection_name}_SNPQCII" 
 
     input:
 
@@ -899,17 +899,17 @@ module load IKMB
 module load Plink/1.9
 
 # Check if we have data on both X and Y chromosomes
-plink --allow-no-sex --bfile "!{ds.bim.baseName}" --missing --out !{ds.bim.baseName}
-plink --allow-no-sex --bfile "!{ds.bim.baseName}" --het --out !{ds.bim.baseName}
+plink --allow-no-sex --bfile "!{ds.bim.baseName}" --missing --out !{ds.bim.baseName}_imiss
+plink --allow-no-sex --bfile "!{ds.bim.baseName}" --het --out !{ds.bim.baseName}_het
 plink --allow-no-sex --bfile "!{ds.bim.baseName}" --chr X --recode --out !{ds.bim.baseName}_sex.X || true
 plink --allow-no-sex --bfile "!{ds.bim.baseName}" --chr Y --recode --out !{ds.bim.baseName}_sex.Y || true
 
 if [ -e "!{ds.bim.baseName}"_sex.X.ped -a -e "!{ds.bim.baseName}"_sex.Y.ped ]; then
-    Rscript $NXF_DIR/bin/indivplot.R "!{ds.bed.baseName}" "!{ds.bim.baseName}"_sex.X.ped "!{ds.bim.baseName}"_sex.Y.ped
+    Rscript $NXF_DIR/bin/indivplot.R "!{ds.bed.baseName}" "!{ds.bim.baseName}"_sex.X.ped "!{ds.bim.baseName}"_sex.Y.ped !{ds.bim.baseName}_imiss.imiss !{ds.bim.baseName}_het.het
 else
     echo "Sex check requires X and Y chromosomes to be present in the dataset" | tee sex-check-not-possible.txt
 fi
-rm -f "!{ds.bim.baseName}.log"
+# rm -f "!{ds.bim.baseName}.log"
 
 '''
 }

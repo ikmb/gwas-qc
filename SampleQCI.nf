@@ -221,7 +221,7 @@ process ibs_merge_and_verify {
 publishDir params.sampleqci_dir ?: '.', mode: 'copy'  
 
 maxRetries 5
-memory { 20.GB * (task.attempt+1)/2 }
+memory { 40.GB * (task.attempt+1)/2 }
 errorStrategy { task.exitStatus == 143 ? 'retry' : 'terminate' }
     input:
     file chunks from for_ibs_merge_and_verify.collect()
@@ -861,7 +861,10 @@ plink --noweb --bfile "${dataset[0].baseName}" --missing --out ${dataset[0].base
 
 process ibs_merge_and_verify_withoutRelatives {
     publishDir params.sampleqci_dir ?: '.', mode: 'copy'
-    memory '16 GB'
+    maxRetries 5
+    memory { 40.GB * (task.attempt+1)/2 }
+    errorStrategy { task.exitStatus == 143 ? 'retry' : 'terminate' }
+    
     input:
     file chunks from for_ibs_merge_and_verify_wr.collect()
     file dataset from for_ibs_merge_and_verify_wr_ds
