@@ -1,4 +1,5 @@
 // -*- mode:groovy -*-
+// vim: syntax=nextflow
 
 /*
  Author: Jan Kässens <j.kaessens@ikmb.uni-kiel.de>
@@ -8,21 +9,21 @@ def ChipDefinitions = this.class.classLoader.parseClass(new File(params.chip_def
 
 // initialize configuration
 params.snpqci_dir = "."
-hwe_template_script = file(params.hwe_template)
+hwe_template_script = file("${workflow.projectDir}/"+params.hwe_template)
 
 // Lots of indirection layers require lots of backslash escaping
-individuals_annotation = file(ANNOTATION_DIR + "/" + params.individuals_annotation)
+individuals_annotation = file(params.individuals_annotation)
 definetti_r = file(SCRIPT_DIR + "/DeFinetti_hardy.r")
 autosomes = file(ANNOTATION_DIR + "/" + params.chip_build + "/" + ChipDefinitions.Producer(params.chip_producer) + "/" + ChipDefinitions.RsAutosomes(params.chip_version))
-draw_fdr = file("bin/SNP_QCI_draw_FDR.r")
-draw_fdr_allbatches = file("bin/SNP_QCI_draw_FDR_Fail_allbatches.r")
+draw_fdr = file("${workflow.projectDir}/bin/SNP_QCI_draw_FDR.r")
+draw_fdr_allbatches = file("${workflow.projectDir}/bin/SNP_QCI_draw_FDR_Fail_allbatches.r")
 
 // set up channels
 to_calc_hwe_script = Channel.create()
 to_calc_hwe = Channel.create()
 
 process merge_batches {
-
+    tag "${params.collection_name}"
     memory 12.GB
 
     output:
@@ -61,7 +62,7 @@ for idx in ${!BIMS[@]}; do
 done
 
 if [ "${#BIMS[*]}" -gt 1 ]; then
-    plink --bed !{params.rs_dir}/${BIMS[0]} --bim !{params.rs_dir}/${BIM[0]} --fam !{params.rs_dir}/${FAM[0]} --make-bed --out !{params.collection_name}_Rs --allow-no-sex
+    plink --bed !{params.rs_dir}/${BEDS[0]} --bim !{params.rs_dir}/${BIMS[0]} --fam !{params.rs_dir}/${FAMS[0]} --merge-list merge-list --make-bed --out !{params.collection_name}_Rs --allow-no-sex
 else
     echo "No merge necessary, only one batch found." | tee !{params.collection_name}_Rs.log
     ln -s !{params.rs_dir}/${BIMS[0]} !{params.collection_name}_Rs.bim
@@ -77,6 +78,7 @@ ln -s !{params.rs_dir}/${INDELS[0]} !{params.collection_name}.indels
  Generate HWE tables and draw DeFinetti plots of the whole data set
  */
 process hwe_definetti_preqc {
+  tag "${params.collection_name}"
   memory 8192.MB
   cpus 1
   publishDir params.snpqci_dir ?: '.', mode: 'copy', overwrite: true
@@ -111,11 +113,13 @@ R --slave --args ${params.collection_name}_hardy.hwe ${params.collection_name}_c
  */
 
 process split_dataset {
-  input:
-    file input_bim from to_split_bim
 
-  output:
-    file 'chunk_*' into to_calc_hwe
+  tag "${params.collection_name}"
+input:
+  file input_bim from to_split_bim
+
+output:
+  file 'chunk_*' into to_calc_hwe
 
   """
   cut -f 2 $input_bim | split -l 10000 -a 5 -d - chunk_
@@ -133,6 +137,7 @@ process calculate_hwe {
   errorStrategy 'retry'
   memory 2.GB
   time 1.h
+  tag "${params.collection_name}/${chunk}"
 
   input:
     each file(chunk) from to_calc_hwe.flatten()
@@ -144,10 +149,6 @@ process calculate_hwe {
 
   output:
   file "${chunk}-out.auto.R" into from_calc_hwe
-//  file "${chunk}-out.nosex"
-
-  tag { chunk }
-
 
 shell:
 '''
@@ -218,7 +219,9 @@ done
  */
 
 process hwe_fdr_filter {
-    publishDir params.snpqci_dir ?: '.', mode: 'copy'
+
+  tag "${params.collection_name}"
+publishDir params.snpqci_dir ?: '.', mode: 'copy'
     input:
     file 'chunk' from from_calc_hwe.collect()
     file input_bim from to_verify_bim
@@ -242,7 +245,7 @@ process hwe_fdr_filter {
 '''
 #!/usr/bin/env bash
 HWE_RESULTS="!{params.collection_name}_chunks_combined.hwe"
-cat chunk[0-9]* >$HWE_RESULTS
+cat chunk* >$HWE_RESULTS
 
 combined_hwe_nas=`grep -c NA $HWE_RESULTS`
 input_nas=`grep -c NA !{input_bim}`
@@ -289,6 +292,7 @@ process determine_missingness_entire {
     publishDir params.snpqci_dir ?: '.', mode: 'copy'
     errorStrategy 'retry'
     memory { 8.GB * task.attempt }
+    tag "${params.collection_name}"
 
     input:
     file input_bim from to_miss_bim
@@ -314,6 +318,7 @@ process determine_missingness_per_batch {
     publishDir params.snpqci_dir ?: '.', mode: 'copy'
     errorStrategy 'retry'
     memory { 8.GB * task.attempt }
+    tag "${params.collection_name}"
 
     input:
     file individuals_annotation
@@ -339,6 +344,7 @@ process exclude_bad_variants {
     publishDir params.snpqci_dir ?: '.', mode: 'copy'
     errorStrategy 'retry'
     memory { 8.GB * task.attempt }
+    tag "${params.collection_name}"
 
     input:
     file individuals_annotation
@@ -377,6 +383,7 @@ plink --noweb --bfile "${new File(input_bim.toString()).getBaseName()}" --exclud
 
 process hwe_definetti_qci {
     publishDir params.snpqci_dir ?: '.', mode: 'copy'
+    tag "${params.collection_name}"
 
     def prefix = "${params.collection_name}_QCI_hardy"
 
@@ -403,9 +410,3 @@ R --slave --args ${prefix}.hwe ${prefix}_controls_DeFinetti ${prefix}_cases_DeFi
 """
 }
 
-workflow.onComplete {
-    println "Generating phase summary..."
-    def cmd = ["./generate-phase-summary", "SNPQCI", params.collection_name ?: params.disease_data_set_prefix, workflow.workDir, params.trace_target].join(' ')
-    def gensummary = ["bash", "-c", cmd].execute()
-    gensummary.waitFor()
-}

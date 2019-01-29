@@ -1,3 +1,4 @@
+// vim: syntax=nextflow
 
 /* Verify config parameter*/
 params.dataset_prefixes = [:]
@@ -21,7 +22,7 @@ params.dataset_prefixes.each { key, value ->
         assertFileExists(file(b + ".bim")) 
         assertFileExists(file(b + ".bed")) 
         assertFileExists(file(b + ".fam")) 
-        assertFileExists(file(b + "_individuals_annotation.txt")) 
+        assertFileExists(file(new File(b).getParent()+"/"+key+"_individuals_annotation.txt"))
         input_datasets << [key, b, file(b+".bim").getBaseName()]
     }
 }
@@ -40,17 +41,13 @@ process PrepareFiles {
 
     input:
     set dataset,filebase,batch from input_datasets
-    file hapmap2_samples
 
     output:
     set dataset,filebase,batch into Rs_datasets
-    set file("${batch}_individuals_annotation_hapmap2.txt"), file("${batch}_individuals_annotation_cases_controls_hapmap2.txt") into SampleQC_hapmap
-
 
 shell:
 '''
-cat "!{filebase}_individuals_annotation.txt" "!{hapmap2_samples}" >"!{batch}_individuals_annotation_hapmap2.txt"
-cat "!{filebase}_individuals_annotation.txt" "!{hapmap2_samples}" >"!{batch}_individuals_annotation_cases_controls_hapmap2.txt"
+echo Dummy
 '''
 }
 
@@ -61,7 +58,7 @@ input:
 
 output:
     file "Rs-${dataset}-${batch}.trace.txt" into trace_reports_rs
-    set val(dataset), file("${batch}_Rs.bed"), file("${batch}_Rs.bim"), file("${batch}_Rs.fam"), file("${batch}.indels") into SNPQCI_batches
+    set val(dataset), val(filebase), file("${batch}_Rs.bed"), file("${batch}_Rs.bim"), file("${batch}_Rs.fam"), file("${batch}.indels") into SNPQCI_batches
     //set dataset,batch into SNPQCI_info
 shell:
     dsconfig = params.dataset_config[dataset]
@@ -76,27 +73,36 @@ NXF_PARAMS="!{Rs_script} -c !{params.qc_config} \\
     -c !{dsconfig} \\
     --filebase=!{filebase} \\
     --batch_name=!{batch} \\
+    --ds_name=!{dataset} \\
     --chip_defs=!{workflow.projectDir}/config/ChipDefinitions.groovy \\
-    --rs_dir=!{params.output}/Rs \\
+    --rs_dir=!{params.output}/!{dataset}/Rs \\
     -resume"
 
 echo "Would run 'nextflow $NXF_PARAMS'"
 nextflow run $NXF_PARAMS
 mv trace.txt $MYPWD/Rs-!{dataset}-!{batch}.trace.txt
 cd $MYPWD
-ln -s !{params.output}/Rs/!{batch}_Rs.bed
-ln -s !{params.output}/Rs/!{batch}_Rs.bim
-ln -s !{params.output}/Rs/!{batch}_Rs.fam
-ln -s !{params.output}/Rs/!{batch}.indels
+if [ ! -e !{batch}_Rs.bed ]; then
+    ln -s !{params.output}/!{dataset}/Rs/!{batch}_Rs.bed
+    ln -s !{params.output}/!{dataset}/Rs/!{batch}_Rs.bim
+    ln -s !{params.output}/!{dataset}/Rs/!{batch}_Rs.fam
+    ln -s !{params.output}/!{dataset}/Rs/!{batch}.indels
+fi
 
 '''
 }
 
 process SNPQCI {
+    publishDir "!{params.output}/!{dataset}/SNPQCI", mode: 'copy'
     tag "${dataset}"
 input:
-    set val(dataset), file(bed), file(bim), file(fam), file(indels) from SNPQCI_batches.groupTuple()
+    set val(dataset), val(filebase), file(bed), file(bim), file(fam), file(indels) from SNPQCI_batches.groupTuple()
+output:
+    set val(dataset), val(filebase), file("${prefix}.bed"), file("${prefix}.bim"), file("${prefix}.fam") into SampleQC_ds
+    
 shell:
+    individuals_annotation = file(filebase[0]).getParent().toString() + "/" + dataset + "_individuals_annotation.txt"
+    prefix = "${dataset}_QCI"
 '''
 echo Checking !{dataset}:
 echo BEDs: "!{bed}"
@@ -109,27 +115,49 @@ mkdir -p !{workflow.workDir}/!{dataset}-SNPQCI
 cd !{workflow.workDir}/!{dataset}-SNPQCI
 
 nextflow run !{SNPQCI_script} -c !{params.qc_config} \\
-    --rs_dir=$MYPWD \\
-    --collection_name=!{dataset} \\
+    --rs_dir="$MYPWD" \\
+    --snpqci_dir="!{params.output}/!{dataset}/SNPQCI" \\
+    --collection_name="!{dataset}" \\
     --chip_defs=!{workflow.projectDir}/config/ChipDefinitions.groovy \\
     --rs_bims="!{bim}" \\
     --rs_beds="!{bed}" \\
     --rs_fams="!{fam}" \\
-    --rs_indels="!{indels}"
+    --rs_indels="!{indels}" \\
+    --individuals_annotation="!{individuals_annotation}" \\
+    -resume
 
 mv trace.txt $MYPWD/SNPQCI-!{dataset}.trace.txt
+cd $MYPWD
 
+if [ ! -e !{prefix}.bed ]; then
+    ln -s !{params.output}/SNPQCI/!{prefix}.bed
+    ln -s !{params.output}/SNPQCI/!{prefix}.bim
+    ln -s !{params.output}/SNPQCI/!{prefix}.fam
+fi
 '''
 }
 
 process SampleQC {
-//echo true
-    input:
-    // bla
-    set file(hapmap), file(hapmap_cc) from SampleQC_hapmap
+    tag "${dataset}"
+input:
+    set val(dataset), val(filebase), file(bed), file(bim), file(fam) from SampleQC_ds
 shell:
+    individuals_annotation = file(filebase[0]).getParent().toString() + "/" + dataset + "_individuals_annotation.txt"
 '''
-echo "Would run 'nextflow run !{SampleQC_script} --individuals_annotation_hapmap2 '!{hapmap}''"
+MYPWD=$(pwd)
+mkdir -p !{workflow.workDir}/!{dataset}-SampleQC
+cd !{workflow.workDir}/!{dataset}-SampleQC
+
+cat !{individuals_annotation} !{hapmap2_samples} >!{dataset}_individuals_annotation_hapmap2.txt
+
+nextflow run !{SampleQC_script} -c !{params.qc_config} -c !{params.dataset_config[dataset]}\\
+    --snpqci_dir="!{params.output}/SNPQCI" \\
+    --collection_name="!{dataset}" \\
+    --individuals_annotation="!{individuals_annotation}" \\
+    --individuals_annotation_hapmap2="$(pwd)/!{dataset}_individuals_annotation_hapmap2.txt" \\
+    -resume
+
+mv trace.txt $MYPWD/SampleQC-!{dataset}.trace.txt
 '''
 }
 

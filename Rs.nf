@@ -19,6 +19,7 @@ Channel.fromFilePairs(params.filebase + ".{bim,bed,fam}", size:3, flat: true).in
 println "Input files: " + params.filebase + ".{bim,bed,fam}"
 
 process check_chip_type {
+    tag "${params.ds_name}/${params.batch_name}"
     memory 4.GB
     cpus 2
     publishDir params.rs_dir ?: '.', mode: 'copy'
@@ -41,6 +42,8 @@ chipmatch --verbose --output !{original[1].baseName}.chip_detect.log --threads 2
 }
 
 process lift_genome_build {
+
+    tag "${params.ds_name}/${params.batch_name}"
     memory 8.GB
     input:
 
@@ -70,6 +73,7 @@ fi
 
 process normalize_variant_names {
 	time 24.h
+    tag "${params.ds_name}/${params.batch_name}"
     publishDir params.rs_dir ?: '.', mode: 'copy'
 
     input:
@@ -221,6 +225,7 @@ unlink("$scratch_dir/annotation.sqlite");
 process plink_flip {
 //    echo true
 
+    tag "${params.ds_name}/${params.batch_name}"
     input:
     file bim from to_plink_flip_bim
     file bedfam from to_plink_flip_bedfam
@@ -253,6 +258,7 @@ plink --bfile dedup --flip "!{flip}" --threads 1 --memory 6144 --make-bed --out 
  Create a list of duplicate SNPs now that all SNPs have standardized Rs names
  */
 process find_duplicates_nn {
+    tag "${params.ds_name}/${params.batch_name}"
     input:
     file bim from to_find_duplicates_nn
 
@@ -289,6 +295,7 @@ individuals_annotation = file(ANNOTATION_DIR + "/" + params.individuals_annotati
  */
 process plink_exclude {
     publishDir params.rs_dir ?: '.', mode: 'copy'
+    tag "${params.ds_name}/${params.batch_name}"
 
     input:
 //    file individuals_annotation
