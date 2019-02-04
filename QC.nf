@@ -35,6 +35,7 @@ Rs_script = file("Rs.nf")
 SNPQCI_script = file("SNPQCI.nf")
 SampleQC_script = file("SampleQCI.nf")
 SNPQCII_script = file("SNPQCII.nf")
+FinalAnalysis_script = file("FinalAnalysis.nf")
 
 process PrepareFiles {
     tag "$dataset/$batch"
@@ -78,22 +79,18 @@ NXF_PARAMS="!{Rs_script} -c !{params.qc_config} \\
     --rs_dir=!{params.output}/!{dataset}/Rs \\
     -resume"
 
-echo "Would run 'nextflow $NXF_PARAMS'"
 nextflow run $NXF_PARAMS
 mv trace.txt $MYPWD/Rs-!{dataset}-!{batch}.trace.txt
 cd $MYPWD
-if [ ! -e !{batch}_Rs.bed ]; then
-    ln -s !{params.output}/!{dataset}/Rs/!{batch}_Rs.bed
-    ln -s !{params.output}/!{dataset}/Rs/!{batch}_Rs.bim
-    ln -s !{params.output}/!{dataset}/Rs/!{batch}_Rs.fam
-    ln -s !{params.output}/!{dataset}/Rs/!{batch}.indels
-fi
+    ln -fs !{params.output}/!{dataset}/Rs/!{batch}_Rs.bed
+    ln -fs !{params.output}/!{dataset}/Rs/!{batch}_Rs.bim
+    ln -fs !{params.output}/!{dataset}/Rs/!{batch}_Rs.fam
+    ln -fs !{params.output}/!{dataset}/Rs/!{batch}.indels
 
 '''
 }
 
 process SNPQCI {
-    publishDir "!{params.output}/!{dataset}/SNPQCI", mode: 'copy'
     tag "${dataset}"
 input:
     set val(dataset), val(filebase), file(bed), file(bim), file(fam), file(indels) from SNPQCI_batches.groupTuple()
@@ -129,11 +126,9 @@ nextflow run !{SNPQCI_script} -c !{params.qc_config} \\
 mv trace.txt $MYPWD/SNPQCI-!{dataset}.trace.txt
 cd $MYPWD
 
-if [ ! -e !{prefix}.bed ]; then
-    ln -s !{params.output}/SNPQCI/!{prefix}.bed
-    ln -s !{params.output}/SNPQCI/!{prefix}.bim
-    ln -s !{params.output}/SNPQCI/!{prefix}.fam
-fi
+    ln -fs !{params.output}/!{dataset}/SNPQCI/!{prefix}.bed
+    ln -fs !{params.output}/!{dataset}/SNPQCI/!{prefix}.bim
+    ln -fs !{params.output}/!{dataset}/SNPQCI/!{prefix}.fam
 '''
 }
 
@@ -141,8 +136,12 @@ process SampleQC {
     tag "${dataset}"
 input:
     set val(dataset), val(filebase), file(bed), file(bim), file(fam) from SampleQC_ds
+output:
+    set val(dataset), val(filebase), file("${prefix}.bed"), file("${prefix}.bim"), file("${prefix}.fam") into SNPQCII_ds
+    file("${prefix}.pca.evec") into FinalAnalysis_evec
 shell:
     individuals_annotation = file(filebase[0]).getParent().toString() + "/" + dataset + "_individuals_annotation.txt"
+    prefix = "${dataset}_SampleQCI_final_withoutRelatives"
 '''
 MYPWD=$(pwd)
 mkdir -p !{workflow.workDir}/!{dataset}-SampleQC
@@ -151,30 +150,82 @@ cd !{workflow.workDir}/!{dataset}-SampleQC
 cat !{individuals_annotation} !{hapmap2_samples} >!{dataset}_individuals_annotation_hapmap2.txt
 
 nextflow run !{SampleQC_script} -c !{params.qc_config} -c !{params.dataset_config[dataset]}\\
-    --snpqci_dir="!{params.output}/SNPQCI" \\
+    --snpqci_dir="!{params.output}/!{dataset}/SNPQCI" \\
+    --sampleqci_dir="!{params.output}/!{dataset}/SampleQCI" \\
     --collection_name="!{dataset}" \\
     --individuals_annotation="!{individuals_annotation}" \\
     --individuals_annotation_hapmap2="$(pwd)/!{dataset}_individuals_annotation_hapmap2.txt" \\
     -resume
 
 mv trace.txt $MYPWD/SampleQC-!{dataset}.trace.txt
+
+
+cd $MYPWD
+ln -fs !{params.output}/!{dataset}/SampleQCI/!{prefix}.bed
+ln -fs !{params.output}/!{dataset}/SampleQCI/!{prefix}.bim
+ln -fs !{params.output}/!{dataset}/SampleQCI/!{prefix}.fam
+ln -fs !{params.output}/!{dataset}/SampleQCI/!{prefix}.pca.evec
 '''
 }
 
 process SNPQCII {
-//echo true
+    tag "${dataset}"
+input:
+    set val(dataset), val(filebase), file(bed), file(bim), file(fam) from SNPQCII_ds
+output:
+    set val(dataset), val(filebase), file("${prefix}.bed"), file("${prefix}.bim"), file("${prefix}.fam"), file("${prefix}_annotation.txt") into FinalAnalysis_ds
 shell:
+    prefix = "${dataset}_QCed"
+    individuals_annotation = file(filebase[0]).getParent().toString() + "/" + dataset + "_individuals_annotation.txt"
 '''
-echo !{task}
+MYPWD=$(pwd)
+mkdir -p !{workflow.workDir}/!{dataset}-SNPQCII
+cd !{workflow.workDir}/!{dataset}-SNPQCII
+
+nextflow run !{SNPQCII_script} -c !{params.qc_config} -c !{params.dataset_config[dataset]} \\
+    --sampleqci_dir="!{params.output}/!{dataset}/SampleQCI" \\
+    --qc_dir="!{params.output}/!{dataset}/SNPQCII" \\
+    --collection_name="!{dataset}" \\
+    --individuals_annotation="!{individuals_annotation}" \\
+    -resume
+
+mv trace.txt $MYPWD/SNPQCII-!{dataset}.trace.txt
+
+cd $MYPWD
+ln -fs !{params.output}/!{dataset}/SNPQCII/!{prefix}.bed
+ln -fs !{params.output}/!{dataset}/SNPQCII/!{prefix}.bim
+ln -fs !{params.output}/!{dataset}/SNPQCII/!{prefix}.fam
+ln -fs !{params.output}/!{dataset}/SNPQCII/!{prefix}_annotation.txt
 '''
 
 }
 
 process FinalAnalysis {
-//echo true
+tag "${dataset}"
+input:
+    set val(dataset), val(filebase), file(bed), file(bim), file(fam), file(anno) from FinalAnalysis_ds
+    file(evec) from FinalAnalysis_evec
 shell:
 '''
-echo !{task}
+MYPWD=$(pwd)
+mkdir -p !{workflow.workDir}/!{dataset}-FinalAnalysis
+cd !{workflow.workDir}/!{dataset}-FinalAnalysis
+
+nextflow run !{FinalAnalysis_script} -c !{params.qc_config} -c !{params.dataset_config[dataset]} \\
+    --collection_name="!{dataset}" \\
+    --individuals_annotation="$MYPWD/!{anno}" \\
+    --bed="$MYPWD/!{bed}" \\
+    --bim="$MYPWD/!{bim}" \\
+    --fam="$MYPWD/!{fam}" \\
+    --evec="$MYPWD/!{evec}" \\
+    --qc_dir="!{params.output}/!{dataset}/QCed" \\
+    -resume
+
+ln -s !{params.output}/!{dataset}/SNPQCII/!{dataset}_QCed.bed !{params.output}/!{dataset}/QCed/
+ln -s !{params.output}/!{dataset}/SNPQCII/!{dataset}_QCed.bim !{params.output}/!{dataset}/QCed/
+ln -s !{params.output}/!{dataset}/SNPQCII/!{dataset}_QCed.fam !{params.output}/!{dataset}/QCed/
+ln -s !{params.output}/!{dataset}/SNPQCII/!{dataset}_QCed.log !{params.output}/!{dataset}/QCed/
+
 '''
 }
 

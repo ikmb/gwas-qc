@@ -1,4 +1,5 @@
 // -*- mode:groovy -*-
+// vim: syntax=nextflow
 
 /*
  Author: Jan Kässens <j.kaessens@ikmb.uni-kiel.de>
@@ -52,15 +53,6 @@ sampleqci_helpers = file("${workflow.projectDir}/bin/SampleQCI_helpers.py")
 
 prefix = params.collection_name + "_SampleQCI_"
 
-/*
- *
- *
- * Imported from SampleQCI_parallel_part1
- *
- *
- *
- */
-
 /* Apply pre-calculated remove list for indidividuals */
 process apply_precalc_remove_list {
     tag "${params.collection_name}"
@@ -96,7 +88,6 @@ process apply_precalc_remove_list {
 
 
 process determine_miss_het {
-//    cpus 4
     tag "${params.collection_name}"
 	memory { 12.GB * task.attempt }
 	time { 4.h * task.attempt }
@@ -104,7 +95,6 @@ process determine_miss_het {
 
     input:
         file dataset from for_det_miss_het
-//    val prefix
 
     output:
     file prefix+"het.het.{1.png,2.png,logscale.1.png,logscale.2.png}"
@@ -113,10 +103,6 @@ process determine_miss_het {
     file prefix+"het.het.outlier.txt" into for_remove_bad_samples_het
 
     publishDir params.sampleqci_dir ?: '.', mode: 'copy'
-
-    //cpus {4 * task.attempt}
-
-
 
 shell:
 '''
@@ -227,7 +213,7 @@ plink --bfile ${dataset[0].baseName} --genome --parallel ${job} ${calc_imiss_job
 process ibs_merge_and_verify {
 
     publishDir params.sampleqci_dir ?: '.', mode: 'copy'  
-    tag "${params.collection_name}/$job"
+    tag "${params.collection_name}"
     maxRetries 5
     memory { 20.GB * (task.attempt+1)/2 }
 
@@ -243,7 +229,6 @@ process ibs_merge_and_verify {
 
 
     shell:
-//        sorted_chunks = chunks.sort({ a, b -> a.toString() <=> b.toString() })
     ibdplot = SCRIPT_DIR + "/IBD-plot-genomefile.r"
 '''
     module load "IKMB"
@@ -296,7 +281,7 @@ R --slave --args $OUTFILE.Z0.Z1 < !{ibdplot}
 '''
 }
 
-process merge_dataset_with_hapmap {
+process pca_with_hapmap {
     tag "${params.collection_name}"
     input:
     file pruned from for_merge_hapmap
@@ -304,16 +289,27 @@ process merge_dataset_with_hapmap {
     output:
         set file(prefix+'pruned_hapmap.bed'), file(prefix+'pruned_hapmap.bim'), file(prefix+'pruned_hapmap.fam') into for_pca_convert_pruned_hapmap, for_pca_run_pruned_hapmap
 
+        file prefix+'eigenstrat-parameters'
+        file prefix+'pruned.{eigenstratgeno,ind,snp}'
+
+        file "*.png"
+        file "*.pdf"
     shell:
         base_pruned = pruned[0].baseName
         bim_pruned = pruned[1]
-     
-     exclude = BATCH_DIR + "/" + params.PCA_SNPexcludeList
-    hapmap = params.preQCIMDS_HapMap2
+        exclude = BATCH_DIR + "/" + params.PCA_SNPexcludeList
+        hapmap = params.preQCIMDS_HapMap2
 
+        annotations = params.individuals_annotation_hapmap2
+    /*base_pruned = pruned_hapmap[0].baseName*/
+    sigma_threshold = 100.0
+    draw_eigenstrat = SCRIPT_DIR + "/draw_evec_EIGENSTRAT.r"
+    draw_without = SCRIPT_DIR + "/draw_evec_withoutProjection.r"
+    projection_on_populations_hapmap = ANNOTATION_DIR + "/" + params.projection_on_populations_hapmap
 '''
 module load IKMB
 module load Plink/1.9
+module load Eigensoft/4.2
 
 if [ -e "!{exclude}" ]; then
     plink --bfile "!{base_pruned}" --extract "!{hapmap}.bim" --exclude "!{exclude}" --make-bed --out pruned_tmp --allow-no-sex --memory !{task.memory.toMega()} 
@@ -347,67 +343,18 @@ do
     fi
 done
 
+# Make parameters file for Eigenstrat (former pca_convert())
+echo "*** converting for Eigenstrat ***"
+python -c 'from SampleQCI_helpers import *; pca_convert ("!{base_pruned}", "!{prefix}eigenstrat-parameters", "!{annotations}")'
+python -c 'from SampleQCI_helpers import *; pca_convert ("!{prefix}pruned_hapmap", "!{prefix}eigenstrat-parameters-all", "!{annotations}")'
+
+echo "*** performing PCA with Eigenstrat ***"
+# Set up PCA
+export TMPDIR="$(pwd)"
+export TEMPDIR="$(pwd)"
+export TEMP="$(pwd)"
+python -c 'from SampleQCI_helpers import *; pca_run("!{prefix}pruned_hapmap", !{sigma_threshold}, "!{projection_on_populations_hapmap}", !{params.numof_pc}, 1, "!{draw_eigenstrat}", "!{draw_without}")'
 '''
-}
-
-
-process pca_convert {
-
-    tag "${params.collection_name}"
-
-  input:
-  file pruned_hapmap from for_pca_convert_pruned_hapmap
-  file pruned from for_pca_convert_pruned
-
-  output:
-  file prefix+'eigenstrat-parameters'
-  file prefix+'pruned.{eigenstratgeno,ind,snp}'
-  file prefix+'pruned_hapmap.{eigenstratgeno,ind,snp}' into for_pca_run
-
-
-  def annotations = params.individuals_annotation_hapmap2
-
-  script:
-  base_pruned = pruned[0].baseName
-  base_hapmap = pruned_hapmap[0].baseName
-"""
-  module load "IKMB"
-  module load "Plink/1.9"
-  module load "Eigensoft"
-  python -c 'from SampleQCI_helpers import *; pca_convert ("${base_pruned}", "${prefix}eigenstrat-parameters", "${annotations}")'
-  python -c 'from SampleQCI_helpers import *; pca_convert ("${base_hapmap}", "${prefix}eigenstrat-parameters-all", "${annotations}")'
-"""
-}
-
-
-process pca_run {
-    publishDir params.sampleqci_dir ?: '.', mode: 'copy'
-    tag "${params.collection_name}"
-
-    input:
-    file pruned_hapmap from for_pca_run_pruned_hapmap
-
-    set file(prefix+'pruned_hapmap.eigenstratgeno'), file(prefix+'pruned_hapmap.ind'), file(prefix+'pruned_hapmap.snp') from for_pca_run
-
-    output:
-        file "*.png"
-        file "*.pdf"
-
-    script:
-    base_pruned = pruned_hapmap[0].baseName
-    sigma_threshold = 100.0
-    draw_eigenstrat = SCRIPT_DIR + "/draw_evec_EIGENSTRAT.r"
-    draw_without = SCRIPT_DIR + "/draw_evec_withoutProjection.r"
-    projection_on_populations_hapmap = ANNOTATION_DIR + "/" + params.projection_on_populations_hapmap
-"""
-    module load "IKMB"
-    module load "Plink/1.9"
-    module load "Eigensoft/4.2"
-export TMPDIR="\$(pwd)"
-export TEMPDIR="\$(pwd)"
-export TEMP="\$(pwd)"
-python -c 'from SampleQCI_helpers import *; pca_run("${base_pruned}", ${sigma_threshold}, "${projection_on_populations_hapmap}", ${params.numof_pc}, 1, "${draw_eigenstrat}", "${draw_without}")'
-"""
 }
 
 process second_pca_eigenstrat {
