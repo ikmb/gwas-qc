@@ -779,7 +779,7 @@ def pca_convert(plink, eigenstrat_parameter_file, annotation_file):
                 line = line.replace("Control", batch_id)
             # nothing to replace
             else:
-                print >> sys.stderr, "\n    warning: could not replace case/control status for sample " + list[0] + " by batch_id in file pca.evec file " + plink_pca + ".pca.evec ...\n\n"
+                print >> sys.stderr, "\n    warning: could not replace case/control status for sample " + list[0] + " by batch_id in file pca.evec file " + plink + ".pca.evec ...\n\n"
             fh_ind_new.writelines(line + "\n")
 
         # nothing to replace

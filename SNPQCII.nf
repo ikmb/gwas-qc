@@ -1,4 +1,5 @@
 // -*- mode:groovy -*-
+// vim: syntax=nextflow
 
 /*
  Author: Jan Kässens <j.kaessens@ikmb.uni-kiel.de>
@@ -97,9 +98,12 @@ for_final_sample_cleaning = Channel.create()
 */
 hf_test_chunk_size = 1000
 
+/*
+
 // from SNP_QCII_CON_PS_AS_CD_UC_PSC_parallel_part1.py
 process hf_test_prepare {
-   memory 20.GB
+   memory { 4.GB * task.attempt }
+   errorStrategy 'retry'
     // It is okay if kill could not successfully kill Rserve, it might have died on its own,
     // so allow an error-indicating return value.
     validExitStatus 0,1
@@ -133,12 +137,21 @@ process hf_test_prepare {
 # Fix annotations and evec file to match FAM file
 <!{dataset.fam} tr -s '\\t ' ' ' | cut -f2 -d" " >samples_to_be_used
 head -n1 !{dataset.annotation} >cleaned-annotation
-grep -f samples_to_be_used !{dataset.annotation} >>cleaned-annotation
 head -n1 !{dataset.evec} >cleaned-evec
-grep -f samples_to_be_used !{dataset.evec} >>cleaned-evec
 
-N_CASES=$(<cleaned-annotation tr -s '\\t ' ' ' | cut -f7,9 -d' ' | uniq | tail -n +2 | cut -f2 -d' ' | grep -v -c Control)
-N_CONTROLS=$(<cleaned-annotation tr -s '\\t ' ' ' | cut -f7,9 -d' ' | uniq | tail -n +2 | cut -f2 -d' ' | grep -c Control)
+awk 'NR==FNR{ids[$0];next} {f=($2 in ids)} f' samples_to_be_used !{dataset.annotation} >>cleaned-annotation
+awk 'NR==FNR{ids[$0];next} {f=($2 in ids)} f' samples_to_be_used !{dataset.evec} >>cleaned-evec
+
+#while read p; do
+#    grep $p !{dataset.annotation} >>cleaned-annotation
+#    grep $p !{dataset.evec} >>cleaned-evec
+#done <samples_to_be_used
+
+# N_CASES=$(<cleaned-annotation tr -s '\\t ' ' ' | cut -f7,9 -d' ' | uniq | tail -n +2 | cut -f2 -d' ' | grep -v -c Control)
+# N_CONTROLS=$(<cleaned-annotation tr -s '\\t ' ' ' | cut -f7,9 -d' ' | uniq | tail -n +2 | cut -f2 -d' ' | grep -c Control)
+N_CASES=$(<cleaned-annotation tail -n+2 | awk ' {if($9!="Control"){print $7}}' | sort | uniq | wc -l)
+N_CONTROLS=$(<cleaned-annotation tail -n+2 | awk ' {if($9=="Control"){print $7}}' | sort | uniq | wc -l)
+
 
 echo "$N_CASES case batches and $N_CONTROLS control batches were detected."
 
@@ -317,25 +330,27 @@ fi
 
 '''
 }
-
+*/
 process generate_hf_excludes {
     publishDir params.qc_dir ?: '.', mode: 'copy', overwrite: true
     input:
 
     file SampleQCI_final_staged from Channel.from(SampleQCI_final).collect()
-    file results from hf_test_results
-    file hf_test_excludes_anno
+    /*file results from hf_test_results*/
+    /*file hf_test_excludes_anno*/
 
     output:
-    file "*.png"
+    /*file "*.png" optional*/
     file 'hf-excludes' into for_exclude_variants
 
     shell:
         dataset = mapFileList(SampleQCI_final_staged)
     plotscript = SCRIPT_DIR + "/SNP_QCII_draw_FDR_CaseControl.r"
+    results = ""
+    hf_test_excludes_anno = ""
 '''
 touch hf-excludes
-python -c 'from SNPQC_helpers import *; generate_exclude_file_CaseControl("!{results}", "!{hf_test_excludes_anno}", "hf-excludes", "!{params.batches_names}", "!{params.prefix_merged_SNPQCII}", !{params.FDR_index_remove_variants}, "!{plotscript}")'
+# python -c 'from SNPQC_helpers import *; generate_exclude_file_CaseControl("!{results}", "!{hf_test_excludes_anno}", "hf-excludes", "!{params.batches_names}", "!{dataset.bim.baseName}", !{params.FDR_index_remove_variants}, "!{plotscript}")'
 '''
 }
 
@@ -474,7 +489,6 @@ publishDir params.qc_dir ?: '.', mode: 'copy', overwrite: true
     annotation = dataset.annotation
     prefix = "${params.collection_name}_SNPQCII"
 '''
-# TODO: Might need to process "!{params.diagnoses}" into an actual list before calling
 python -c 'from SNPQC_helpers import *; determine_unknown_diagnosis(annotationfile="!{annotation}", outfile="!{prefix}.unknown_diagnosis", diagnoses="!{params.diagnoses}")'
 
 if [ -e "!{params.individuals_remove_manually}" ]; then
