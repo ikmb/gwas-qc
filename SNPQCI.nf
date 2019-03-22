@@ -9,7 +9,8 @@ def ChipDefinitions = this.class.classLoader.parseClass(new File(params.chip_def
 
 // initialize configuration
 params.snpqci_dir = "."
-hwe_template_script = file("${workflow.projectDir}/"+params.hwe_template)
+// hwe_template_script = file("${workflow.projectDir}/"+params.hwe_template)
+hwe_script = file("${workflow.projectDir}/bin/hwe.R")
 
 // Lots of indirection layers require lots of backslash escaping
 individuals_annotation = file(params.individuals_annotation)
@@ -122,6 +123,7 @@ output:
   file 'chunk_*' into to_calc_hwe
 
   """
+
   cut -f 2 $input_bim | split -l 10000 -a 5 -d - chunk_
   """
 }
@@ -135,7 +137,7 @@ process calculate_hwe {
   // Should have been zero, but killall -q returns 1 if it didn't find anything
   validExitStatus 0
   errorStrategy 'retry'
-  memory 2.GB
+  memory 4.GB
   time 1.h
   tag "${params.collection_name}/${chunk}"
 
@@ -145,7 +147,6 @@ process calculate_hwe {
     file input_bed from to_hwe_bed
     file input_fam from to_hwe_fam
     file individuals_annotation // not directly used in the script below but hwe-script.r expects this to be staged
-    file hwe_template_script
 
   output:
   file "${chunk}-out.auto.R" into from_calc_hwe
@@ -157,59 +158,14 @@ shell:
     module load IKMB
     module load Plink/1.9
 
-<!{individuals_annotation} awk ' { if($9 == "Control" || $9 == "diagnosis") print $1,$2,$3,$4,$5,$6,$7,$8,$9,$10 }' >individuals_annotation.txt
+# Filter annotations to include only controls
+<!{individuals_annotation} awk ' { if($9 == "Control" || $9 == "diagnosis") print $1,$2,$3,$4,$5,$6,$7,$8,$9,$10 }' >individuals_annotation
 
-RETRY=1
-while [ $RETRY -eq 1 ]; do
-    rm -f /scratch/rserve.sock /scratch/rserve.pid "!{chunk}-out.auto.R"
+# Filter dataset
+plink --bfile "!{new File(input_bim.toString()).getBaseName()}" --filter-controls --extract !{chunk} --make-bed --out !{chunk}-controls
 
-    # Start Rserve process in background. Keep in mind that --RS-pidfile is an undocumented feature that writes the PID after daemonizing (that is, not the R pid but the Rserve pid) into the specified file. It might be changed in the future
-    R CMD Rserve --RS-socket /scratch/rserve.sock --no-save --RS-pidfile /scratch/rserve.pid
-
-    # Wait for R to spawn the Rserve daemon and open its socket. Rule out race conditions with plink not finding the Rserve socket on time
-    echo Waiting for Rserve to create the socket
-    while [ ! -e /scratch/rserve.sock ]
-    do
-       sleep 0.5
-    done
-
-    # File is there but it does not need to be populated on slow nodes. Wait for that to happen.
-    echo Waiting for Rserve to create the pid file
-    while [ ! -s /scratch/rserve.pid ]
-    do
-        sleep 1
-    done
-
-    RSERVE_PID=$(cat /scratch/rserve.pid)
-    echo Rserve process spawned with pid $RSERVE_PID
-
-    # Cwd to the staging directory where the scripts and chunks are stored
-    THEPWD=$(pwd)
-    echo "setwd('$THEPWD')" >hwe-script-local.r
-    cat !{hwe_template_script} >>hwe-script-local.r
-    plink --bfile "!{new File(input_bim.toString()).getBaseName()}" --filter-controls --R-socket /scratch/rserve.sock --R hwe-script-local.r --threads 1 --memory 512 --allow-no-sex --extract !{chunk} --out !{chunk}-out
-    sleep 1
-
-    RETRY=0
-    kill $RSERVE_PID || {
-        echo "Rserve/PLINK failed. Retrying."
-        rm -f /scratch/rserve.sock /scratch/rserve.pid "!{chunk}-out.auto.R"
-        RETRY=1
-    }
-
-    # Did we create a result file? If not, retry.
-    if [ ! -e "!{chunk}-out.auto.R" ]; then
-        RETRY=1
-    else
-        # Does our result file contain NAs? If so, retry.
-        LINES=$(grep -E '\\sNA\\s?$' "!{chunk}-out.auto.R" | wc -l)
-        if [ $LINES -gt 1 ]; then
-            RETRY=1
-        else
-            RETRY=0
-        fi
-    fi
-done
+# Calc HWE
+Rscript !{hwe_script} !{chunk}-controls individuals_annotation !{chunk}-out.auto.R
 '''
 }
 
@@ -247,8 +203,9 @@ publishDir params.snpqci_dir ?: '.', mode: 'copy'
 HWE_RESULTS="!{params.collection_name}_chunks_combined.hwe"
 cat chunk* >$HWE_RESULTS
 
-combined_hwe_nas=`grep -c NA $HWE_RESULTS`
-input_nas=`grep -c NA !{input_bim}`
+# Count only those NAs that appear in the value columns
+combined_hwe_nas=$(awk '{$1=$2=$3=$4="";print $0}' $HWE_RESULTS | grep -c NA)
+input_nas=$(awk '{$1=$2=$3=$4=""; print $0}' !{input_bim} |grep -c NA)
 if [ "$combined_hwe_nas" -ne "$input_nas" ]
 then
    echo "There are missing HWE calculations, $combined_hwe_nas NAs in chunked HWE calculations and $input_nas in input."
@@ -367,6 +324,7 @@ process exclude_bad_variants {
     module load IKMB
     module load Plink/1.7
 
+TMPDIR=.
 NUM_CTRL_BATCHES=\$(tr -s '\\t ' ' ' <${individuals_annotation} | cut -f7,9 -d" " | grep Control | uniq | wc -l)
 
 if [ "\$NUM_CTRL_BATCHES" -gt "4" ]; then

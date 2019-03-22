@@ -55,18 +55,20 @@ process lift_genome_build {
     shell:
 
 '''
-module load Plink/1.9
+module load Plink/1.02
 TARGETNAME="!{original[1].baseName}_lift"
 BASENAME="!{original[1].baseName}"
 STRAND_FILE="!{params.lift_to}"
 
+plink --noweb --bfile "!{original[1].baseName}" --make-bed --out converted
+
 if [ -e "$STRAND_FILE" ]; then
-    $NXF_DIR/bin/update_build_PLINK1.9.sh "$BASENAME" "$STRAND_FILE" "$TARGETNAME"
+    $NXF_DIR/bin/update_build_PLINK1.9.sh converted "$STRAND_FILE" "$TARGETNAME"
 else
     echo "No strand file specified for lifting."
-    mv "!{original[1].baseName}.bed" "$TARGETNAME.bed"
-    mv "!{original[1].baseName}.bim" "$TARGETNAME.bim"
-    mv "!{original[1].baseName}.fam" "$TARGETNAME.fam"
+    ln -s "converted.bed" "$TARGETNAME.bed"
+    ln -s "converted.bim" "$TARGETNAME.bim"
+    ln -s "converted.fam" "$TARGETNAME.fam"
 fi
 '''
 }
@@ -134,6 +136,7 @@ my $num_flip_replaced = 0;
 my $num_flip_noname = 0;
 my $num_mismatch = 0;
 my $num_indels = 0;
+my $num_atcg = 0;
 
 sub make_complement {
     my $orig = shift;
@@ -172,7 +175,6 @@ while(<$fh>) {
    my ($chr, $name, $pos_cm, $pos, $alla, $allb) = split(/\\s+/, $_);
 
    if($. % 1000 == 0) { print $. . "\\n"; }
-
 
    my $alla_c = make_complement($alla);
    my $allb_c = make_complement($allb);
@@ -236,8 +238,6 @@ process plink_flip {
     file "${bedfam[0].baseName}_flipped.bim" into to_exclude_bim, to_find_duplicates_nn
     file "duplicates"
 
-    tag { params.disease_data_set_prefix }
-
 shell:
 '''
 module load IKMB
@@ -264,8 +264,6 @@ process find_duplicates_nn {
 
     output:
     file 'exclude' into to_plink_exclude_list
-
-    tag { params.disease_data_set_prefix }
 
     shell:
     source = ANNOTATION_DIR+'/'+params.switch_to_chip_build+'/'+ChipDefinitions.Producer(params.chip_producer)+'/'+ChipDefinitions.RsExclude(params.chip_version)
@@ -298,18 +296,13 @@ process plink_exclude {
     tag "${params.ds_name}/${params.batch_name}"
 
     input:
-//    file individuals_annotation
     file exclude from to_plink_exclude_list
     file plink from to_plink_exclude_plink
     file bim from to_exclude_bim
 
     output:
     file "${params.batch_name}_Rs.{bim,bed,fam,log}"
-//    file individuals_annotation
-
-    tag { params.disease_data_set_prefix }
     // Note that Plink 1.07 only excludes the first of duplicates, while 1.9+ removes all duplicates
-
 
 """
 module load 'IKMB'

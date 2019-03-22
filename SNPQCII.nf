@@ -70,13 +70,6 @@ if (params.PCA_SNPexcludeList == "nofileexists") {
 // default value, will be overwritten by config
 params.projection_on_populations_CON_only = "False"
 
-// original, "final" SampleQCI dataset
-//SampleQCI_final = ["${params.sampleqci_dir}/${params.collection_name}_SampleQCI_final.bed",
-//                   "${params.sampleqci_dir}/${params.collection_name}_SampleQCI_final.bim",
-//                   "${params.sampleqci_dir}/${params.collection_name}_SampleQCI_final.fam",
-//                   "${params.sampleqci_dir}/${params.collection_name}_SampleQCI_final_flag_relatives.txt",
-//                   "${params.sampleqci_dir}/${params.collection_name}_SampleQCI_final_annotation.txt"].collect { fileExists(file(it)) }
-
 // based on "original" but without relatives
 SampleQCI_final_wr = ["${params.sampleqci_dir}/${params.collection_name}_SampleQCI_final_withoutRelatives.bed",
                       "${params.sampleqci_dir}/${params.collection_name}_SampleQCI_final_withoutRelatives.bim",
@@ -98,16 +91,13 @@ for_final_sample_cleaning = Channel.create()
 */
 hf_test_chunk_size = 1000
 
-// from SNP_QCII_CON_PS_AS_CD_UC_PSC_parallel_part1.py
 process hf_test_prepare {
-   memory 16.GB
-    // It is okay if kill could not successfully kill Rserve, it might have died on its own,
-    // so allow an error-indicating return value.
+    memory { 4.GB * task.attempt }
+    errorStrategy 'retry'
+    tag "${params.collection_name}"
     validExitStatus 0,1
 
     input:
-
-    // get them staged
     file SampleQCI_final_wr_staged from Channel.from(SampleQCI_final_wr).collect()
 
     output:
@@ -115,59 +105,66 @@ process hf_test_prepare {
     file 'HF_PCA.R' into hf_test_script
     file 'cleaned-annotation' into hf_test_anno, hf_test_excludes_anno
     file 'cleaned-evec' into hf_test_evec
+    file 'diagnoses' into hf_test_diagnoses,hf_generate_excludes_diagnoses
 
     shell:
-
     dataset = mapFileList(SampleQCI_final_wr_staged)
-    println dataset
 '''
     module load "IKMB"
     module load "Plink/1.9"
-# hf_test(plink, new_plink, pcfile, qced_annotations)
-#
-# Determine template based on number of batches:
-# #cases > 1 and #controls > 1 => HF_CasesControls
-# #cases > 1 and #controls =< 1 => HF_Cases
-# #cases =< 1 and #controls > 1 => HF_Controls
-# #cases =< 1 and #controls =< 1 => skip test
 
 # Fix annotations and evec file to match FAM file
 <!{dataset.fam} tr -s '\\t ' ' ' | cut -f2 -d" " >samples_to_be_used
 head -n1 !{dataset.annotation} >cleaned-annotation
-grep -f samples_to_be_used !{dataset.annotation} >>cleaned-annotation
 head -n1 !{dataset.evec} >cleaned-evec
-grep -f samples_to_be_used !{dataset.evec} >>cleaned-evec
 
-N_CASES=$(<cleaned-annotation tr -s '\\t ' ' ' | cut -f7,9 -d' ' | uniq | tail -n +2 | cut -f2 -d' ' | grep -v -c Control)
-N_CONTROLS=$(<cleaned-annotation tr -s '\\t ' ' ' | cut -f7,9 -d' ' | uniq | tail -n +2 | cut -f2 -d' ' | grep -c Control)
+# NXF sets -ue automatically but we do need +ue for associative arrays in Bash 4.3
+set +u
+set +e
+awk 'NR==FNR{ids[$0];next} {f=($2 in ids)} f' samples_to_be_used !{dataset.annotation} >>cleaned-annotation
+awk 'NR==FNR{ids[$0];next} {f=($2 in ids)} f' samples_to_be_used !{dataset.evec} >>cleaned-evec
 
-echo "$N_CASES case batches and $N_CONTROLS control batches were detected."
+MIN_BATCH_COUNT=5
 
-if (( ("$N_CASES" > "4") && ("$N_CONTROLS" > "4") )); then
-   TEMPLATE="!{SCRIPT_DIR}/template_HF_PCA.CaseControl.R"
-elif [ "$N_CASES" -gt "4" ]; then
-   TEMPLATE="!{SCRIPT_DIR}/template_HF_PCA.Case.R"
-elif [ "$N_CONTROLS" -gt "4" ]; then
-   TEMPLATE="!{SCRIPT_DIR}/template_HF_PCA.CON.R"
-else
-   echo "At least 5 case or two control batches are required for HF/ANOVA testing."
-   touch chunk_0
-   touch HF_PCA.R
-   exit 0
+declare -A diagnoses
+
+TABLE=$(<cleaned-annotation tail -n+2 | awk '{print $9,$7}' | sort | uniq)
+
+function join_by { local IFS="$1"; shift; echo -n "$*"; }
+
+# Parse table line-by-line
+while IFS=  read -r line; do
+    # set positional parameters to $line contents
+    set -- $line
+    DIAG="$1"
+    shift
+
+    # make a diagnoses dictionary and count the number of batches for each diagnosis
+    for batch; do
+        ((diagnoses[$DIAG]++))
+    done
+done <<<"$TABLE"
+
+LENGTH=${#diagnoses[@]}
+echo "Found $LENGTH diagnoses"
+ELIGIBLE=()
+for diag in "${!diagnoses[@]}";do
+    printf "[%s]=%s\\n" "$diag" "${diagnoses[$diag]}"
+    if [ "${diagnoses[$diag]}" -ge "$MIN_BATCH_COUNT" ]; then
+        ELIGIBLE+=("$diag")
+    fi
+done
+
+echo "Diagnoses with more than $MIN_BATCH_COUNT batches: "
+join_by , ${ELIGIBLE[@]} | tee diagnoses
+
+if [ ! -s diagnoses ]; then
+    touch chunk_0
+    touch HF_PCA.R
+    echo "At least $MIN_BATCH_COUNT batches per diagnosis are required for HF/ANOVA testing."
+    exit 0
 fi
-
-# Replace placeholders in template.
-sed 's|NUMOFPCS|!{params.numof_pc}|g' $TEMPLATE >HF_PCA.R
-sed -i 's|INDIVIDUALS_ANNOTATION|cleaned-annotation|g' HF_PCA.R
-sed -i 's|PCAEVECFILE|cleaned-evec|g' HF_PCA.R
-
-# Likely not necessary
-# chmod u+x HF_PCA.R
-
-# Print batches information
-echo Found the following batches:
-cut -f7 cleaned-annotation | tail -n +2 | sort -u
-
+cp "!{workflow.projectDir}/bin/HF_PCA.R" .
 cut -f2 "!{dataset.bim}" | split -l !{hf_test_chunk_size} -a 4 -d - chunk_
 '''
 }
@@ -175,21 +172,20 @@ cut -f2 "!{dataset.bim}" | split -l !{hf_test_chunk_size} -a 4 -d - chunk_
 
 process hf_test {
     // Keine Ahnung, wo das Script "1" produziert. Muss irgendwo beim NA-zaehlen sein
-    validExitStatus 0,1
+    validExitStatus 0
     errorStrategy 'retry'
     memory 4.GB
+    tag "${params.collection_name}/${chunk}"
     input:
     file SampleQCI_final_wr_staged from Channel.from(SampleQCI_final_wr).collect()
     file r_script from hf_test_script
     file(chunk)from hf_test_chunk.flatten()
     file anno from hf_test_anno
     file evec from hf_test_evec
+    file diagnoses from hf_test_diagnoses
 
     output:
     file "${params.collection_name}_SNPQCII_${chunk}.auto.R" into hf_test_merge_chunks
-
-
-    tag { chunk } // append current chunk to job name
 
     shell:
     dataset = mapFileList(SampleQCI_final_wr_staged)
@@ -203,77 +199,27 @@ if [ ! -s "!{r_script}" ]; then
     exit 0
 fi
 
-SOCKET=/scratch/rserve_$$.sock
-PIDFILE=/scratch/rserve_$$.pid
-
-RETRY=1
-while [ $RETRY -gt 0 ]
-do
-    echo Start $RETRY
-    # Spawn Rserve. Detaches into background before setting up socket, so wait for socket to appear.
-    R CMD Rserve --RS-socket $SOCKET --no-save --RS-pidfile $PIDFILE
-    while [ ! -e $SOCKET ]
-    do
-        sleep 0.5
-    done
-    RSERVE_PID=$(cat $PIDFILE)
-
-    MYPWD=$(pwd)
-    echo "setwd('$MYPWD')" >hf-local.r
-    cat !{r_script} >>hf-local.r
-    echo Script generated $RETRY
-    plink --bfile "!{dataset.bim.baseName}" --extract "!{chunk}" --R hf-local.r --R-socket $SOCKET --allow-no-sex --out "!{params.collection_name}_SNPQCII_!{chunk}"
-    echo Plink done $RETRY
-    # Kill Rserve but give it a chance...
-    sleep 3
-    if [ -e $SOCKET ]; then
-        echo Killing Rserve
-        # Might fail as it could have been died by now but that's okay.
-        kill -9 $RSERVE_PID || true
-        rm -f $SOCKET
-    else
-        # Socket is closed but maybe the process is still running
-        kill -9 $RSERVE_PID || true
-        echo Rserve terminated on its own.
-    fi
-
-    echo Socket removed or killed $RETRY
-    touch !{params.collection_name}_SNPQCII_!{chunk}.auto.R
-    echo Result file touched $RETRY
-    # Retry if there are NAs (only check score columns, names might (rightfully) contain "NA")
-    NAS=$(tr -s '\\t ' ' ' <!{params.collection_name}_SNPQCII_!{chunk}.auto.R | cut -f6,7 -d" " | grep -c NA)
-    echo NAs counted $RETRY
-    if [ "$NAS" -gt "0" ]; then
-       echo Found $NAS NAs
-       echo Removing files $RETRY
-       rm -f $SOCKET !{params.collection_name}_SNPQCII_!{chunk}.auto.R $PIDFILE || true
-    else
-       echo Resetting retry counter $RETRY
-       RETRY=0
-    fi
-    echo NAs counted $RETRY
-done
-
+MYPWD=$(pwd)
+echo "setwd('$MYPWD')" >hf-local.r
+cat !{r_script} >>hf-local.r
+plink --bfile "!{dataset.bim.baseName}" --extract "!{chunk}" --allow-no-sex --make-bed --out "!{params.collection_name}_SNPQCII_!{chunk}"
+Rscript hf-local.r "!{params.collection_name}_SNPQCII_!{chunk}" 10 "!{anno}" "!{evec}" "$(cat !{diagnoses})" "!{params.collection_name}_SNPQCII_!{chunk}.auto.R"
 '''
 }
 
-// SNP_QCII_CON_PS_AS_CD_UC_PSC_parallel_part2.py starts here
-
 process hf_test_merge {
     validExitStatus 0,1
+    publishDir params.qc_dir ?: '.', mode: 'copy', overwrite: true
+    tag "${params.collection_name}"
 
-        publishDir params.qc_dir ?: '.', mode: 'copy', overwrite: true
-
-    input:
-
+input:
     file chunks from hf_test_merge_chunks.collect()
     file SampleQCI_final_staged from Channel.from(SampleQCI_final).collect()
 
-    output:
+output:
     file "${params.collection_name}_SNPQCII_hf" into hf_test_results
 
-    shell:
-
+shell:
     dataset = mapFileList(SampleQCI_final_staged)
 '''
 CHUNKS=$(ls -X !{params.collection_name}_SNPQCII_chunk_*)
@@ -321,22 +267,61 @@ fi
 
 process generate_hf_excludes {
     publishDir params.qc_dir ?: '.', mode: 'copy', overwrite: true
-    input:
+    tag "${params.collection_name}"
 
+    input:
     file SampleQCI_final_staged from Channel.from(SampleQCI_final).collect()
     file results from hf_test_results
     file hf_test_excludes_anno
+    file diagnoses from hf_generate_excludes_diagnoses
 
     output:
-    file "*.png"
+    file ("*.png") optional
     file 'hf-excludes' into for_exclude_variants
 
     shell:
-        dataset = mapFileList(SampleQCI_final_staged)
+    dataset = mapFileList(SampleQCI_final_staged)
     plotscript = SCRIPT_DIR + "/SNP_QCII_draw_FDR_CaseControl.r"
 '''
 touch hf-excludes
-python -c 'from SNPQC_helpers import *; generate_exclude_file_CaseControl("!{results}", "!{hf_test_excludes_anno}", "hf-excludes", "!{params.batches_names}", "!{params.prefix_merged_SNPQCII}", !{params.FDR_index_remove_variants}, "!{plotscript}")'
+
+# make the comma-separated content of 'diagnoses' an array
+IFS=, read -r -a diagnoses <<<"$(cat diagnoses)"
+
+MIN_BATCH_COUNT=5
+BATCHES_PROCESSED=0
+
+# scan through the array and create an HF-test exclude list for each diagnosis
+for i in "${!diagnoses[@]}"
+do
+    DIAG="${diagnoses[$i]}"
+
+    # prepare annotations and hf_results to contain only one disease
+    awk "{if(\\$9==\\"$DIAG\\"||\\$9==\\"diagnosis\\"){print \\$0}}" !{hf_test_excludes_anno} >"annotations_$DIAG"
+    #awk "OFS=\\"\\t\\" { print \\$1,\\$2,\\$3,\\$4,\\$5,\\$6,\\$$((7+$i)),\\$$((7+$i+1)) }" !{results} >"!{results}_$DIAG"
+    COL_START=$((7 + $BATCHES_PROCESSED * 2))
+    BATCH_COUNT=$(tail -n+2 "annotations_$DIAG" | awk '{print $7}' | sort | uniq | wc -l)
+    COL_END=$((7 + $BATCHES_PROCESSED * 2 + $BATCH_COUNT * 2))
+    echo "$DIAG: $BATCH_COUNT batches; col start: $COL_START col end: $COL_END; PROCESSED SO FAR: $BATCHES_PROCESSED"
+    awk "OFS=\\"\\t\\" { printf(\\"%s\\t%s\\t%s\\t%s\\t%s\\t%s\\",\\$1,\\$2,\\$3,\\$4,\\$5,\\$6); for(x=$COL_START;x<$COL_END;x++) { printf (\\"\\t%s\\", \\$x) }; printf(\\"\\\\n\\");}" !{results} >"!{results}_$DIAG"
+    if [ "$BATCH_COUNT" -ge "$MIN_BATCH_COUNT" ]; then
+        # only count diseases when there are more than MIN_BATCH_COUNT batches
+        continue
+    fi
+    BATCHES_PROCESSED=$(( $BATCHES_PROCESSED + $BATCH_COUNT))
+    # awk "{if(\\$)}"
+    python -c "from SNPQC_helpers import *; \\
+        generate_exclude_file_for_diagnosis('!{results}_$DIAG',\\
+            'annotations_$DIAG', \\
+            'hf-excludes-$DIAG', \\
+            '_SNPQCII_$DIAG', \\
+            !{params.FDR_index_remove_variants}, \\
+            '!{plotscript}')"
+    cat "hf-excludes-$DIAG" >>hf-excludes-raw
+done
+touch hf-excludes-raw
+sort hf-excludes-raw | uniq >hf-excludes
+
 '''
 }
 
@@ -344,26 +329,34 @@ python -c 'from SNPQC_helpers import *; generate_exclude_file_CaseControl("!{res
 
 process exclude_variants {
     publishDir params.qc_dir ?: '.', mode: 'copy', overwrite: true
+    tag "${params.collection_name}"
 
     input:
-
     file SampleQCI_final_staged from Channel.from(SampleQCI_final).collect()
     file exclude from for_exclude_variants
 
     output:
-
     file "*SNPQCII_final{.bed,.bim,.fam,.log,_annotation.txt}" into for_final_cleaning, for_det_monomorphics, for_det_unknown_diagnosis
     file "*test_missingness.*" into for_det_diff_missingness
 
     shell:
-
     prefix = params.collection_name + "_SNPQCII_final"
     dataset = mapFileList(SampleQCI_final_staged)
-//    println dataset
 '''
     module load "IKMB"
     module load "Plink/1.7"
-plink --noweb --bfile "!{dataset.bed.baseName}" --exclude "!{exclude}" --make-bed --out "!{prefix}" --allow-no-sex
+
+excludes=$(wc -l <!{exclude})
+variants=$(wc -l <!{dataset.bim})
+
+if [ "$variants" -eq "$excludes" ]; then
+    echo "All variants have been classified as outliers in HF testing. Check log files and intermediates." | tee "!{prefix}.log" | tee hftest-failed
+    ln -s "!{dataset.bed}" "!{prefix}.bed"
+    ln -s "!{dataset.bim}" "!{prefix}.bim"
+    ln -s "!{dataset.fam}" "!{prefix}.fam"
+else
+    plink --noweb --bfile "!{dataset.bed.baseName}" --exclude "!{exclude}" --make-bed --out "!{prefix}" --allow-no-sex
+fi
 
 cp "!{dataset.annotation}" "!{prefix}_annotation.txt"
 
@@ -380,18 +373,15 @@ plink --noweb --bfile "!{dataset.bed.baseName}" --test-missing --out !{prefix}_t
 // (1) and (2): determine monomorphic variants and nearly monomorphic variants
 process det_monomorphics {
 publishDir params.qc_dir ?: '.', mode: 'copy', overwrite: true
-    input:
+    tag "${params.collection_name}"
 
+    input:
     file dataset_staged from for_det_monomorphics // SNPQCII_final
 
     output:
-
     file "${params.collection_name}_SNPQCII.flag.{nearly_,}monomorphic"
-    //file "${params.collection_name}_QCed_final.flag.{nearly_,}monomorphic"
-    // into for_compile_variants_exclusion_monomorphics
 
     shell:
-
     dataset = mapFileList(dataset_staged)
     prefix = "${params.collection_name}_SNPQCII"
 '''
@@ -425,14 +415,13 @@ fi
 
 process det_diff_missingness {
     publishDir params.qc_dir ?: '.', mode: 'copy', overwrite: true
+    tag "${params.collection_name}"
     prefix = "${params.collection_name}_SNPQCII"
 
     input:
-
     file missingness_staged from for_det_diff_missingness // from e
 
     output:
-
     file "${prefix}.variants_exclude_diff_missingness" into for_compile_variants_exclusion_diff_missingness
 
     shell:
@@ -457,15 +446,14 @@ del test_missing;
 }
 
 process det_unknown_diagnosis {
-publishDir params.qc_dir ?: '.', mode: 'copy', overwrite: true
+    publishDir params.qc_dir ?: '.', mode: 'copy', overwrite: true
+    tag "${params.collection_name}"
     prefix = "${params.collection_name}_SNPQCII"
 
     input:
-
     file ds_staged from for_det_unknown_diagnosis
 
     output:
-    
     file "${prefix}.individuals_remove_final" into for_final_cleaning_individuals
     file "${prefix}.unknown_diagnosis"
 
@@ -491,6 +479,7 @@ gawk '{ print $1, $2 }' "!{prefix}.unknown_diagnosis" "!{prefix}.individuals_rem
 
 process compile_variants_exclusion {
     publishDir params.qc_dir ?: '.', mode: 'copy', overwrite: true
+    tag "${params.collection_name}"
 
     input:
 
@@ -511,6 +500,7 @@ process compile_variants_exclusion {
 
 process final_cleaning {
     publishDir params.qc_dir ?: '.', mode: 'copy', overwrite: true
+    tag "${params.collection_name}"
     input:
 
     // from diff_missingness/det_monomorphics/det_diagnoses to prune/1kg.
