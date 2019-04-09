@@ -64,17 +64,17 @@ def extractQQplot_null_variants(qqplot_null_variants, assoc_input, assoc_output)
     fh_w.close()
 
 
-def extract_Rsq_variants(assoc_logistic_input, assoc_dosage_input, assoc_merge_output_rsq0_4, assoc_merge_output_rsq0_8):
+def extract_Rsq_variants(assoc_logistic_input, assoc_dosage_input, assoc_merge_output_rsq0_3, assoc_merge_output_rsq0_8):
     """ extract imputed variants based on Rsq value """
 
     try:
         fh_w1 = file(assoc_merge_output_rsq0_8, "w")
-        fh_w2 = file(assoc_merge_output_rsq0_4, "w")
+        fh_w2 = file(assoc_merge_output_rsq0_3, "w")
     except IOError, e:
         print e
         sys.exit(1)
 
-    store_lines_rsq0_4 = []
+    store_lines_rsq0_3 = []
     store_lines_rsq0_8 = []
 
     snp2line = {}
@@ -89,18 +89,18 @@ def extract_Rsq_variants(assoc_logistic_input, assoc_dosage_input, assoc_merge_o
     line = fh_r.readline().rstrip('\n')
     line = fh_r.readline().rstrip('\n')
     while line:
-        list = re.split("\s+",line)
+        list = re.split("\s+", line)
         if list[0] == "":
             del list[0]
         if list[-1] == "":
             del list[-1]
 
         # rs numbers instead of chr:pos in column SNP
-        snp2line[list[0]+":"+list[2]] = line
+        snp2line[list[0] + ":" + list[2]] = line
         chr  = decimal.Decimal(list[0])
         pos  = decimal.Decimal(list[2])
-        store_lines_rsq0_4.append( (chr, pos, line) )
-        store_lines_rsq0_8.append( (chr, pos, line) )
+        store_lines_rsq0_3.append((chr, pos, line))
+        store_lines_rsq0_8.append((chr, pos, line))
         line = fh_r.readline().rstrip('\n')
     fh_r.close()
 
@@ -113,90 +113,90 @@ def extract_Rsq_variants(assoc_logistic_input, assoc_dosage_input, assoc_merge_o
 
     # header
     header = fh_r.readline().rstrip('\n')
-    fh_w1.writelines(header+"\n")
-    fh_w2.writelines(header+"\n")
+    fh_w1.writelines(header + "\n")
+    fh_w2.writelines(header + "\n")
     line = fh_r.readline().rstrip('\n')
     while line:
-        list = re.split("\s+",line)
+        list = re.split("\s+", line)
         if list[0] == "":
             del list[0]
         if list[-1] == "":
             del list[-1]
         # if not already genotyped --> add
-        if not snp2line.has_key(list[0]+":"+list[2]):
-            if float(list[7]) >= 0.4:
+        if not (list[0] + ":" + list[2]) in snp2line:
+            if float(list[7]) >= 0.3:
                 chr  = decimal.Decimal(list[0])
                 pos  = decimal.Decimal(list[2])
-                store_lines_rsq0_4.append( (chr, pos, line) )
+                store_lines_rsq0_3.append((chr, pos, line))
                 if float(list[7]) >= 0.8:
-                    store_lines_rsq0_8.append( (chr, pos, line) )
+                    store_lines_rsq0_8.append((chr, pos, line))
         line = fh_r.readline().rstrip('\n')
     fh_r.close()
 
     # sort merged files by chr, pos
-    s_rsq0_4 = sorted(store_lines_rsq0_4, key=lambda tupel: tupel[1])
-    t_rsq0_4 = sorted(s_rsq0_4, key=lambda tupel: tupel[0], reverse=False)
+    s_rsq0_3 = sorted(store_lines_rsq0_3, key=lambda tupel: tupel[1])
+    t_rsq0_3 = sorted(s_rsq0_3, key=lambda tupel: tupel[0], reverse=False)
     s_rsq0_8 = sorted(store_lines_rsq0_8, key=lambda tupel: tupel[1])
     t_rsq0_8 = sorted(s_rsq0_8, key=lambda tupel: tupel[0], reverse=False)
 
-    for tupel in t_rsq0_4:
+    for tupel in t_rsq0_3:
         line = tupel[2]
-        fh_w2.writelines(line+"\n")
+        fh_w2.writelines(line + "\n")
 
     for tupel in t_rsq0_8:
         line = tupel[2]
-        fh_w1.writelines(line+"\n")
+        fh_w1.writelines(line + "\n")
 
     fh_w1.close()
     fh_w2.close()
 
     # save another version with chr:pos as SNPids for Locuszoom
     try:
-        fh_w1 = file(assoc_merge_output_rsq0_8+".locuszoom", "w")
-        fh_w2 = file(assoc_merge_output_rsq0_4+".locuszoom", "w")
+        fh_w1 = file(assoc_merge_output_rsq0_8 + ".locuszoom", "w")
+        fh_w2 = file(assoc_merge_output_rsq0_3 + ".locuszoom", "w")
     except IOError, e:
         print e
         sys.exit(1)
 
-    fh_w1.writelines(header+"\n")
-    fh_w2.writelines(header+"\n")
+    fh_w1.writelines(header + "\n")
+    fh_w2.writelines(header + "\n")
 
-    check_duplicates_rsq0_4 = {}
+    check_duplicates_rsq0_3 = {}
     check_duplicates_rsq0_8 = {}
 
-    for tupel in t_rsq0_4:
+    for tupel in t_rsq0_3:
         line = tupel[2]
-        list = re.split("\s+",line)
-        if not check_duplicates_rsq0_4.has_key(list[0]+":"+list[2]):
-            fh_w2.writelines(list[0]+"\t"+\
-                         list[0]+":"+list[2] +"\t"+\
-                         list[2]+"\t"+\
-                         list[3]+"\t"+\
-                         list[4]+"\t"+\
-                         list[5]+"\t"+\
-                         list[6]+"\t"+\
-                         list[7]+"\t"+\
-                         list[8]+"\t"+\
-                         list[9]+"\t"+\
-                         list[10]+"\n")
-            check_duplicates_rsq0_4[list[0]+":"+list[2]] = True
+        list = re.split("\s+", line)
+        if not check_duplicates_rsq0_3.has_key(list[0] + ":" + list[2]):
+            fh_w2.writelines(list[0] + "\t" +
+                             list[0] + ":" + list[2] + "\t" +
+                             list[2] + "\t" +
+                             list[3] + "\t" +
+                             list[4] + "\t" +
+                             list[5] + "\t" +
+                             list[6] + "\t" +
+                             list[7] + "\t" +
+                             list[8] + "\t" +
+                             list[9] + "\t" +
+                             list[10] + "\n")
+            check_duplicates_rsq0_3[list[0] + ":" + list[2]] = True
 
     for tupel in t_rsq0_8:
         line = tupel[2]
-        list = re.split("\s+",line)
-        if not check_duplicates_rsq0_8.has_key(list[0]+":"+list[2]):
-            fh_w1.writelines(list[0]+"\t"+\
-                         list[0]+":"+list[2] +"\t"+\
-                         list[2]+"\t"+\
-                         list[3]+"\t"+\
-                         list[4]+"\t"+\
-                         list[5]+"\t"+\
-                         list[6]+"\t"+\
-                         list[7]+"\t"+\
-                         list[8]+"\t"+\
-                         list[9]+"\t"+\
-                         list[10]+"\n")
-            check_duplicates_rsq0_8[list[0]+":"+list[2]] = True
+        list = re.split("\s+", line)
+        if not check_duplicates_rsq0_8.has_key(list[0] + ":" + list[2]):
+            fh_w1.writelines(list[0] + "\t" +
+                             list[0] + ":" + list[2] + "\t"
+                             + list[2] + "\t"
+                             + list[3] + "\t"
+                             + list[4] + "\t"
+                             + list[5] + "\t"
+                             + list[6] + "\t"
+                             + list[7] + "\t"
+                             + list[8] + "\t"
+                             + list[9] + "\t"
+                             + list[10] + "\n")
+            check_duplicates_rsq0_8[list[0] + ":" + list[2]] = True
 
     fh_w1.close()
     fh_w2.close()
