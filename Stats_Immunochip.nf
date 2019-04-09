@@ -56,10 +56,12 @@ mapFileList = { fn -> fn.collectEntries {
     }
 }
 
+// Uh, where does this come from?
 ds_stats_input = ["${params.input_stats}.fam",
                "${params.input_stats}.ped",
                "${params.input_stats}_annotation.txt"].collect { fileExists(file(it)) }
 
+// From "QCed" folder, output of QC pipeline
 ds_input = ["${params.input}.bed",
          "${params.input}.bim",
          "${params.input}.fam",
@@ -67,23 +69,30 @@ ds_input = ["${params.input}.bed",
          "${params.input}_flag.relatives.doubleID.txt",
          "${params.input}_flag.relatives.txt"].collect { fileExists(file(it)) }
 
-ds_imp_input = ["${params.input_imp}.map",
-         "${params.input_imp}.gz",
-         "${params.input_imp}.PLINKdosage.map",
-         "${params.input_imp}.PLINKdosage.gz"].collect { fileExists(file(it)) }
+// From Imputation server (1.vcf.gz, 2.vcf.gz, ...)
+ds_imp_input = Channel.fromPath("${params.input_imp}/[1-9]*.vcf.gz", checkIfExists: true)
+
 
 params.min_info_score = 0.3
-
+params.first_chr = 1
+params.last_chr = 22
 
 process preprocess_infofilter_dosage {
 
     input:
-    set val(chrom). file(vcfgz)
+    file vcfgz from ds_imp_input
 
     output:
     file "${chrom}.vcf.*" into vcfmaps_preproc
     file "${chrom}.INFO${params.min_info_score}.vcf.*" into infomaps_preproc
 
+    shell:
+    m = vcfgz =~ /(\d+).vcf.gz$/
+    if(!m.getCount()) {
+    println "No input files!"
+    } else {
+    chrom = m[0][1]
+    }
 '''
 module load Plink/1.9
 
@@ -133,7 +142,7 @@ process preprocess_hrc_vcf_map {
 
     output:
     file "1-22.vcf.map"
-    file "1-22.INFO${min_quality}.vcf.map"
+    file "1-22.INFO${params.min_info_score}.vcf.map"
 
     shell:
     '''
@@ -143,10 +152,10 @@ process preprocess_hrc_vcf_map {
         cat ${i}.vcf.map >> 1-22.vcf.map
     done
 
-    cat 1.INFO!{min_quality}.vcf.map >1-22.INFO0.3.vcf.map
+    cat 1.INFO!{params.min_info_score}.vcf.map >1-22.INFO0.3.vcf.map
     for ((i=2; i<=22; i++))
     do
-        cat ${i}.INFO!{min_quality}.vcf.map >> 1-22.INFO!{min_quality}.vcf.map
+        cat ${i}.INFO!{params.min_info_score}.vcf.map >> 1-22.INFO!{params.min_info_score}.vcf.map
     done
     '''
 }
@@ -186,10 +195,6 @@ gawk '{ print $1\"_\"$2, $1\"_\"$2, $5 }' "!{target}.fam" >"!{target}.fam.double
 gawk '{ print $1\"_\"$2, $1\"_\"$2, $3, $4, $5, $6 }' "!{target}.fam" | sponge "!{target}_fid_iid.fam"
 '''
 }
-
-// will be overwritten by actual parameter file
-params.first_chr = 1
-params.last_chr = 22
 
 // Steps 1.1 and 1.2: per-chromosome dosage and logistic calculations,
 // results will be merged in merge_log_dos_results
