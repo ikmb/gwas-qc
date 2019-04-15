@@ -56,7 +56,8 @@ mapFileList = { fn -> fn.collectEntries {
     }
 }
 
-// Uh, where does this come from?
+// Originally from exclude_relatives.py but we don't have relatives anymore.
+// TODO: Check if obsolete.
 ds_stats_input = ["${params.input_stats}.fam",
                "${params.input_stats}.ped",
                "${params.input_stats}_annotation.txt"].collect { fileExists(file(it)) }
@@ -209,7 +210,7 @@ process plink_dosage_logistic {
 	file ds_stats_staged from for_plink_dosage_logistic_ds
 //	file ds_imp_staged from Channel.from(ds_imp_input).collect()
 	file ds_release_staged from Channel.from(ds_input).collect()
-	file ds_stats_orig_staged from Channel.from(ds_stats_input).collect()
+//	file ds_stats_orig_staged from Channel.from(ds_stats_input).collect()
 
     output:
 //    file "${target}_chr${chromosome}.assoc.dosage" into merge_log_dos_results_dosage
@@ -220,7 +221,7 @@ process plink_dosage_logistic {
     ds_stats = mapFileList(ds_stats_staged)
     //ds_imp = mapFileList(ds_imp_staged)
     ds_release = mapFileList(ds_release_staged)
-    ds_stats_orig = mapFileList(ds_stats_orig_staged)
+//    ds_stats_orig = mapFileList(ds_stats_orig_staged)
     evec = "$BIND_DIR/QCed/${params.disease_data_set_prefix_release}.dat.pca.evec"
 
     covar_name = "PC${params.numofPCs}"
@@ -492,10 +493,17 @@ rs2chrpos = SCRIPT_DIR+"/awk_rs2CHRPOS_bimfiles.awk"
 '''
 module load Plink/1.9
 
+# Might not be necessary (no relatives involved here)
+# --keep "{ds_stats_orig.ped}"
+# --remove "{flag_relatives_doubleid}"
+
 if [ -e "!{multiallelic_exclude}" ]; then
-    plink --vcf "!{chrname}" --double-id --remove "!{flag_relatives_doubleid}" --keep "!{ds_stats_orig.ped}" --exclude "!{multiallelic_exclude}" --out "!{target}" --allow-no-sex --make-bed --threads 16
+    plink --vcf "!{chrname}" --double-id \
+        --exclude "!{multiallelic_exclude}" \
+        --out "!{target}" --allow-no-sex --make-bed
 else
-    plink --vcf "!{chrname}" --double-id --remove "!{flag_relatives_doubleid}" --keep "!{ds_stats_orig.ped}" --out "!{target}" --allow-no-sex --make-bed --threads 16
+    plink --vcf "!{chrname}" --double-id \
+        --out "!{target}" --allow-no-sex --make-bed
 fi
 
 
@@ -663,7 +671,7 @@ R --slave --args "!{rsq08base}_hardy.hwe" "!{rsq08base}_controls_DeFinetti" "!{r
 process plink_clumping {
 input:
     file ds_imp_staged from for_clumping_ds
-    file ds_imp_fam from Channel.from(ds_stats_input).collect()
+//    file ds_imp_fam from Channel.from(ds_stats_input).collect()
     file rsq3_lz from for_clumping_rsq03
     file rsq8_lz from for_clumping_rsq08
     file rsq3_staged from for_clump_rsq03_ds
@@ -682,7 +690,15 @@ rsq8 = mapFileList(rsq8_staged)
 // clumpr2, clumpp1, clumpp2, clumpkb
 '''
 module load Plink/1.9
-python -c 'from Stats_helpers import *; PLINK_clumping("!{rsq3.bim.baseName}", "!{rsq8.bim.baseName}", "!{rsq3_lz}", "!{rsq8_lz}", !{params.clumpr2}, !{params.clumpp1}, !{params.clumpp2}, !{params.clumpkb})'
+python -c 'from Stats_helpers import *; \
+    PLINK_clumping("!{rsq3.bim.baseName}", \
+        "!{rsq8.bim.baseName}", \
+        "!{rsq3_lz}", \
+        "!{rsq8_lz}", \
+        !{params.clumpr2}, \
+        !{params.clumpp1}, \
+        !{params.clumpp2}, \
+        !{params.clumpkb})'
 '''
 }
 
