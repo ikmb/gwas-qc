@@ -122,7 +122,7 @@ plink --bfile after-correlated-remove --extract include-variants-with-atcg --mak
 
 process final_pca_con_projection {
     publishDir params.qc_dir ?: '.', mode: 'copy', overwrite: true
-    memory 12.GB
+    memory {12.GB * task.attempt}
     tag "${params.collection_name}"
 
     input:
@@ -176,7 +176,7 @@ R --slave --args "!{prefix}.country" "!{params.preQCIMDS_1kG_sample}" <"!{draw_e
 
 process final_pca_con_projection_atcg {
     publishDir params.qc_dir ?: '.', mode: 'copy', overwrite: true
-    memory 12.GB
+    memory {12.GB*task.attempt}
     tag "${params.collection_name}"
 
     input:
@@ -523,7 +523,7 @@ module load Plink/1.9
 process prepare_sanger_imputation {
     publishDir params.qc_dir ?: '.', mode: 'copy'
     tag "${params.collection_name}"
-    time 4.h
+    time {8.h * task.attempt}
 
     input:
     file ds_staged from for_prepare_imputation

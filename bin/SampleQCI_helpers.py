@@ -914,7 +914,7 @@ def write_snps_autosomes_noLDRegions_noATandGC_noIndels(bim, outfile):
         print e
         sys.exit(1)
 
-    complement = {'A': 'T', 'T': 'A', 'C': 'G', 'G': 'C', 'D': 'D', 'I': 'I'}
+    complement = {'A': 'T', 'T': 'A', 'C': 'G', 'G': 'C', 'D': 'D', 'I': 'I', '-': '-'}
     indels = {'D': 'D', 'I': 'I'}
 
     line = bim.readline().replace("\n", "")

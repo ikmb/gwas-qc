@@ -16,7 +16,57 @@ input_files_lift = Channel.create()
 
 Channel.fromFilePairs(params.filebase + ".{bim,bed,fam}", size:3, flat: true).into {input_files_check; input_files_lift}
 
+annotations = file(params.filebase + "_individuals_annotation.txt")
+
 println "Input files: " + params.filebase + ".{bim,bed,fam}"
+
+process batch_statistics {
+    tag "${params.ds_name}/${params.batch_name}"
+    input:
+    file annotations
+
+    output:
+    file "${params.ds_name}-${params.batch_name}.stats"
+shell:
+'''
+#!/usr/bin/env perl
+
+use strict;
+use warnings;
+
+my $infilename = "!{annotations}";
+my $outfilename = "!{params.ds_name}-!{params.batch_name}.stats";
+##################################################
+open my $fh, '<', $infilename or die($!);
+<$fh>; # skip header
+
+my %diagnoses;
+my %genders;
+my %batches;
+my %countries;
+my %phenotypes;
+
+while(<$fh>) {
+    chomp;
+    my @f = split '\\s+';
+    $diagnoses{$f[8]}++;
+    $genders{$f[4]}++;
+    $batches{$f[6]}++;
+    $countries{$f[9]}++;
+    $phenotypes{$f[5]}++;
+}
+
+close $fh;
+
+open my $ofh, '>', $outfilename or die($!);
+print $ofh "Genders "; while(my ($key,$val)=each(%genders)) { print $ofh "$key $val "; } print $ofh "\n";
+print $ofh "Phenotypes "; while(my ($key,$val)=each(%phenotypes)) { print $ofh "$key $val "; } print $ofh "\n";
+print $ofh "Batches "; while(my ($key,$val)=each(%batches)) { print $ofh "$key $val "; } print $ofh "\n";
+print $ofh "Diagnoses "; while(my ($key,$val)=each(%diagnoses)) { print $ofh "$key $val "; } print $ofh "\n";
+print $ofh "Countries "; while(my ($key,$val)=each(%countries)) { print $ofh "$key $val "; } print $ofh "\n";
+close $ofh;
+'''
+}
 
 process check_chip_type {
     tag "${params.ds_name}/${params.batch_name}"
@@ -35,7 +85,7 @@ process check_chip_type {
     shell:
 
 '''
-chipmatch --verbose --output !{original[1].baseName}.chip_detect.log --threads 2 !{original[1].baseName}.bim /work_beegfs/sukmb388/wayne_strands
+$NXF_DIR/bin/chipmatch --verbose --output !{original[1].baseName}.chip_detect.log --threads 2 !{original[1].baseName}.bim /work_beegfs/sukmb388/wayne_strands
 <!{original[1].baseName}.bim awk '{if(($5=="A" && $6=="T")||($5=="T" && $6=="A")) { printf("%s %s%s\\n", $2, $5, $6); }}' >!{original[1].baseName}.flag_atcg
 <!{original[1].baseName}.bim awk '{if(($5=="C" && $6=="G")||($5=="G" && $6=="C")) { printf("%s %s%s\\n", $2, $5, $6); }}' >>!{original[1].baseName}.flag_atcg
 '''
@@ -44,7 +94,8 @@ chipmatch --verbose --output !{original[1].baseName}.chip_detect.log --threads 2
 process lift_genome_build {
 
     tag "${params.ds_name}/${params.batch_name}"
-    memory 8.GB
+    memory {32.GB * task.attempt}
+    time { 2.h * task.attempt }
     input:
 
     file original from input_files_lift
@@ -60,7 +111,10 @@ TARGETNAME="!{original[1].baseName}_lift"
 BASENAME="!{original[1].baseName}"
 STRAND_FILE="!{params.lift_to}"
 
-plink --noweb --bfile "!{original[1].baseName}" --make-bed --out converted
+plink --bfile "!{original[1].baseName}" --make-bed --out converted
+
+module unload Plink/1.02
+module load Plink/1.9
 
 if [ -e "$STRAND_FILE" ]; then
     $NXF_DIR/bin/update_build_PLINK1.9.sh converted "$STRAND_FILE" "$TARGETNAME"

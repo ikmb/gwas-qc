@@ -31,11 +31,13 @@ input_datasets.close()
 /* Additional external files */
 hapmap2_samples = file("/ifs/data/nfs_share/sukmb388/regeneron_annotations/hapmap2-annotations.txt")
 
-Rs_script = file("Rs.nf")
-SNPQCI_script = file("SNPQCI.nf")
-SampleQC_script = file("SampleQCI.nf")
-SNPQCII_script = file("SNPQCII.nf")
-FinalAnalysis_script = file("FinalAnalysis.nf")
+params.nxfdir = "."
+
+Rs_script = file("${params.nxfdir}/Rs.nf")
+SNPQCI_script = file("${params.nxfdir}/SNPQCI.nf")
+SampleQC_script = file("${params.nxfdir}/SampleQCI.nf")
+SNPQCII_script = file("${params.nxfdir}/SNPQCII.nf")
+FinalAnalysis_script = file("${params.nxfdir}/FinalAnalysis.nf")
 
 process PrepareFiles {
     tag "$dataset/$batch"
@@ -79,7 +81,7 @@ NXF_PARAMS="!{Rs_script} -c !{params.qc_config} \\
     --chip_defs=!{workflow.projectDir}/config/ChipDefinitions.groovy \\
     --rs_dir=!{params.output}/!{dataset}/Rs \\
     -with-report "!{params.output}/!{dataset}/Rs/!{batch}_execution-report.html" \\
-    -resume"
+    -resume -ansi-log false"
 
 nextflow run $NXF_PARAMS
 mv trace.txt Rs-!{dataset}-!{batch}.trace.txt
@@ -147,15 +149,17 @@ nextflow run !{SNPQCI_script} -c !{params.qc_config} \\
     --rs_indels="!{indels}" \\
     --individuals_annotation="!{params.output}/!{dataset}/SNPQCI/!{dataset}_individuals_annotation.txt" \\
     -with-report "!{params.output}/!{dataset}/SNPQCI/execution-report.html" \\
+    -ansi-log false \\
     -resume
 
 mv trace.txt SNPQCI-!{dataset}.trace.txt
 cp SNPQCI-!{dataset}.trace.txt $MYPWD
 cd $MYPWD
 
-    ln -fs !{params.output}/!{dataset}/SNPQCI/!{prefix}.bed
-    ln -fs !{params.output}/!{dataset}/SNPQCI/!{prefix}.bim
-    ln -fs !{params.output}/!{dataset}/SNPQCI/!{prefix}.fam
+ln -fs !{params.output}/!{dataset}/SNPQCI/!{prefix}.bed
+ln -fs !{params.output}/!{dataset}/SNPQCI/!{prefix}.bim
+ln -fs !{params.output}/!{dataset}/SNPQCI/!{prefix}.fam
+
 '''
 }
 
@@ -184,7 +188,7 @@ nextflow run !{SampleQC_script} -c !{params.qc_config} -c !{params.dataset_confi
     --individuals_annotation="$ANNO" \\
     --individuals_annotation_hapmap2="$(pwd)/!{dataset}_individuals_annotation_hapmap2.txt" \\
     -with-report "!{params.output}/!{dataset}/SampleQCI/execution-report.html" \\
-    -resume
+    -resume -ansi-log false
 
 
 mv trace.txt SampleQC-!{dataset}.trace.txt
@@ -220,7 +224,7 @@ nextflow run !{SNPQCII_script} -c !{params.qc_config} -c !{params.dataset_config
     --collection_name="!{dataset}" \\
     --individuals_annotation="$ANNO" \\
     -with-report "!{params.output}/!{dataset}/SNPQCII/execution-report.html" \\
-    -resume
+    -resume -ansi-log false
 
 mv trace.txt SNPQCII-!{dataset}.trace.txt
 cp SNPQCII-!{dataset}.trace.txt $MYPWD
@@ -241,7 +245,7 @@ input:
     file(evec) from FinalAnalysis_evec
 output:
     file "FinalAnalysis-${dataset}.trace.txt" into FinalAnalysis_trace
-    set val(dataset), val(filebase) into ReportData
+    set val(dataset) into ReportData
 shell:
 '''
 MYPWD=$(pwd)
@@ -257,7 +261,7 @@ nextflow run !{FinalAnalysis_script} -c !{params.qc_config} -c !{params.dataset_
     --evec="$MYPWD/!{evec}" \\
     --qc_dir="!{params.output}/!{dataset}/QCed" \\
     -with-report "!{params.output}/!{dataset}/QCed/execution-report.html" \\
-    -resume
+    -resume -ansi-log false
 
 mv trace.txt FinalAnalysis-!{dataset}.trace.txt
 cp FinalAnalysis-!{dataset}.trace.txt $MYPWD
@@ -270,16 +274,23 @@ ln -fs !{params.output}/!{dataset}/SNPQCII/!{dataset}_QCed.log !{params.output}/
 
 process Report {
 tag "${dataset}"
-echo true
+publishDir "${params.output}/${dataset}", mode: 'copy'
 input:
-    set val(dataset), val(filebase) from ReportData
-    file "Rs-trace" from Rs_traces
-    file "SNPQCI-trace" from SNPQCI_trace
-    file "SampleQC-trace" from SampleQC_trace
-    file "SNPQCII-trace" from SNPQCII_trace
-    file "Final-trace" from FinalAnalysis_trace
+    each dataset from ReportData
+    file rstraces from Rs_traces.collect()
+    file snpqcitrace from SNPQCI_trace.collect()
+    file sampleqctrace from SampleQC_trace.collect()
+    file snpqciitrace from SNPQCII_trace.collect()
+    file finaltrace from FinalAnalysis_trace.collect()
+output:
+    file "${dataset}-report.pdf"
 shell:
 '''
-echo "$(ls)"
+RUNOPTIONS="-B /work_beegfs /home/sukmb388/texlive.img"
+PERL5LIB=/home/sukmb388/nxf-report perl /home/sukmb388/nxf-report/report.pl $NXF_WORK /home/sukmb388/nxf-report/preamble.tex\
+    Rs-!{dataset}-*.txt SNPQCI-!{dataset}.trace.txt SampleQC-!{dataset}.trace.txt SNPQCII-!{dataset}.trace.txt FinalAnalysis-!{dataset}.trace.txt
+singularity exec $RUNOPTIONS lualatex report.tex
+singularity exec $RUNOPTIONS lualatex report.tex
+mv report.pdf "!{dataset}-report.pdf"
 '''
 }

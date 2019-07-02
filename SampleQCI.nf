@@ -194,6 +194,8 @@ final calc_imiss_job_count = 5
 
 calc_imiss_job_ids = Channel.from(1..calc_imiss_job_count) // plink expects 1-based job indices
 process calc_imiss_IBS {
+    memory '10 GB'
+    time '8 h'
     input:
     tag "${params.collection_name}/$job"
     file dataset from for_calc_imiss_ibs
@@ -206,7 +208,7 @@ process calc_imiss_IBS {
 module load "IKMB"
 module load "Plink/1.9"
 
-plink --bfile ${dataset[0].baseName} --genome --parallel ${job} ${calc_imiss_job_count} --threads 1 --memory ${task.memory.toMega()} --out ${dataset[0].baseName}.part
+plink --bfile ${dataset[0].baseName} --genome --parallel ${job} ${calc_imiss_job_count} --threads 1 --memory 10000 --out ${dataset[0].baseName}.part
 """
 }
 
@@ -215,7 +217,8 @@ process ibs_merge_and_verify {
     publishDir params.sampleqci_dir ?: '.', mode: 'copy'  
     tag "${params.collection_name}"
     maxRetries 5
-    memory { 20.GB * (task.attempt+1)/2 }
+    memory { 30.GB * task.attempt }
+    time { 8.h * task.attempt }
 
     errorStrategy { task.exitStatus == 143 ? 'retry' : 'terminate' }
     input:
@@ -402,7 +405,6 @@ process flashpca2_pruned {
     draw_evec_FLASHPCA2 = SCRIPT_DIR + "/draw_evec_FLASHPCA2.r"
     pcaplot_1KG = SCRIPT_DIR + "/pcaplot_1KG_v2.R"
 
-    // individuals_annotation = ANNOTATION_DIR + "/" + params.individuals_annotation
 """
     module load "IKMB"
     module load "FlashPCA"
@@ -445,7 +447,6 @@ process flashpca2_pruned_1kG {
         PCA_SNPexcludeList = BATCH_DIR + "/" + params.PCA_SNPexcludeList
     }
 
-    //individuals_annotation = ANNOTATION_DIR + "/" + params.individuals_annotation
 """
     module load "IKMB"
     module load "FlashPCA"
@@ -725,7 +726,6 @@ R --slave --args "!{kg_pca}.country" "!{params.preQCIMDS_1kG_sample}" <"!{pcaplo
 '''
 }
 
-// SampleQCI_parallel_part3 starts here
 process remove_relatives {
     publishDir params.sampleqci_dir ?: '.', mode: 'copy'
     tag "${params.collection_name}"
@@ -796,7 +796,8 @@ plink --noweb --bfile intermediate --extract include_variants --make-bed --out "
 
 calc_imiss_job_ids_wr = Channel.from(1..calc_imiss_job_count) // plink expects 1-based job indices
 process calc_imiss_IBS_wr {
-
+    memory '20 GB'
+    time '8 h'
     tag "${params.collection_name}/$job"
     input:
     file dataset from for_calc_imiss_IBS_wr
@@ -832,7 +833,8 @@ plink --noweb --bfile "${dataset[0].baseName}" --missing --out ${dataset[0].base
 process ibs_merge_and_verify_withoutRelatives {
     publishDir params.sampleqci_dir ?: '.', mode: 'copy'
     tag "${params.collection_name}"
-    memory '16 GB'
+    memory '20 GB'
+    time {8.h * task.attempt}
     input:
     file chunks from for_ibs_merge_and_verify_wr.collect()
     file dataset from for_ibs_merge_and_verify_wr_ds

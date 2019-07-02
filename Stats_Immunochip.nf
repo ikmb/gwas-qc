@@ -58,27 +58,28 @@ mapFileList = { fn -> fn.collectEntries {
 
 // Originally from exclude_relatives.py but we don't have relatives anymore.
 // TODO: Check if obsolete.
-ds_stats_input = ["${params.input_stats}.fam",
-               "${params.input_stats}.ped",
-               "${params.input_stats}_annotation.txt"].collect { fileExists(file(it)) }
+//ds_stats_input = ["${params.input_stats}.fam",
+//              "${params.input_stats}.ped",
+//              "${params.input_stats}_annotation.txt"].collect { fileExists(file(it)) }
 
 // From "QCed" folder, output of QC pipeline
 ds_input = ["${params.input}.bed",
          "${params.input}.bim",
          "${params.input}.fam",
-         "${params.input}.dat.pca.evec",
-         "${params.input}_flag.relatives.doubleID.txt",
-         "${params.input}_flag.relatives.txt"].collect { fileExists(file(it)) }
+         ].collect { fileExists(file(it)) }
 
 // From Imputation server (1.vcf.gz, 2.vcf.gz, ...)
-ds_imp_input = Channel.fromPath("${params.input_imp}/[1-9]*.vcf.gz", checkIfExists: true)
+ds_imp_input = Channel.fromPath("${params.input_imp}/{[1-9],[1-2][0-9]}.vcf?gz", checkIfExists: true)
 
 
 params.min_info_score = 0.3
 params.first_chr = 1
 params.last_chr = 22
+params.disease_data_set_prefix_release_statistics = "dummy"
 
 process preprocess_infofilter_dosage {
+    tag "chr${chrom}"
+    time 12.h
 
     input:
     file vcfgz from ds_imp_input
@@ -86,11 +87,12 @@ process preprocess_infofilter_dosage {
     output:
     file "${chrom}.vcf.*" into vcfmaps_preproc
     file "${chrom}.INFO${params.min_info_score}.vcf.*" into infomaps_preproc
+    set val(chrom), file("${chrom}.vcf.gz"), file("${chrom}.vcf.map"), file("${chrom}.INFO${params.min_info_score}.vcf.PLINKdosage.gz"), file("${chrom}.INFO${params.min_info_score}.vcf.PLINKdosage.map") into plinkdosage_gz_map, for_dosage_convert_gz_map
 
     shell:
     m = vcfgz =~ /(\d+).vcf.gz$/
     if(!m.getCount()) {
-    println "No input files!"
+    println "No input files from '" + vcfgz + "': " + m
     } else {
     chrom = m[0][1]
     }
@@ -98,13 +100,27 @@ process preprocess_infofilter_dosage {
 module load Plink/1.9
 
 # for each chromosome:
-zcat !{vcfgz} | grep -v -E '^#' | awk '{print $1, $2, $3, $4, $5, $6, $7, $8}' >!{chrom}.vcf.map
-zcat !{chrom}.vcf.gz | grep -v -E '^#' | awk '!{chrom}.INFO!{params.min_info_score}.vcf.map  | bgzip !{chrom}.INFO!{params.min_info_score}.vcf.gz
+# vcf.gz -> vcf.map
+zcat !{vcfgz} \
+    | gawk '$0!~/^#/ {NF=8; print $0}' \
+    >!{chrom}.vcf.map
+
+# vcf.gz -> INFO.vcf.gz
+zcat !{chrom}.vcf.gz \
+    | gawk '$0~/^#/ { print $0 } {val=substr($8, match($8, /INFO=/)+5)+0; if(val >= !{params.min_info_score}){print $0}}' \
+    | bgzip >!{chrom}.INFO!{params.min_info_score}.vcf.gz
+
 tabix -p vcf !{chrom}.INFO!{params.min_info_score}.vcf.gz
-zcat !{chrom}.INFO!{params.min_info_score}.vcf.gz | awk 'BEGIN{val=substr($8, match($8, /INFO=/)+5)+0; if(val >= !{params.min-info-score}) {print $0}}' >!{chrom}.INFO!{params.min_info_score}.vcf.map
+
+# INFO.vcf.gz -> INFO.vcf.map
+zcat !{chrom}.INFO!{params.min_info_score}.vcf.gz \
+    | gawk '$0!~/^#/{NF=8; print $0}' \
+    >!{chrom}.INFO!{params.min_info_score}.vcf.map
 
 cat <<'AwkProg' >awkprog.awk
 BEGIN {
+    file1 = ARGV[1]
+    cmd="zcat " file1
     printf "CHR BP SNP A1 A2 INFO"
     while (cmd | getline) {
         if (($1 ~ /^##/))  { # if comment line starting with hash character
@@ -112,7 +128,7 @@ BEGIN {
             if (($1 ~ /^#CHROM/)) { # if header line
                 for (i=10; i<=NF; i++)
                     printf " "$i" "$i
-                printf "\n"
+                printf "\\n"
             } else {
                 info = substr($8, match($8, /INFO=/)+5)
                 printf $1" "$2" "$1":"$2" "$4" "$5" "info
@@ -121,7 +137,7 @@ BEGIN {
                     split(array[4],array_GP,",")
                     printf " "array_GP[1]" "array_GP[2]" "array_GP[3]
                 }
-                printf "\n"
+                printf "\\n"
             }
         }
     }
@@ -129,8 +145,13 @@ BEGIN {
 }
 AwkProg
 
-awk -f awkprog.awk -- !{chr}.INFO!{params.min_info_score}.vcf.gz | gzip >!{chr}.INFO!{params.min_info_score}.vcf.PLINKdosage.gz
-zcat >!{chr}.INFO!{params.min_info_score}.vcf.PLINKdosage.gz | tail -n +2 | awk '{print $1, $3, 0, $2}' | uniq >!{chr}.INFO!{params.min_info_score}.vcf.PLINKdosage.map
+awk -f awkprog.awk -- !{chrom}.INFO!{params.min_info_score}.vcf.gz \
+    | gzip >!{chrom}.INFO!{params.min_info_score}.vcf.PLINKdosage.gz
+
+zcat !{chrom}.INFO!{params.min_info_score}.vcf.PLINKdosage.gz \
+    | tail -n +2 \
+    | gawk '{print $1, $3, 0, $2}' \
+    | uniq >!{chrom}.INFO!{params.min_info_score}.vcf.PLINKdosage.map
 '''
 }
 
@@ -170,14 +191,14 @@ process extract_genotyped_variants {
 
 	output:
 	file "${target}_fid_iid.fam" into for_plink_dosage_logistic_fam, for_cleanup_dataset_fam, for_merge_dosages_fam, for_clumping_fam
-	file "${target}.{bim,bed,fam,log}" into for_plink_dosage_logistic_ds, for_qq_manhattan_ds, for_convert_dosages_stats, for_merge_dosages_stats, for_cleanup_dataset_stats, for_clumping_ds
+	file "${target}.{bim,bed,fam,log,dat.pca.evec}" into for_plink_dosage_logistic_ds, for_qq_manhattan_ds, for_convert_dosages_stats, for_merge_dosages_stats, for_cleanup_dataset_stats, for_clumping_ds
 	file "${target}.fam.double-id.pheno" into for_merge_dosages_pheno
 	file "${target}.fam.double-id.gender" into for_merge_dosages_gender
 
     shell:
-    ds_stats = mapFileList(ds_stats_staged)
+//    ds_stats = mapFileList(ds_stats_staged)
     ds = mapFileList(ds_staged)
-    target = "${params.disease_data_set_prefix_release_statistics}"
+    target = "dummy${params.disease_data_set_prefix_release_statistics}"
 
 '''
 module load Plink/1.9
@@ -185,15 +206,20 @@ module load Plink/1.9
 gawk '{ print $1, $2, $6 }' "!{ds.fam}" >"!{ds.fam}.single-id.pheno"
 plink --bfile "!{ds.bim.baseName}" \
 	--threads 4 \
-	--remove "!{ds.relatives}" \
 	--pheno "!{ds.fam}.single-id.pheno" \
 	--make-bed --allow-no-sex \
 	--out "!{target}"
 
-#	  --keep-fam "!{ds_stats.fam}"
+
+#	--remove "${ds.relatives}" \
+#	  --keep-fam "${ds_stats.fam}"
+
 gawk '{ print $1\"_\"$2, $1\"_\"$2, $6 }' "!{target}.fam" >"!{target}.fam.double-id.pheno"
 gawk '{ print $1\"_\"$2, $1\"_\"$2, $5 }' "!{target}.fam" >"!{target}.fam.double-id.gender"
-gawk '{ print $1\"_\"$2, $1\"_\"$2, $3, $4, $5, $6 }' "!{target}.fam" | sponge "!{target}_fid_iid.fam"
+gawk '{ print $1\"_\"$2, $1\"_\"$2, $3, $4, $5, $6 }' "!{target}.fam" | TMPDIR="." sponge "!{target}_fid_iid.fam"
+
+cp !{params.covar} covar
+gawk 'FILENAME~/fam$/{samples[$2]=1}(FILENAME~/covar$/ && FNR==1) {print $0} (FILENAME~/covar$/ && ($2 in samples || FNR!=1)){$1=$1"_"$2;$2=$1;print $0}' !{target}.fam covar >"!{target}.dat.pca.evec"
 '''
 }
 
@@ -205,7 +231,7 @@ process plink_dosage_logistic {
     tag "chr$chromosome"
 
     input:
-    each chromosome from Channel.from(params.first_chr .. params.last_chr)
+    set val(chromosome), file(vcfgz), file(vcfmap), file(dosage_gz), file(dosage_map) from plinkdosage_gz_map
     file (fam:"new_fam") from for_plink_dosage_logistic_fam
 	file ds_stats_staged from for_plink_dosage_logistic_ds
 //	file ds_imp_staged from Channel.from(ds_imp_input).collect()
@@ -222,7 +248,6 @@ process plink_dosage_logistic {
     //ds_imp = mapFileList(ds_imp_staged)
     ds_release = mapFileList(ds_release_staged)
 //    ds_stats_orig = mapFileList(ds_stats_orig_staged)
-    evec = "$BIND_DIR/QCed/${params.disease_data_set_prefix_release}.dat.pca.evec"
 
     covar_name = "PC${params.numofPCs}"
     if(params.numofPCs > 1) {
@@ -232,18 +257,18 @@ process plink_dosage_logistic {
     dosage_src = "${target}_chr${chromosome}.assoc.dosage"
     dosage_target = "${target}_chr${params.first_chr}-${params.last_chr}.assoc.dosage.${chromosome}"
     log_prefix = "${params.disease_data_set_prefix_release_statistics}.genotyped.chr${chromosome}"
-    imp_prefix = IMPUTATION_DIR + chromosome + "." + params.disease_data_set_suffix_release_imputed
 '''
 module load IKMB
 module load Plink/1.9
 
 echo "DS_STATS: !{ds_stats}"
 
+
 plink --threads 4 \
       --fam "!{fam}" \
-      --map "!{imp_prefix.PLINKdosage.map}" \
-      --dosage "!{imp_prefix.PLINKdosage.gz}" skip0=2 skip1=0 skip2=1 format=3 case-control-freqs \
-      --covar "!{ds_release.dat_pca_evec}" \
+      --map "!{dosage_map}" \
+      --dosage "!{dosage_gz}" skip0=2 skip1=0 skip2=1 format=3 case-control-freqs \
+      --covar "!{ds_stats.dat_pca_evec}" \
       --covar-name "!{covar_name}" \
       --allow-no-sex \
       --ci 0.95 \
@@ -257,7 +282,7 @@ plink --threads 4 \
       --fam "!{fam}" \
       --bfile "!{ds_stats.bim.baseName}" \
       --logistic hide-covar \
-      --covar "!{ds_release.dat_pca_evec}" \
+      --covar "!{ds_stats.dat_pca_evec}" \
       --covar-name "!{covar_name}" \
       --allow-no-sex \
       --ci 0.95 \
@@ -379,6 +404,8 @@ addL95_U95 "!{rsq08_lz}"
 
 process qq_manhattan {
 publishDir params.output ?: '.', mode: 'copy', overwrite: true
+validExitStatus 0,1
+time 10.h
 cpus 2
 
 input:
@@ -409,6 +436,14 @@ rsq03_noxMHC = "${rsq03}_noxMHC"
 rsq08_noxMHC = "${rsq08}_noxMHC"
 null_variants = ANNOTATION_DIR + "/QQplots/" + params.QQplot_null_variants
 snpexclude = BATCH_DIR + "/" + params.QQplot_SNPexcludeList
+
+if(!file(null_variants).exists()) {
+    null_variants=file("/dev/null")
+}
+
+if(!file(snpexclude).exists()) {
+    snpexclude=file("/dev/null")
+}
 
 '''
 NUM_CASES=$(grep -P '\\d+ are cases' !{logfile} | cut -d' ' -f4)
@@ -467,62 +502,63 @@ process convert_dosages {
 tag "chr$chromosome"
 
 input:
-each chromosome from Channel.from(params.first_chr .. params.last_chr)
+//each chromosome from Channel.from(params.first_chr .. params.last_chr)
+set val(chromosome), file(vcfgz), file(vcfmap), file(dosage_gz), file(dosage_map) from for_dosage_convert_gz_map
 //file ds_imp_staged from Channel.from(ds_imp_input).collect()
 file ds_release_staged from Channel.from(ds_input).collect()
 file ds_stats_staged from for_convert_dosages_stats
-file ds_stats_orig_staged from Channel.from(ds_stats_input).collect()
+//file ds_stats_orig_staged from Channel.from(ds_stats_input).collect()
 
 output:
-file "$plink_target.{bim,bed,fam,log}" into for_merge_dosages
-file "$target.{bim,bed,fam,log}" into for_merge_dosages_rsq03
+file "$plink_target.{bim,bed,fam,log}" into for_merge_dosages_rsq03//,for_merge_dosages
+// file "$target.{bim,bed,fam,log}" into for_merge_dosages_rsq03
 
 
 shell:
-ds_stats_orig = mapFileList(ds_stats_orig_staged)
-chrname = IMPUTATION_DIR+"/${chromosome}.${params.disease_data_set_suffix_release_imputed}.gz" // TODO: should be more robust
+//ds_stats_orig = mapFileList(ds_stats_orig_staged)
 ds_release = mapFileList(ds_release_staged)
 ds_stats = mapFileList(ds_stats_staged)
 flag_relatives_doubleid = ds_release.relatives_doubleID
-multiallelic_exclude = IMPUTATION_DIR+"/${params.Multiallelic_SNPexcludeList}"
+multiallelic_exclude = params.Multiallelic_SNPexcludeList
 
-target = "${params.disease_data_set_prefix_release_statistics}.genotyped.imputed.rsq0.4.chr${chromosome}.rs"
-plink_target = "${params.disease_data_set_prefix_release_statistics}.genotyped.imputed.rsq0.4.chr${chromosome}"
+target = "${params.disease_data_set_prefix_release_statistics}.genotyped.imputed.rsq${params.min_info_score}.chr${chromosome}.rs"
+plink_target = "${params.disease_data_set_prefix_release_statistics}.genotyped.imputed.rsq${params.min_info_score}.chr${chromosome}"
 
 rs2chrpos = SCRIPT_DIR+"/awk_rs2CHRPOS_bimfiles.awk"
 '''
 module load Plink/1.9
+TMPDIR=.
 
-# Might not be necessary (no relatives involved here)
-# --keep "{ds_stats_orig.ped}"
-# --remove "{flag_relatives_doubleid}"
-
-if [ -e "!{multiallelic_exclude}" ]; then
-    plink --vcf "!{chrname}" --double-id \
-        --exclude "!{multiallelic_exclude}" \
-        --out "!{target}" --allow-no-sex --make-bed
-else
-    plink --vcf "!{chrname}" --double-id \
-        --out "!{target}" --allow-no-sex --make-bed
-fi
+plink --vcf "!{vcfgz}" --double-id --make-bed --out "!{target}_with_multiallelics" --allow-no-sex
+LC_NUMERIC=POSIX gawk -f "!{rs2chrpos}" -- "!{target}_with_multiallelics.bim" >"!{target}_chrpos_with_multiallelics.bim"
+<"!{target}_chrpos_with_multiallelics.bim" awk '{print $2}' | TMPDIR=. sort | uniq -d >"!{target}.multiallelics"
+plink --bim "!{target}_chrpos_with_multiallelics.bim" --bed "!{target}_with_multiallelics.bed" --fam "!{target}_with_multiallelics.fam" --exclude "!{target}.multiallelics" --make-bed --out "!{plink_target}"
 
 
-NEWTARG="!{target}.tmp"
-cp "!{target}.fam" "${NEWTARG}.fam"
-cp "!{target}.bed" "${NEWTARG}.bed"
-cp "!{target}.log" "${NEWTARG}.log"
+#NEWTARG="!{target}.tmp"
+#cp "!{target}.fam" "${NEWTARG}.fam"
+#cp "!{target}.bed" "${NEWTARG}.bed"
+#cp "!{target}.log" "${NEWTARG}.log"
 
-LC_NUMERIC=POSIX gawk -f "!{rs2chrpos}" -- "!{target}.bim" >"${NEWTARG}.bim"
+# LC_NUMERIC=POSIX gawk -f "!{rs2chrpos}" -- "!{target}.bim" >"${NEWTARG}.bim"
 
-plink --bfile "${NEWTARG}" --exclude "!{multiallelic_exclude}" --out "!{plink_target}" --allow-no-sex --make-bed --threads 16
+#if [ -e "!{multiallelic_exclude}" ]; then
+#    plink --bfile "${NEWTARG}" --exclude "!{multiallelic_exclude}" --out "!{plink_target}" --allow-no-sex --make-bed --threads 16
+#else
+#    plink --bfile "${NEWTARG}" --out "!{plink_target}" --allow-no-sex --make-bed --threads 16
+#fi
+
 '''
 }
 
 
 process merge_dosages {
+    errorStrategy 'retry'
+    memory { 20.GB * task.attempt }
+    time { 2.h * task.attempt }
     input:
-    file dosages from for_merge_dosages.collect()
-    file rsq03_staged from for_merge_dosages_rsq03
+    //file dosages from for_merge_dosages.collect()
+    file rsq03_staged from for_merge_dosages_rsq03.collect()
     file rsq08 from for_merge_dosages_rsq08
     file ds_stats_staged from for_merge_dosages_stats
     file pheno from for_merge_dosages_pheno
@@ -538,8 +574,8 @@ process merge_dosages {
     rsq03 = mapFileList(rsq03_staged)
 //    rsq08 = "${params.disease_data_set_prefix_release_statistics}.genotyped.imputed.rsq0.8.chr${params.first_chr}-${params.last_chr}"
 
-    target = "${params.disease_data_set_prefix_release_statistics}.genotyped.imputed.rsq0.4.chr${params.first_chr}-${params.last_chr}"// plink dosage name + rsq0.4 + ".chr{first}-{last}
-    dosage_basename = "${params.disease_data_set_prefix_release_statistics}.genotyped.imputed.rsq0.4"
+    target = "${params.disease_data_set_prefix_release_statistics}.genotyped.imputed.rsq${params.min_info_score}.chr${params.first_chr}-${params.last_chr}"// plink dosage name + rsq0.4 + ".chr{first}-{last}
+    dosage_basename = "${params.disease_data_set_prefix_release_statistics}.genotyped.imputed.rsq${params.min_info_score}"
     rsq08_target_name = "${params.disease_data_set_prefix_release_statistics}.genotyped.imputed.rsq0.8.chr${params.first_chr}-${params.last_chr}"
 //    #
 //
@@ -554,10 +590,46 @@ for ((i=$((!{params.first_chr})); i <= !{params.last_chr}; i++)); do
     echo "!{dosage_basename}.chr${i}.bed !{dosage_basename}.chr${i}.bim !{dosage_basename}.chr${i}.fam" >>merge-list
 done
 
-plink --bfile "!{dosage_basename}.chr!{params.first_chr}" --merge-list merge-list --make-bed --out "!{target}_tmp" --allow-no-sex --threads 16
-plink --bfile "!{target}_tmp" --pheno "!{pheno}" --update-sex "!{gender}" --make-bed --out "!{target}" --allow-no-sex --threads 16
+plink --bfile "!{dosage_basename}.chr!{params.first_chr}" \
+    --merge-list merge-list \
+    --memory 16000\
+    --make-bed --out "!{target}_tmp" --allow-no-sex
+
+#TRIES=0
+#RETRY=1
+#while [ "$RETRY" -eq 1 ]
+#do
+#    touch "multiallelic-excludes"
+#    plink --bfile "!{dosage_basename}.chr!{params.first_chr}" \
+#        --merge-list merge-list \
+#        --exclude "multiallelic-excludes" \
+#        --make-bed --out "!{target}_tmp" --allow-no-sex \
+#        || true
+#
+#    (( TRIES++ ))
+#    if [ "$TRIES" -le 10 ] && [ -s "!{target}_tmp-merge.missnp" ]; then
+#        cat "!{target}_tmp-merge.missnp" >>multiallelic-excludes
+#        rm "!{target}_tmp-merge.missnp"
+#    elif ! [ -e "!{target}_tmp-merge.missnp" ]; then
+#        RETRY=0
+#        echo "All $(wc -l multiallelic-excludes) multiallelics removed."
+#    else
+#        RETRY=0
+#        echo "Error: could not remove all multiallelics - check input data" >>/dev/stderr
+#        exit 1
+#    fi
+#done
+
+plink --bfile "!{target}_tmp" \
+      --pheno "!{pheno}" \
+      --update-sex "!{gender}" \
+      --memory 16000 \
+      --make-bed --out "!{target}" --allow-no-sex 
 gawk '{ print $2 }' "!{rsq08}" | tail -n +2 >"!{dosage_basename}.rsq0.8.rs.txt"
-plink --bfile "!{target}" --extract "!{dosage_basename}.rsq0.8.rs.txt" --make-bed --out "!{rsq08_target_name}" --allow-no-sex --threads 16
+plink --bfile "!{target}" \
+      --extract "!{dosage_basename}.rsq0.8.rs.txt" \
+      --memory 16000 \
+      --make-bed --out "!{rsq08_target_name}" --allow-no-sex
 
 # Check number of individuals pre and post imputation
 COUNT1=$(wc -l "!{fam}" | cut -d" " -f 1)
@@ -571,7 +643,42 @@ fi
 '''
 }
 
+/*for_cleanup_dataset_rsq03.subscribe { println "Channel rsq3: $it\n" }*/
+/*for_cleanup_dataset_rsq08.subscribe { println "Channel rsq8: $it\n" }*/
+/*for_cleanup_dataset_fam.subscribe { println "Channel fam: $it\n" }*/
+/*for_cleanup_dataset_stats.subscribe { println "Channel stats: $it" }*/
+
+/*for_definetti_rsq03 = Channel.create()*/
+/*for_definetti_rsq08 = Channel.create()*/
+/*for_clump_rsq03_ds = Channel.create()*/
+/*for_clump_rsq08_ds = Channel.create()*/
+
+/*
 process cleanup_dataset {
+    input:
+    file rsq03_staged from for_cleanup_dataset_rsq03
+    file rsq08_staged from for_cleanup_dataset_rsq08
+    file (fam: "${params.disease_data_set_prefix_release_statistics}.fam") from for_cleanup_dataset_fam
+    file ds_stats_staged from for_cleanup_dataset_stats
+
+    output:
+    file 'dummy' into for_definetti_rsq03, for_definetti_rsq08, for_clump_rsq03_ds, for_clump_rsq08_ds
+
+    shell:
+    rsq3 = mapFileList(rsq03_staged)
+    rsq8 = mapFileList(rsq08_staged)
+    ds_stats = mapFileList(ds_stats_staged)
+    '''
+    echo "DS_STATS: !{ds_stats}"
+    echo "RSQ3: !{rsq3}"
+    echo "RSQ8: !{rsq8}"
+    '''
+}
+*/
+
+process cleanup_dataset {
+memory 35.GB
+time 12.h
 publishDir params.output ?: '.', mode: 'copy', overwrite: true
     cpus 2
     stageInMode 'copy' // some files need to be overwritten, cannot stage them as links
@@ -601,42 +708,52 @@ echo "DS_STATS: !{ds_stats}"
 echo "rsq3: !{rsq3}"
 echo "RSQ8: !{rsq8}"
 
-# the tmp version still has duplicates from genotyping (rs numbers) and imputation (chr.:...)
-plink --bfile "!{rsq3.bim.baseName}" --bmerge "!{ds_stats.bim.baseName}" --make-bed --out "!{rsq3.bim.baseName}_tmp" --allow-no-sex &
-plink --bfile "!{rsq8.bim.baseName}" --bmerge "!{ds_stats.bim.baseName}" --make-bed --out "!{rsq8.bim.baseName}_tmp" --allow-no-sex &
-wait
+
+# if things don't work out, remove snps with more than 2 alleles
+plink --memory 16000 --bfile "!{rsq3.bim.baseName}" --bmerge "!{ds_stats.bim.baseName}" --make-bed --out "!{rsq3.bim.baseName}_tmp" --allow-no-sex || true
+if [ -e "!{rsq3.bim.baseName}_tmp-merge.missnp" ]; then
+    plink --memory 16000 --bfile "!{rsq3.bim.baseName}" --exclude !{rsq3.bim.baseName}_tmp-merge.missnp --make-bed --allow-no-sex --out rsq3 &
+    plink --memory 16000 --bfile "!{ds_stats.bim.baseName}" --exclude !{rsq3.bim.baseName}_tmp-merge.missnp --make-bed --allow-no-sex --out ds &
+    wait
+    plink --memory 16000 --bfile "!{rsq8.bim.baseName}" --exclude !{rsq3.bim.baseName}_tmp-merge.missnp --make-bed --allow-no-sex --out rsq8
+    plink --memory 16000 --bfile rsq3 --bmerge ds --make-bed --out "!{rsq3.bim.baseName}_tmp" --allow-no-sex &
+    plink --memory 16000 --bfile rsq8 --bmerge ds --make-bed --out "!{rsq8.bim.baseName}_tmp" --allow-no-sex &
+    wait
+else
+    plink --memory 16000 --bfile "!{rsq8.bim.baseName}" --bmerge "!{ds_stats.bim.baseName}" --make-bed --out "!{rsq8.bim.baseName}_tmp" --allow-no-sex &
+fi
 
 # determine the duplicate SNPs from genotyping (rs numbers) and imputation (chr.:...)
 # tmp version without duplicate genotyped and imputed SNPs - exclude imputed SNPs which are already genotyped
 gawk '{ print $1":"$4 }' "!{rsq3.bim.baseName}_tmp.bim" | sort | uniq -d > "!{rsq3.bim.baseName}.excluded.duplicates.imputed"
-plink --bfile "!{rsq3.bim.baseName}_tmp" --exclude "!{rsq3.bim.baseName}.excluded.duplicates.imputed" --make-bed --out "!{rsq3.bim.baseName}_tmp2" --allow-no-sex &
-plink --bfile "!{rsq8.bim.baseName}_tmp" --exclude "!{rsq3.bim.baseName}.excluded.duplicates.imputed" --make-bed --out "!{rsq8.bim.baseName}_tmp2" --allow-no-sex &
+plink --memory 16000 --bfile "!{rsq3.bim.baseName}_tmp" --exclude "!{rsq3.bim.baseName}.excluded.duplicates.imputed" --make-bed --out "!{rsq3.bim.baseName}_tmp2" --allow-no-sex &
+plink --memory 16000 --bfile "!{rsq8.bim.baseName}_tmp" --exclude "!{rsq3.bim.baseName}.excluded.duplicates.imputed" --make-bed --out "!{rsq8.bim.baseName}_tmp2" --allow-no-sex &
 wait
 
 # determine monomorphic SNPs
-plink --bfile "!{rsq3.bim.baseName}_tmp2" --freq --out "!{rsq3.bim.baseName}_tmp2_freq" --allow-no-sex --threads 16
+plink --memory 16000 --bfile "!{rsq3.bim.baseName}_tmp2" --freq --out "!{rsq3.bim.baseName}_tmp2_freq" --allow-no-sex --threads 16
 gawk '{ if ($5 == 0) print $2 }' "!{rsq3.bim.baseName}_tmp2_freq.frq" > "!{rsq3.bim.baseName}.excluded.monomorphic"
 
 # final version without duplicate genotyped and imputed SNPs - exclude imputed SNPs which are already genotyped
-plink --bfile "!{rsq3.bim.baseName}_tmp2" --exclude "!{rsq3.bim.baseName}.excluded.monomorphic" --make-bed --out "!{rsq3.bim.baseName}_tmp3" &
-plink --bfile "!{rsq8.bim.baseName}_tmp2" --exclude "!{rsq3.bim.baseName}.excluded.monomorphic" --make-bed --out "!{rsq8.bim.baseName}_tmp3" &
+plink --memory 16000 --bfile "!{rsq3.bim.baseName}_tmp2" --exclude "!{rsq3.bim.baseName}.excluded.monomorphic" --make-bed --out "!{rsq3.bim.baseName}_tmp3" &
+plink --memory 16000 --bfile "!{rsq8.bim.baseName}_tmp2" --exclude "!{rsq3.bim.baseName}.excluded.monomorphic" --make-bed --out "!{rsq8.bim.baseName}_tmp3" &
 wait
-plink --bfile "!{rsq3.bim.baseName}_tmp3" --not-chr 0 --make-bed --out "!{rsq3.bim.baseName}" --allow-no-sex &
-plink --bfile "!{rsq8.bim.baseName}_tmp3" --not-chr 0 --make-bed --out "!{rsq8.bim.baseName}" --allow-no-sex &
+plink --memory 16000 --bfile "!{rsq3.bim.baseName}_tmp3" --not-chr 0 --make-bed --out "!{rsq3.bim.baseName}" --allow-no-sex &
+plink --memory 16000 --bfile "!{rsq8.bim.baseName}_tmp3" --not-chr 0 --make-bed --out "!{rsq8.bim.baseName}" --allow-no-sex &
 wait
 
 # another final version without duplicate genotyped and imputed SNPs -
 # exclude imputed SNPs which are already genotyped - but here chr:pos as SNPids for Locuszoom
 awk '{ print $1":"$4 }' "!{rsq3.bim}" | sort | uniq -d > "!{rsq3.bim}.duplicates"
 awk '{ print $1":"$4 }' "!{rsq8.bim}" | sort | uniq -d > "!{rsq8.bim}.duplicates"
-plink --bfile "!{rsq3.bim.baseName}" --make-bed --out "!{rsq3.bim.baseName}.locuszoom.tmp" --allow-no-sex &
-plink --bfile "!{rsq8.bim.baseName}" --make-bed --out "!{rsq8.bim.baseName}.locuszoom.tmp" --allow-no-sex &
+plink --memory 16000 --bfile "!{rsq3.bim.baseName}" --make-bed --out "!{rsq3.bim.baseName}.locuszoom.tmp" --allow-no-sex &
+plink --memory 16000 --bfile "!{rsq8.bim.baseName}" --make-bed --out "!{rsq8.bim.baseName}.locuszoom.tmp" --allow-no-sex &
 wait
 
 awk '{ print $1"\t"$1":"$4"\t"$3"\t"$4"\t"$5"\t"$6 }' "!{rsq3.bim}"> "!{rsq3.bim.baseName}.locuszoom.tmp.bim"
 awk '{ print $1"\t"$1":"$4"\t"$3"\t"$4"\t"$5"\t"$6 }' "!{rsq8.bim}"> "!{rsq8.bim.baseName}.locuszoom.tmp.bim"
-plink --bfile "!{rsq3.bim.baseName}.locuszoom.tmp" --exclude "!{rsq3.bim}.duplicates" --make-bed --out "!{rsq3.bim.baseName}.locuszoom" &
-plink --bfile "!{rsq8.bim.baseName}.locuszoom.tmp" --exclude "!{rsq8.bim}.duplicates" --make-bed --out "!{rsq8.bim.baseName}.locuszoom" &
+plink --memory 16000 --bfile "!{rsq3.bim.baseName}.locuszoom.tmp" --exclude "!{rsq3.bim}.duplicates" --make-bed --out "!{rsq3.bim.baseName}.locuszoom" &
+plink --memory 16000 --bfile "!{rsq8.bim.baseName}.locuszoom.tmp" --exclude "!{rsq8.bim}.duplicates" --make-bed --out "!{rsq8.bim.baseName}.locuszoom" &
 wait
 
 '''
@@ -669,6 +786,7 @@ R --slave --args "!{rsq08base}_hardy.hwe" "!{rsq08base}_controls_DeFinetti" "!{r
 
 
 process plink_clumping {
+memory 24.GB
 input:
     file ds_imp_staged from for_clumping_ds
 //    file ds_imp_fam from Channel.from(ds_stats_input).collect()
@@ -687,18 +805,44 @@ shell:
 imp = mapFileList(ds_imp_staged)
 rsq3 = mapFileList(rsq3_staged)
 rsq8 = mapFileList(rsq8_staged)
-// clumpr2, clumpp1, clumpp2, clumpkb
 '''
 module load Plink/1.9
+
+
+# replace runs of tabs and spaces with a single space, take column 2 (sample names) and list duplicates
+echo "Detecting duplicates..."
+<"!{rsq3.bim}" tr -s '\t ' ' ' | cut -f2 -d' ' | uniq -d >rsq3-duplicates
+<"!{rsq8.bim}" tr -s '\t ' ' ' | cut -f2 -d' ' | uniq -d >rsq8-duplicates
+
+# output those records that are not in the 'duplicates' list
+echo "Removing duplicates from locuszoom tables..."
+awk 'NR==FNR{duplicates[$0];next} {f=!($2 in duplicates)} f' rsq3-duplicates "!{rsq3_lz}" >rsq3_lz
+awk 'NR==FNR{duplicates[$0];next} {f=!($2 in duplicates)} f' rsq8-duplicates "!{rsq8_lz}" >rsq8_lz
+
+# remove the duplicates from the respective plink sets
+echo "Removing duplicates from Plink sets"
+plink --bfile "!{rsq3.bim.baseName}" --memory 10000 --threads 1 --exclude rsq3-duplicates --make-bed --out rsq3 --allow-no-sex&
+plink --bfile "!{rsq8.bim.baseName}" --memory 10000 --threads 1 --exclude rsq8-duplicates --make-bed --out rsq8 --allow-no-sex&
+wait
+
+echo "Calculate clumping..."
 python -c 'from Stats_helpers import *; \
-    PLINK_clumping("!{rsq3.bim.baseName}", \
-        "!{rsq8.bim.baseName}", \
-        "!{rsq3_lz}", \
-        "!{rsq8_lz}", \
+    PLINK_clumping("rsq3", \
+        "rsq8", \
+        "rsq3_lz", \
+        "rsq8_lz", \
         !{params.clumpr2}, \
         !{params.clumpp1}, \
         !{params.clumpp2}, \
         !{params.clumpkb})'
+
+# rename rsq3_lz "!{rsq3.bim.baseName}" rsq3_lz_clump.clumped*
+mv rsq3_lz_clumped.clumped "!{rsq3_lz}_clump.clumped"
+mv rsq3_lz_clumped.clumped_all "!{rsq3_lz}_clump.clumped_all"
+mv rsq3_lz_clumped.clumped_all.noXMHC "!{rsq3_lz}_clump.clumped_all.noXMHC"
+mv rsq3_lz_clumped.clumped_groups "!{rsq3_lz}_clump.clumped_groups"
+mv rsq3_lz_clumped.clumped_groups.noXMHC "!{rsq3_lz}_clump.clumped_groups.noXMHC"
+
 '''
 }
 

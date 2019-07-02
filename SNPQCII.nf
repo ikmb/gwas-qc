@@ -360,7 +360,7 @@ fi
 
 cp "!{dataset.annotation}" "!{prefix}_annotation.txt"
 
-plink --noweb --bfile "!{dataset.bed.baseName}" --test-missing --out !{prefix}_test_missingness
+plink --noweb --bfile "!{dataset.bed.baseName}" --test-missing --out !{prefix}_test_missingness --allow-no-sex
 
 '''
 }

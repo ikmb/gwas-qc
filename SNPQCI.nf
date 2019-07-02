@@ -25,7 +25,7 @@ to_calc_hwe = Channel.create()
 
 process merge_batches {
     tag "${params.collection_name}"
-    memory 12.GB
+    memory 32.GB
 
     output:
     file "${params.collection_name}_Rs.bim" into merged_bim, to_split_bim, to_hwe_bim, to_verify_bim, to_exclude_bim, to_miss_bim, to_miss_batch_bim
@@ -63,7 +63,7 @@ for idx in ${!BIMS[@]}; do
 done
 
 if [ "${#BIMS[*]}" -gt 1 ]; then
-    plink --bed !{params.rs_dir}/${BEDS[0]} --bim !{params.rs_dir}/${BIMS[0]} --fam !{params.rs_dir}/${FAMS[0]} --merge-list merge-list --make-bed --out !{params.collection_name}_Rs --allow-no-sex
+    plink --memory 30000 --bed !{params.rs_dir}/${BEDS[0]} --bim !{params.rs_dir}/${BIMS[0]} --fam !{params.rs_dir}/${FAMS[0]} --merge-list merge-list --make-bed --out !{params.collection_name}_Rs --allow-no-sex
 else
     echo "No merge necessary, only one batch found." | tee !{params.collection_name}_Rs.log
     ln -s !{params.rs_dir}/${BIMS[0]} !{params.collection_name}_Rs.bim
@@ -80,7 +80,7 @@ ln -s !{params.rs_dir}/${INDELS[0]} !{params.collection_name}.indels
  */
 process hwe_definetti_preqc {
   tag "${params.collection_name}"
-  memory 8192.MB
+  memory {8192.MB*task.attempt}
   cpus 1
   publishDir params.snpqci_dir ?: '.', mode: 'copy', overwrite: true
 
@@ -137,8 +137,9 @@ process calculate_hwe {
   // Should have been zero, but killall -q returns 1 if it didn't find anything
   validExitStatus 0
   errorStrategy 'retry'
-  memory 4.GB
-  time 1.h
+//  memory {8.GB * task.attempt }
+  memory '60 GB'
+  time {1.h * task.attempt }
   tag "${params.collection_name}/${chunk}"
 
   input:
@@ -225,19 +226,23 @@ N_CONTROLS=$(<!{individuals_annotation} tr -s '\\t ' ' ' | cut -f7,9 -d' ' | uni
 echo Found $N_CONTROLS control batches
 
 if [ "$N_CONTROLS" -gt 2 ]; then
-    SNPQCI_fdr_filter.py "$HWE_RESULTS" "!{individuals_annotation}" "!{draw_fdr}" \
-       !{params.collection_name}_exclude-whole-collection-worst-batch-removed \
-       !{params.collection_name}_exclude-per-batch-fail-in-2-plus-batches \
-       !{params.collection_name}_exclude-whole-collection-all-batches \
-       !{params.FDR_index_remove_variants}
+    DRAWSCRIPT="!{draw_fdr}"
 else
-    SNPQCI_fdr_filter.py "$HWE_RESULTS" "!{individuals_annotation}" "!{draw_fdr_allbatches}"\
-       !{params.collection_name}_exclude-whole-collection-worst-batch-removed\
-       !{params.collection_name}_exclude-per-batch-fail-in-2-plus-batches \
-       !{params.collection_name}_exclude-whole-collection-all-batches \
-       !{params.FDR_index_remove_variants}
+    DRAWSCRIPT="!{draw_fdr_allbatches}"
 fi
 
+fdrfilter.pl "$HWE_RESULTS" !{params.FDR_index_remove_variants} \
+    !{params.collection_name}_exclude-whole-collection-worst-batch-removed.FDRthresholds.SNPQCI.1.txt \
+    !{params.collection_name}_exclude-whole-collection-all-batches \
+    !{params.collection_name}_exclude-whole-collection-worst-batch-removed \
+    !{params.collection_name}_exclude-per-batch-fail-in-2-plus-batches.FDRthresholds.SNPQCI.2.txt \
+    !{params.collection_name}_exclude-per-batch-fail-in-2-plus-batches
+
+R --slave --args \
+    !{params.collection_name}_exclude-whole-collection-worst-batch-removed.FDRthresholds.SNPQCI.1.txt \
+    !{params.collection_name}_exclude-per-batch-fail-in-2-plus-batches.FDRthresholds.SNPQCI.2.txt \
+    !{params.FDR_index_remove_variants} \
+    <$DRAWSCRIPT
 '''
 }
 
@@ -248,7 +253,8 @@ fi
 process determine_missingness_entire {
     publishDir params.snpqci_dir ?: '.', mode: 'copy'
     errorStrategy 'retry'
-    memory { 8.GB * task.attempt }
+    memory { 16.GB * task.attempt }
+    time { 4.h * task.attempt }
     tag "${params.collection_name}"
 
     input:
@@ -274,7 +280,8 @@ SNPQCI_extract_missingness_entire.py missingness_entire.lmiss ${params.geno_enti
 process determine_missingness_per_batch {
     publishDir params.snpqci_dir ?: '.', mode: 'copy'
     errorStrategy 'retry'
-    memory { 8.GB * task.attempt }
+    memory { 16.GB * task.attempt }
+    time { 4.h * task.attempt }
     tag "${params.collection_name}"
 
     input:
