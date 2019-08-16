@@ -122,7 +122,8 @@ plink --bfile after-correlated-remove --extract include-variants-with-atcg --mak
 
 process final_pca_con_projection {
     publishDir params.qc_dir ?: '.', mode: 'copy', overwrite: true
-    memory {12.GB * task.attempt}
+    memory {25.GB * task.attempt}
+    errorStrategy 'retry'
     tag "${params.collection_name}"
 
     input:
@@ -154,7 +155,7 @@ flashpca2 -d 10 --bfile "!{dataset.bed.baseName}" \
     --numthreads !{task.cpus} \
     --outload !{prefix}_loadings_flashpca2 \
     --outmeansd !{prefix}_meansfd_flashpca2 \
-    --memory !{task.memory.toMega()}
+    --memory $((!{task.memory.toMega()}-1000))
 #    --memory 64000
 
 echo Adding batch info | ts
@@ -208,7 +209,7 @@ flashpca2 -d 10 --bfile "!{dataset.bed.baseName}" \
     --numthreads !{task.cpus} \
     --outload !{prefix}_loadings_flashpca2 \
     --outmeansd !{prefix}_meansfd_flashpca2 \
-    --memory !{task.memory.toMega()}
+    --memory $((!{task.memory.toMega()}-1000))
 #    --memory 64000
 
 echo Adding batch info | ts
@@ -315,7 +316,7 @@ done
 
 process pca_plot_1kg_frauke_final {
     publishDir params.qc_dir ?: '.', mode: 'copy', overwrite: true
-    memory "16 G"
+    memory {25.GB * task.attempt}
     tag "${params.collection_name}"
 
     input:
@@ -346,7 +347,7 @@ flashpca2 -d 10 --bfile "!{dataset.bed.baseName}" \
     --numthreads !{task.cpus} \
     --outload !{prefix}_loadings_flashpca2 \
     --outmeansd !{prefix}_meansfd_flashpca2 \
-    --memory !{task.memory.toMega()}
+    --memory $((!{task.memory.toMega()}-1000))
 #    --memory 64000
 
 echo Adding batch info | ts

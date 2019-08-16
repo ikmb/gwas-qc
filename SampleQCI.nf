@@ -89,7 +89,7 @@ process apply_precalc_remove_list {
 
 process determine_miss_het {
     tag "${params.collection_name}"
-	memory { 12.GB * task.attempt }
+	memory { 24.GB * task.attempt }
 	time { 4.h * task.attempt }
 	errorStrategy 'retry'
 
@@ -107,12 +107,12 @@ process determine_miss_het {
 shell:
 '''
     module load "IKMB"
-    module load "Plink/1.7"
+    module load "Plink/1.9"
     
 # generates  miss.{hh,imiss,lmiss,log,nosex}
-plink --noweb --bfile "!{new File(dataset[0].toString()).getBaseName()}" --out !{prefix}miss --missing&
+plink --memory 10000 --bfile "!{new File(dataset[0].toString()).getBaseName()}" --out !{prefix}miss --missing&
 # generates het.{het,hh,log,nosex}
-plink --noweb --bfile "!{new File(dataset[0].toString()).getBaseName()}" --out !{prefix}het --het&
+plink --memory 10000 --bfile "!{new File(dataset[0].toString()).getBaseName()}" --out !{prefix}het --het&
 wait
 
 R --slave --args !{prefix}het.het !{prefix}miss.imiss < "!{script_dir + "/heterozygosity_logimiss_withoutthresh.r"}"& # generates het.het.logscale.1.png
@@ -174,6 +174,7 @@ plink --noweb --bfile intermediate --extract include_variants --make-bed --out "
 
 process calc_imiss {
     tag "${params.collection_name}"
+    memory "24 GB"
     input:
     file dataset from for_calc_imiss
 
@@ -185,16 +186,16 @@ process calc_imiss {
         base = dataset[0].baseName
 """
     module load "IKMB"
-    module load "Plink/1.7"
-plink --noweb --bfile "${base}" --missing --out ${prefix}miss
+    module load "Plink/1.9"
+plink --memory 10000 --bfile "${base}" --missing --out ${prefix}miss
 """
 }
 
-final calc_imiss_job_count = 5
+final calc_imiss_job_count = 80 // should work for ~200k samples
 
 calc_imiss_job_ids = Channel.from(1..calc_imiss_job_count) // plink expects 1-based job indices
 process calc_imiss_IBS {
-    memory '10 GB'
+    memory '64 GB'
     time '8 h'
     input:
     tag "${params.collection_name}/$job"
@@ -208,7 +209,7 @@ process calc_imiss_IBS {
 module load "IKMB"
 module load "Plink/1.9"
 
-plink --bfile ${dataset[0].baseName} --genome --parallel ${job} ${calc_imiss_job_count} --threads 1 --memory 10000 --out ${dataset[0].baseName}.part
+plink --memory 60000 --bfile ${dataset[0].baseName} --genome --parallel ${job} ${calc_imiss_job_count} --threads 1 --out ${dataset[0].baseName}.part
 """
 }
 
@@ -232,7 +233,7 @@ process ibs_merge_and_verify {
 
 
     shell:
-    ibdplot = SCRIPT_DIR + "/IBD-plot-genomefile.r"
+    ibdplot = NXF_DIR + "/bin/ibd-plot-genomefile.r"
 '''
     module load "IKMB"
     module load "Plink/1.9"
@@ -278,8 +279,10 @@ else
     echo Check passed, genome files do have the expected number of pairwise estimates.
 fi
 
-gawk '{ print $7, $8 }' $OUTFILE >$OUTFILE.Z0.Z1
-R --slave --args $OUTFILE.Z0.Z1 < !{ibdplot}
+echo Drawing plot for $LINES_ORIG points...
+
+# R --slave --args $OUTFILE < !{ibdplot}
+$NXF_DIR/bin/genericplotter $OUTFILE $OUTFILE.png
 
 '''
 }
@@ -497,7 +500,9 @@ R --slave --args "${plink_pca_1kG}.country" "${params.preQCIMDS_1kG_sample}" <"$
 
 process detect_duplicates_related {
         publishDir params.sampleqci_dir ?: '.', mode: 'copy'
-        memory '12 GB'
+        memory {12.GB * task.attempt}
+        time {8.h * task.attempt}
+        errorStrategy 'retry'
     tag "${params.collection_name}"
     input:
     file pruned from for_detect_duplicates
@@ -509,7 +514,7 @@ process detect_duplicates_related {
     file "${params.collection_name}_SampleQCI_final_duplicates.txt" into for_remove_bad_samples_duplicates
 
     shell:
-    plot_script = SCRIPT_DIR + "/IBD-plot-genomefile.r"
+    plot_script = NXF_DIR + "/bin/ibd-plot-genomefile.r"
     threshold_duplicates = params.max_ibd_threshold_duplicates
     threshold_relatives = params.max_ibd_threshold_relatives
 
@@ -814,7 +819,7 @@ plink --bfile ${dataset[0].baseName} --genome --parallel ${job} ${calc_imiss_job
 }
 
 process calc_imiss_withoutRelatives {
-
+    memory '20 GB'
     tag "${params.collection_name}"
     input:
         file dataset from for_calc_imiss_wr
@@ -825,8 +830,8 @@ process calc_imiss_withoutRelatives {
     script:
 """
     module load "IKMB"
-    module load "Plink/1.7"
-plink --noweb --bfile "${dataset[0].baseName}" --missing --out ${dataset[0].baseName}_miss
+    module load "Plink/1.9"
+plink --memory 18000 --bfile "${dataset[0].baseName}" --missing --out ${dataset[0].baseName}_miss
 """
 }
 
@@ -844,7 +849,7 @@ process ibs_merge_and_verify_withoutRelatives {
 
 
     shell:
-    ibdplot = SCRIPT_DIR + "/IBD-plot-genomefile.r"
+    ibdplot = NXF_DIR + "/bin/ibd-plot-genomefile.r"
 '''
 
 #IFS=' '
@@ -855,6 +860,10 @@ CHUNKS=$(ls --sort=extension *.genome.*)
 echo Chunks: $CHUNKS
 
 OUTFILE="!{dataset[0].baseName}_IBS.genome"
+
+rm -f "!{dataset[0].baseName}_IBS.genome.png"
+rm -f "$OUTFILE"
+
 #FIRST=1
 #echo Got ${#CHUNKS} chunks.
 echo "Merging..."
@@ -890,8 +899,10 @@ else
     echo Plotting genome file result for comparison.
 fi
 
-gawk '{ print $7, $8 }' $OUTFILE >$OUTFILE.Z0.Z1
-R --slave --args $OUTFILE.Z0.Z1 < !{ibdplot}
+echo Drawing plot for $LINES_ORIG points...
+
+# R --slave --args $OUTFILE < !{ibdplot}
+$NXF_DIR/bin/genericplotter $OUTFILE $OUTFILE.png
 '''
 }
 
