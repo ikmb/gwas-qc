@@ -9,6 +9,8 @@ if (length(args) < 3) {
   stop("Usage: Rscript example_script.R <file> <x-ped> <y-ped> <imiss> <het>")
 }
 
+print(args)
+
 # .libPaths("~/R/x86_64-redhat-linux-gnu-library/3.2")
 ## Save arguments in variables
 file= args[1]
@@ -35,7 +37,6 @@ X = t(apply(X,1,function(x){tmp = x[seq(1,length(x),2)] == x[seq(2,length(x),2)]
 Y =Y[,-(1:6)]
 Y = t(apply(Y,1,function(x){tmp = x[seq(1,length(x),2)] == x[seq(2,length(x),2)] & x[seq(1,length(x),2)]!="0";
                             x[tmp]=0; x[!tmp]=2; return(as.numeric(x))}))
-
 
 
 sumsX = rowSums(X)

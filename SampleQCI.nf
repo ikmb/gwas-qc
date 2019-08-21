@@ -1,4 +1,5 @@
 // -*- mode:groovy -*-
+// vim: syntax=nextflow
 
 /*
  Author: Jan Kässens <j.kaessens@ikmb.uni-kiel.de>
@@ -24,8 +25,13 @@ if (params.PCA_SNPexcludeList == "nofileexists") {
     params.PCA_SNPexcludeList = ""
 }
 
+// may be overwritten by parameters
+params.individuals_remove_manually = "/dev/null"
+
 // default value, will be overwritten by config
 params.projection_on_populations_CON_only = "False"
+
+individuals_annotation = file(params.individuals_annotation)
 
 script_dir = file(SCRIPT_DIR)
 batch_dir = file(BATCH_DIR)
@@ -42,22 +48,14 @@ Channel.fromFilePairs("${params.snpqci_dir}/${params.collection_name}_QCI.{bed,b
     .map { a -> [fileExists(a[1]), fileExists(a[2]), fileExists(a[3])] }
     .separate (for_remove_bad_samples) { a -> [a] }
 
-sampleqci_helpers = file("bin/SampleQCI_helpers.py")
+sampleqci_helpers = file("${workflow.projectDir}/bin/SampleQCI_helpers.py")
 
 
 prefix = params.collection_name + "_SampleQCI_"
 
-/*
- *
- *
- * Imported from SampleQCI_parallel_part1
- *
- *
- *
- */
-
 /* Apply pre-calculated remove list for indidividuals */
 process apply_precalc_remove_list {
+    tag "${params.collection_name}"
     input:
     file plink from input_ch
 //    file precalculated_remove_list
@@ -68,9 +66,9 @@ process apply_precalc_remove_list {
 
     script:
     base = plink[0].baseName
-    remove_list = BATCH_DIR + "/${params.individuals_remove_manually}"
+    remove_list = "/${params.individuals_remove_manually}"
 
-    if(params.individuals_remove_manually == '' || params.individuals_remove_manually == 'nothing.txt') {
+    if(params.individuals_remove_manually == '' || params.individuals_remove_manually == 'nothing.txt' || params.individuals_remove_manually == '/dev/null') {
         """
         module load "IKMB"
         module load "Plink/1.9"
@@ -90,14 +88,13 @@ process apply_precalc_remove_list {
 
 
 process determine_miss_het {
-//    cpus 4
-	memory { 12.GB * task.attempt }
+    tag "${params.collection_name}"
+	memory { 24.GB * task.attempt }
 	time { 4.h * task.attempt }
 	errorStrategy 'retry'
 
     input:
         file dataset from for_det_miss_het
-//    val prefix
 
     output:
     file prefix+"het.het.{1.png,2.png,logscale.1.png,logscale.2.png}"
@@ -107,19 +104,15 @@ process determine_miss_het {
 
     publishDir params.sampleqci_dir ?: '.', mode: 'copy'
 
-    //cpus {4 * task.attempt}
-
-
-
 shell:
 '''
     module load "IKMB"
-    module load "Plink/1.7"
+    module load "Plink/1.9"
     
 # generates  miss.{hh,imiss,lmiss,log,nosex}
-plink --noweb --bfile "!{new File(dataset[0].toString()).getBaseName()}" --out !{prefix}miss --missing&
+plink --memory 10000 --bfile "!{new File(dataset[0].toString()).getBaseName()}" --out !{prefix}miss --missing&
 # generates het.{het,hh,log,nosex}
-plink --noweb --bfile "!{new File(dataset[0].toString()).getBaseName()}" --out !{prefix}het --het&
+plink --memory 10000 --bfile "!{new File(dataset[0].toString()).getBaseName()}" --out !{prefix}het --het&
 wait
 
 R --slave --args !{prefix}het.het !{prefix}miss.imiss < "!{script_dir + "/heterozygosity_logimiss_withoutthresh.r"}"& # generates het.het.logscale.1.png
@@ -142,6 +135,7 @@ perl -ne 'chomp;next if $.==1; @s=split /\\s+/;print "$s[1]\\t$s[2]\\n" if $s[6]
 }
 
 process prune {
+    tag "${params.collection_name}"
     publishDir params.sampleqci_dir ?: '.', mode: 'copy'
     time 3.h
 
@@ -179,6 +173,8 @@ plink --noweb --bfile intermediate --extract include_variants --make-bed --out "
 }
 
 process calc_imiss {
+    tag "${params.collection_name}"
+    memory "24 GB"
     input:
     file dataset from for_calc_imiss
 
@@ -190,20 +186,21 @@ process calc_imiss {
         base = dataset[0].baseName
 """
     module load "IKMB"
-    module load "Plink/1.7"
-plink --noweb --bfile "${base}" --missing --out ${prefix}miss
+    module load "Plink/1.9"
+plink --memory 10000 --bfile "${base}" --missing --out ${prefix}miss
 """
 }
 
-final calc_imiss_job_count = 5
+final calc_imiss_job_count = 80 // should work for ~200k samples
 
 calc_imiss_job_ids = Channel.from(1..calc_imiss_job_count) // plink expects 1-based job indices
 process calc_imiss_IBS {
+    memory '64 GB'
+    time '8 h'
     input:
+    tag "${params.collection_name}/$job"
     file dataset from for_calc_imiss_ibs
     each job from calc_imiss_job_ids
-
-    tag "$job"
 
     output:
     file "*.part.genome.*" into for_ibs_merge_and_verify
@@ -212,17 +209,19 @@ process calc_imiss_IBS {
 module load "IKMB"
 module load "Plink/1.9"
 
-plink --bfile ${dataset[0].baseName} --genome --parallel ${job} ${calc_imiss_job_count} --threads 1 --memory ${task.memory.toMega()} --out ${dataset[0].baseName}.part
+plink --memory 60000 --bfile ${dataset[0].baseName} --genome --parallel ${job} ${calc_imiss_job_count} --threads 1 --out ${dataset[0].baseName}.part
 """
 }
 
 process ibs_merge_and_verify {
 
-publishDir params.sampleqci_dir ?: '.', mode: 'copy'  
+    publishDir params.sampleqci_dir ?: '.', mode: 'copy'  
+    tag "${params.collection_name}"
+    maxRetries 5
+    memory { 30.GB * task.attempt }
+    time { 8.h * task.attempt }
 
-maxRetries 5
-memory { 40.GB * (task.attempt+1)/2 }
-errorStrategy { task.exitStatus == 143 ? 'retry' : 'terminate' }
+    errorStrategy { task.exitStatus == 143 ? 'retry' : 'terminate' }
     input:
     file chunks from for_ibs_merge_and_verify.collect()
     file dataset from for_ibs_merge_and_verify_ds
@@ -234,8 +233,7 @@ errorStrategy { task.exitStatus == 143 ? 'retry' : 'terminate' }
 
 
     shell:
-//        sorted_chunks = chunks.sort({ a, b -> a.toString() <=> b.toString() })
-    ibdplot = SCRIPT_DIR + "/IBD-plot-genomefile.r"
+    ibdplot = NXF_DIR + "/bin/ibd-plot-genomefile.r"
 '''
     module load "IKMB"
     module load "Plink/1.9"
@@ -281,29 +279,43 @@ else
     echo Check passed, genome files do have the expected number of pairwise estimates.
 fi
 
-gawk '{ print $7, $8 }' $OUTFILE >$OUTFILE.Z0.Z1
-R --slave --args $OUTFILE.Z0.Z1 < !{ibdplot}
+echo Drawing plot for $LINES_ORIG points...
+
+# R --slave --args $OUTFILE < !{ibdplot}
+$NXF_DIR/bin/genericplotter $OUTFILE $OUTFILE.png
 
 '''
 }
 
-process merge_dataset_with_hapmap {
+process pca_with_hapmap {
+    tag "${params.collection_name}"
     input:
     file pruned from for_merge_hapmap
 
     output:
         set file(prefix+'pruned_hapmap.bed'), file(prefix+'pruned_hapmap.bim'), file(prefix+'pruned_hapmap.fam') into for_pca_convert_pruned_hapmap, for_pca_run_pruned_hapmap
 
+        file prefix+'eigenstrat-parameters'
+        file prefix+'pruned.{eigenstratgeno,ind,snp}'
+
+        file "*.png"
+        file "*.pdf"
     shell:
         base_pruned = pruned[0].baseName
         bim_pruned = pruned[1]
-     
-     exclude = BATCH_DIR + "/" + params.PCA_SNPexcludeList
-    hapmap = params.preQCIMDS_HapMap2
+        exclude = BATCH_DIR + "/" + params.PCA_SNPexcludeList
+        hapmap = params.preQCIMDS_HapMap2
 
+        annotations = params.individuals_annotation_hapmap2
+    /*base_pruned = pruned_hapmap[0].baseName*/
+    sigma_threshold = 100.0
+    draw_eigenstrat = SCRIPT_DIR + "/draw_evec_EIGENSTRAT.r"
+    draw_without = SCRIPT_DIR + "/draw_evec_withoutProjection.r"
+    projection_on_populations_hapmap = ANNOTATION_DIR + "/" + params.projection_on_populations_hapmap
 '''
 module load IKMB
 module load Plink/1.9
+module load Eigensoft/4.2
 
 if [ -e "!{exclude}" ]; then
     plink --bfile "!{base_pruned}" --extract "!{hapmap}.bim" --exclude "!{exclude}" --make-bed --out pruned_tmp --allow-no-sex --memory !{task.memory.toMega()} 
@@ -337,70 +349,24 @@ do
     fi
 done
 
+# Make parameters file for Eigenstrat (former pca_convert())
+echo "*** converting for Eigenstrat ***"
+python -c 'from SampleQCI_helpers import *; pca_convert ("!{base_pruned}", "!{prefix}eigenstrat-parameters", "!{annotations}")'
+python -c 'from SampleQCI_helpers import *; pca_convert ("!{prefix}pruned_hapmap", "!{prefix}eigenstrat-parameters-all", "!{annotations}")'
+
+echo "*** performing PCA with Eigenstrat ***"
+# Set up PCA
+export TMPDIR="$(pwd)"
+export TEMPDIR="$(pwd)"
+export TEMP="$(pwd)"
+python -c 'from SampleQCI_helpers import *; pca_run("!{prefix}pruned_hapmap", !{sigma_threshold}, "!{projection_on_populations_hapmap}", !{params.numof_pc}, 1, "!{draw_eigenstrat}", "!{draw_without}")'
 '''
-}
-
-
-process pca_convert {
-
-
-  input:
-  file pruned_hapmap from for_pca_convert_pruned_hapmap
-  file pruned from for_pca_convert_pruned
-
-  output:
-  file prefix+'eigenstrat-parameters'
-  file prefix+'pruned.{eigenstratgeno,ind,snp}'
-  file prefix+'pruned_hapmap.{eigenstratgeno,ind,snp}' into for_pca_run
-
-
-  def annotations = ANNOTATION_DIR + "/" + params.individuals_annotation_hapmap2
-
-  script:
-  base_pruned = pruned[0].baseName
-  base_hapmap = pruned_hapmap[0].baseName
-"""
-  module load "IKMB"
-  module load "Plink/1.9"
-  module load "Eigensoft"
-  python -c 'from SampleQCI_helpers import *; pca_convert ("${base_pruned}", "${prefix}eigenstrat-parameters", "${annotations}")'
-  python -c 'from SampleQCI_helpers import *; pca_convert ("${base_hapmap}", "${prefix}eigenstrat-parameters-all", "${annotations}")'
-"""
-}
-
-
-process pca_run {
-         publishDir params.sampleqci_dir ?: '.', mode: 'copy'   
-
-
-    input:
-    file pruned_hapmap from for_pca_run_pruned_hapmap
-
-    set file(prefix+'pruned_hapmap.eigenstratgeno'), file(prefix+'pruned_hapmap.ind'), file(prefix+'pruned_hapmap.snp') from for_pca_run
-
-    output:
-        file "*.png"
-        file "*.pdf"
-
-    script:
-    base_pruned = pruned_hapmap[0].baseName
-    sigma_threshold = 100.0
-    draw_eigenstrat = SCRIPT_DIR + "/draw_evec_EIGENSTRAT.r"
-    draw_without = SCRIPT_DIR + "/draw_evec_withoutProjection.r"
-    projection_on_populations_hapmap = ANNOTATION_DIR + "/" + params.projection_on_populations_hapmap
-"""
-    module load "IKMB"
-    module load "Plink/1.9"
-    module load "Eigensoft/4.2"
-export TMPDIR="\$(pwd)"
-export TEMPDIR="\$(pwd)"
-export TEMP="\$(pwd)"
-python -c 'from SampleQCI_helpers import *; pca_run("${base_pruned}", ${sigma_threshold}, "${projection_on_populations_hapmap}", ${params.numof_pc}, 1, "${draw_eigenstrat}", "${draw_without}")'
-"""
 }
 
 process second_pca_eigenstrat {
     publishDir params.sampleqci_dir ?: '.', mode: 'copy' 
+    tag "${params.collection_name}"
+
 
     input:
     file pruned from for_second_pca_eigen
@@ -423,9 +389,11 @@ fi
 
 process flashpca2_pruned {
      publishDir params.sampleqci_dir ?: '.', mode: 'copy'   
+    tag "${params.collection_name}"
 
     input:
     file pruned from for_second_pca_flashpca
+    file individuals_annotation
 
     output:
     def target = "${params.collection_name}_SampleQCI_pruned_${params.numof_pc}PC"
@@ -440,7 +408,6 @@ process flashpca2_pruned {
     draw_evec_FLASHPCA2 = SCRIPT_DIR + "/draw_evec_FLASHPCA2.r"
     pcaplot_1KG = SCRIPT_DIR + "/pcaplot_1KG_v2.R"
 
-    individuals_annotation = ANNOTATION_DIR + "/" + params.individuals_annotation
 """
     module load "IKMB"
     module load "FlashPCA"
@@ -459,9 +426,11 @@ process flashpca2_pruned {
 
 process flashpca2_pruned_1kG {
         publishDir params.sampleqci_dir ?: '.', mode: 'copy'
+    tag "${params.collection_name}"
 
     input:
     file pruned from for_second_pca_flashpca_1kg
+    file individuals_annotation
 
     output:
     file "${pruned[0].baseName}_1kG_${params.numof_pc}PC.fail-pca-1KG-qc.txt" into for_remove_bad_samples_flashpca
@@ -481,7 +450,6 @@ process flashpca2_pruned_1kG {
         PCA_SNPexcludeList = BATCH_DIR + "/" + params.PCA_SNPexcludeList
     }
 
-    individuals_annotation = ANNOTATION_DIR + "/" + params.individuals_annotation
 """
     module load "IKMB"
     module load "FlashPCA"
@@ -532,10 +500,10 @@ R --slave --args "${plink_pca_1kG}.country" "${params.preQCIMDS_1kG_sample}" <"$
 
 process detect_duplicates_related {
         publishDir params.sampleqci_dir ?: '.', mode: 'copy'
-maxRetries 5
-memory { 12.GB * (task.attempt+1)/2 }
-errorStrategy { task.exitStatus == 143 ? 'retry' : 'terminate' }
-
+        memory {12.GB * task.attempt}
+        time {8.h * task.attempt}
+        errorStrategy 'retry'
+    tag "${params.collection_name}"
     input:
     file pruned from for_detect_duplicates
     file ibs from for_detect_duplicates_genome
@@ -546,7 +514,7 @@ errorStrategy { task.exitStatus == 143 ? 'retry' : 'terminate' }
     file "${params.collection_name}_SampleQCI_final_duplicates.txt" into for_remove_bad_samples_duplicates
 
     shell:
-    plot_script = SCRIPT_DIR + "/IBD-plot-genomefile.r"
+    plot_script = NXF_DIR + "/bin/ibd-plot-genomefile.r"
     threshold_duplicates = params.max_ibd_threshold_duplicates
     threshold_relatives = params.max_ibd_threshold_relatives
 
@@ -557,6 +525,7 @@ python -c 'from SampleQCI_helpers import *; detect_duplicates_related_individual
 
 process remove_bad_samples {
     publishDir params.sampleqci_dir ?: '.', mode: 'copy'
+    tag "${params.collection_name}"
 
     input:
     file pruned from for_remove_bad_samples // TODO: naming issue. These are original files from SNPQCI, not pruned files.
@@ -609,16 +578,18 @@ plink --noweb --bfile !{pruned[0].baseName} --remove remove-samples --make-bed -
 
 process extract_qced_samples {
 	publishDir params.sampleqci_dir ?: '.', mode: 'copy'
+    tag "${params.collection_name}"
     input:
     file dataset from for_extract_qced_samples_ds
     file evec from for_extract_qced_samples_evec // 0 is .evec, 1 is .country.evec
+    file individuals_annotation
 
     output:
     set file ("${dataset[0].baseName}.evec"), file ("${dataset[0].baseName}.country.evec") into for_draw_histograms_evec, for_prune_related_evec
     file "${dataset[0].baseName}_annotation.txt" into for_draw_histograms_ann
 
     shell:
-    individuals_annotation = ANNOTATION_DIR + "/${params.individuals_annotation}"
+    //individuals_annotation = ANNOTATION_DIR + "/${params.individuals_annotation}"
     qced_annotations = "${dataset[0].baseName}_annotation.txt"
     newevec = "${dataset[0].baseName}.evec"
     newcountryevec = "${dataset[0].baseName}.country.evec"
@@ -634,6 +605,7 @@ python -c 'from SampleQCI_helpers import *; extract_QCsamples_from_pc_file("!{ev
 
 process draw_histograms {
         publishDir params.sampleqci_dir ?: '.', mode: 'copy'
+    tag "${params.collection_name}"
     input:
     file dataset from for_draw_histograms
     file evec from for_draw_histograms_evec // same here
@@ -664,6 +636,7 @@ fi
 
 process tracy_widom_stats {
     publishDir params.sampleqci_dir ?: '.', mode: 'copy'
+    tag "${params.collection_name}"
 
 
     input:
@@ -707,11 +680,12 @@ fi
 
 process pca_without_projection {
     publishDir params.sampleqci_dir ?: '.', mode: 'copy'
+    tag "${params.collection_name}"
 
     input:
     file pruned_1kg from for_pca_without_projection
     file remove_list from for_pca_without_projection_removelist
-
+    file individuals_annotation
     output:
     file "${params.collection_name}_SampleQCI_pruned_1kG_${params.numof_pc}PC.fail-pca-1KG-qc.txt"
     file "${params.collection_name}_SampleQCI_pruned_1kG_${params.numof_pc}PC.country.fail-pca-1KG-qc.txt"
@@ -719,7 +693,7 @@ process pca_without_projection {
     shell:
     kg_out = "${params.collection_name}_SampleQCI_pruned_1kG"
     kg_pca = "${kg_out}_${params.numof_pc}PC"
-    individuals_annotation = ANNOTATION_DIR + "/${params.individuals_annotation}"
+    /*individuals_annotation = ANNOTATION_DIR + "/${params.individuals_annotation}"*/
     pcaplot_1KG = SCRIPT_DIR + "/pcaplot_1KG_v2.R"
 '''
     module load 'IKMB'
@@ -757,9 +731,9 @@ R --slave --args "!{kg_pca}.country" "!{params.preQCIMDS_1kG_sample}" <"!{pcaplo
 '''
 }
 
-// SampleQCI_parallel_part3 starts here
 process remove_relatives {
     publishDir params.sampleqci_dir ?: '.', mode: 'copy'
+    tag "${params.collection_name}"
 
 
     input:
@@ -767,7 +741,7 @@ process remove_relatives {
     file dataset from for_prune_related
     file relatives from for_prune_related_rel
     file evec from for_prune_related_evec
-
+    file individuals_annotation
     output:
 
     set file("${dataset[0].baseName}_withoutRelatives.bed"), file("${dataset[0].baseName}_withoutRelatives.bim"), file("${dataset[0].baseName}_withoutRelatives.fam") into for_prune_wr
@@ -775,7 +749,7 @@ process remove_relatives {
     file "${dataset[0].baseName}_withoutRelatives.annotation.txt"
 
     shell:
-    individuals_annotation = ANNOTATION_DIR + "/${params.individuals_annotation}"
+    /*individuals_annotation = ANNOTATION_DIR + "/${params.individuals_annotation}"*/
 '''
     module load "IKMB"
     module load "Plink/1.7"
@@ -789,6 +763,7 @@ python -c 'from SampleQCI_helpers import *; extract_QCsamples_from_annotationfil
 
 process prune_withoutRelatives {
 
+    tag "${params.collection_name}"
     input:
     file dataset from for_prune_wr
     file miss_outliers from for_prune_wr_miss
@@ -826,12 +801,12 @@ plink --noweb --bfile intermediate --extract include_variants --make-bed --out "
 
 calc_imiss_job_ids_wr = Channel.from(1..calc_imiss_job_count) // plink expects 1-based job indices
 process calc_imiss_IBS_wr {
-
+    memory '20 GB'
+    time '8 h'
+    tag "${params.collection_name}/$job"
     input:
     file dataset from for_calc_imiss_IBS_wr
     each job from calc_imiss_job_ids_wr
-
-    tag "$job"
 
     output:
     file "*.part.genome.*" into for_ibs_merge_and_verify_wr
@@ -844,7 +819,8 @@ plink --bfile ${dataset[0].baseName} --genome --parallel ${job} ${calc_imiss_job
 }
 
 process calc_imiss_withoutRelatives {
-
+    memory '20 GB'
+    tag "${params.collection_name}"
     input:
         file dataset from for_calc_imiss_wr
 
@@ -854,17 +830,16 @@ process calc_imiss_withoutRelatives {
     script:
 """
     module load "IKMB"
-    module load "Plink/1.7"
-plink --noweb --bfile "${dataset[0].baseName}" --missing --out ${dataset[0].baseName}_miss
+    module load "Plink/1.9"
+plink --memory 18000 --bfile "${dataset[0].baseName}" --missing --out ${dataset[0].baseName}_miss
 """
 }
 
 process ibs_merge_and_verify_withoutRelatives {
     publishDir params.sampleqci_dir ?: '.', mode: 'copy'
-    maxRetries 5
-    memory { 40.GB * (task.attempt+1)/2 }
-    errorStrategy { task.exitStatus == 143 ? 'retry' : 'terminate' }
-    
+    tag "${params.collection_name}"
+    memory '20 GB'
+    time {8.h * task.attempt}
     input:
     file chunks from for_ibs_merge_and_verify_wr.collect()
     file dataset from for_ibs_merge_and_verify_wr_ds
@@ -874,7 +849,7 @@ process ibs_merge_and_verify_withoutRelatives {
 
 
     shell:
-    ibdplot = SCRIPT_DIR + "/IBD-plot-genomefile.r"
+    ibdplot = NXF_DIR + "/bin/ibd-plot-genomefile.r"
 '''
 
 #IFS=' '
@@ -885,6 +860,10 @@ CHUNKS=$(ls --sort=extension *.genome.*)
 echo Chunks: $CHUNKS
 
 OUTFILE="!{dataset[0].baseName}_IBS.genome"
+
+rm -f "!{dataset[0].baseName}_IBS.genome.png"
+rm -f "$OUTFILE"
+
 #FIRST=1
 #echo Got ${#CHUNKS} chunks.
 echo "Merging..."
@@ -920,14 +899,11 @@ else
     echo Plotting genome file result for comparison.
 fi
 
-gawk '{ print $7, $8 }' $OUTFILE >$OUTFILE.Z0.Z1
-R --slave --args $OUTFILE.Z0.Z1 < !{ibdplot}
+echo Drawing plot for $LINES_ORIG points...
+
+# R --slave --args $OUTFILE < !{ibdplot}
+$NXF_DIR/bin/genericplotter $OUTFILE $OUTFILE.png
 '''
 }
 
-workflow.onComplete {
-    println "Generating phase summary..."
-    def cmd = ["./generate-phase-summary", "SampleQC", params.collection_name ?: params.disease_data_set_prefix, workflow.workDir, params.trace_target].join(' ')
-    def gensummary = ["bash", "-c", cmd].execute()
-    gensummary.waitFor()
-}
+

@@ -31,6 +31,13 @@ locale-gen en_US en_US.UTF-8 de_DE.UTF-8 de_DE
 #   chown -R root:root locuszoom-1.3
 #   chmod -R 0755 locuszoom-1.3
 
+echo "Installing Plink 1.02"
+   cd /opt
+   wget -nc 'http://zzz.bwh.harvard.edu/plink/dist/plink-1.02-x86_64.zip'
+   unzip -o plink-1.02-x86_64.zip
+   mv plink-1.02-x86_64 plink-1.02
+   rm -f plink-1.02-x86_64.zip
+
 echo "Installing Plink 1.07"
    cd /opt
    wget -nc 'http://zzz.bwh.harvard.edu/plink/dist/plink-1.07-x86_64.zip'

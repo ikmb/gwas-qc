@@ -1,4 +1,11 @@
 digraph {
+  # set to DIN A4 aspect ratio
+  ratio="full";
+  size="8.3,11.7!";
+  margin=0;
+  graph [ fontsize=12, fontname=Roboto ]
+  node [ fontsize=12, fontname=Roboto ]
+  edge [ fontsize=11, fontname=Roboto ]
   {
     # dataset names
     node [shape=note]
@@ -18,17 +25,20 @@ digraph {
 
   {
     # process names
+    rs_cda [label="Chip detect"]
     rs_clean_namesa [label="Lift genome build"]
     rs_norm_variantsa [label="Normalize variant names"]
     rs_flipa [label="Flip variants"]
     rs_duplicatesa [label="Remove duplicates"]
     
     rs_clean_namesb [label="Lift genome build"]
+    rs_cdb [label="Chip detect"]
     rs_norm_variantsb [label="Normalize variant names"]
     rs_flipb [label="Flip variants"]
     rs_duplicatesb [label="Remove duplicates"]
     
     rs_clean_namesc [label="Lift genome build"]
+    rs_cdc [label="Chip detect"]
     rs_norm_variantsc [label="Normalize variant names"]
     rs_flipc [label="Flip variants"]
     rs_duplicatesc [label="Remove duplicates"]
@@ -36,27 +46,33 @@ digraph {
 
 
   subgraph cluster_1 {
+    rs_cda;
     rs_clean_namesa -> rs_norm_variantsa -> rs_flipa -> rs_duplicatesa;
     label="Rs Phase";
   }
 
   subgraph cluster_2 {
+    rs_cdb;
     rs_clean_namesb -> rs_norm_variantsb -> rs_flipb -> rs_duplicatesb;
     label="Rs Phase";
   }
 
   subgraph cluster_3 {
+    rs_cdc;
     rs_clean_namesc -> rs_norm_variantsc -> rs_flipc -> rs_duplicatesc;
     label="Rs Phase";
   }
 
   batch1 -> rs_clean_namesa;
+  batch1 -> rs_cda;
   rs_duplicatesa -> "Merge batches";
 
   batch2 -> rs_clean_namesb;
+  batch2 -> rs_cdb;
   rs_duplicatesb  -> "Merge batches";
 
   batchn -> rs_clean_namesc;
+  batchn -> rs_cdc;
   rs_duplicatesc  -> "Merge batches";
 
 
@@ -165,8 +181,8 @@ digraph {
     
   }
 
-  SampleQC_final -> "Remove HF test outliers" [color=blue];
-
+  #SampleQC_final -> "Remove HF test outliers" [color=blue];
+  SampleQC_final_wr -> "Remove HF test outliers" [color=blue];
   "Final Sample cleaning" -> final [color="blue"];
   
   

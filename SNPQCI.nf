@@ -1,30 +1,31 @@
 // -*- mode:groovy -*-
+// vim: syntax=nextflow
 
 /*
  Author: Jan Kässens <j.kaessens@ikmb.uni-kiel.de>
 */
 
-def ChipDefinitions = this.class.classLoader.parseClass(new File("config/ChipDefinitions.groovy"))
+def ChipDefinitions = this.class.classLoader.parseClass(new File(params.chip_defs))
 
 // initialize configuration
-params.rs_dir = "." // Not initialized if we skipped Rs
 params.snpqci_dir = "."
-hwe_template_script = file(params.hwe_template)
+// hwe_template_script = file("${workflow.projectDir}/"+params.hwe_template)
+hwe_script = file("${workflow.projectDir}/bin/hwe.R")
 
 // Lots of indirection layers require lots of backslash escaping
-individuals_annotation = file(ANNOTATION_DIR + "/" + params.individuals_annotation)
+individuals_annotation = file(params.individuals_annotation)
 definetti_r = file(SCRIPT_DIR + "/DeFinetti_hardy.r")
 autosomes = file(ANNOTATION_DIR + "/" + params.chip_build + "/" + ChipDefinitions.Producer(params.chip_producer) + "/" + ChipDefinitions.RsAutosomes(params.chip_version))
-draw_fdr = file("bin/SNP_QCI_draw_FDR.r")
-draw_fdr_allbatches = file("bin/SNP_QCI_draw_FDR_Fail_allbatches.r")
+draw_fdr = file("${workflow.projectDir}/bin/SNP_QCI_draw_FDR.r")
+draw_fdr_allbatches = file("${workflow.projectDir}/bin/SNP_QCI_draw_FDR_Fail_allbatches.r")
 
 // set up channels
 to_calc_hwe_script = Channel.create()
 to_calc_hwe = Channel.create()
 
 process merge_batches {
-
-    memory 12.GB
+    tag "${params.collection_name}"
+    memory 32.GB
 
     output:
     file "${params.collection_name}_Rs.bim" into merged_bim, to_split_bim, to_hwe_bim, to_verify_bim, to_exclude_bim, to_miss_bim, to_miss_batch_bim
@@ -38,47 +39,39 @@ process merge_batches {
 '''
 #!/usr/bin/env bash
 
-IFS=','
-NAMES=($(echo "!{params.disease_names}"))
-PREFIXES=($(echo "!{params.disease_data_set_prefix_rs}"))
-
-BASEDIR="!{params.rs_dir}"
-if [[ ${BASEDIR:0:1} == "/" ]]; then
-    echo "$BASEDIR seems to be absolute. No change necessary."
-else
-    BASEDIR="$NXF_DIR/$BASEDIR"
-fi
-
-BASE="$BASEDIR/${PREFIXES[0]}"
-
 module load IKMB
 module load Plink/1.9
 
-for idx in ${!PREFIXES[@]}; do
-echo idx: $idx
-echo name: ${NAMES[$idx]}
-echo prefix: ${PREFIXES[$idx]}
+# Param input: space-separated file names, relative to params.rs_dir
+BIMS=(!{params.rs_bims})
+BEDS=(!{params.rs_beds})
+FAMS=(!{params.rs_fams})
+INDELS=(!{params.rs_indels})
 
-cp ${BASEDIR}/!{params.collection_name}.indels !{params.collection_name}.indels
+IFS=' '
 
-if [ "$idx" -gt 0 ]; then
-    echo -n !{params.rs_dir}/${PREFIXES[$idx]}.bed  >>merge-list
-    echo -n " " >>merge-list
-    echo -n !{params.rs_dir}/${PREFIXES[$idx]}.bim >>merge-list
-    echo -n " " >>merge-list
-    echo !{params.rs_dir}/${PREFIXES[$idx]}.fam >>merge-list
-    cat !{params.rs_dir}/${PREFIXES[$idx]}.indels >>!{params.collection_name}.indels
-fi
+rm -f merge-list
+for idx in ${!BIMS[@]}; do
+    # All values except the first go into the merge list
+    if [ "$idx" -gt 0 ]; then
+        echo -n !{params.rs_dir}/${BEDS[$idx]} >>merge-list
+        echo -n " " >>merge-list
+        echo -n !{params.rs_dir}/${BIMS[$idx]} >>merge-list
+        echo -n " " >>merge-list
+        echo !{params.rs_dir}/${FAMS[$idx]} >>merge-list
+    fi
 done
 
-if [ "${#PREFIXES[*]}" -gt 1 ]; then
-plink --bfile $BASE --merge-list merge-list --make-bed --out "!{params.collection_name}_Rs" --allow-no-sex --memory 11000
+if [ "${#BIMS[*]}" -gt 1 ]; then
+    plink --memory 30000 --bed !{params.rs_dir}/${BEDS[0]} --bim !{params.rs_dir}/${BIMS[0]} --fam !{params.rs_dir}/${FAMS[0]} --merge-list merge-list --make-bed --out !{params.collection_name}_Rs --allow-no-sex
 else
-cp $BASE.bim !{params.collection_name}_Rs.bim
-cp $BASE.bed !{params.collection_name}_Rs.bed
-cp $BASE.fam !{params.collection_name}_Rs.fam
-echo "No merge perfomed, only one disease name found" >!{params.collection_name}_Rs.log
+    echo "No merge necessary, only one batch found." | tee !{params.collection_name}_Rs.log
+    ln -s !{params.rs_dir}/${BIMS[0]} !{params.collection_name}_Rs.bim
+    ln -s !{params.rs_dir}/${BEDS[0]} !{params.collection_name}_Rs.bed
+    ln -s !{params.rs_dir}/${FAMS[0]} !{params.collection_name}_Rs.fam
 fi
+ln -s !{params.rs_dir}/${INDELS[0]} !{params.collection_name}.indels
+
 '''
 }
 
@@ -86,7 +79,8 @@ fi
  Generate HWE tables and draw DeFinetti plots of the whole data set
  */
 process hwe_definetti_preqc {
-  memory 8192.MB
+  tag "${params.collection_name}"
+  memory {8192.MB*task.attempt}
   cpus 1
   publishDir params.snpqci_dir ?: '.', mode: 'copy', overwrite: true
 
@@ -120,15 +114,24 @@ R --slave --args ${params.collection_name}_hardy.hwe ${params.collection_name}_c
  */
 
 process split_dataset {
-  input:
-    file input_bim from to_split_bim
 
-  output:
-    file 'chunk_*' into to_calc_hwe
+  tag "${params.collection_name}"
+input:
+  file input_bim from to_split_bim
+  file individuals_annotation
 
-  """
-  cut -f 2 $input_bim | split -l 10000 -a 5 -d - chunk_
-  """
+output:
+  file 'chunk_*' into to_calc_hwe
+
+shell:
+'''
+  CONTROLS=$(awk '{if($9=="Control") print}' "!{individuals_annotation}"| wc -l)
+  if [ "$CONTROLS" -ge 1 ]; then
+    cut -f 2 $input_bim | split -l 10000 -a 5 -d - chunk_
+  else
+    touch chunk_00000
+  fi
+'''
 }
 
 
@@ -140,23 +143,20 @@ process calculate_hwe {
   // Should have been zero, but killall -q returns 1 if it didn't find anything
   validExitStatus 0
   errorStrategy 'retry'
-  memory 2.GB
-  time 1.h
+//  memory {8.GB * task.attempt }
+  memory '60 GB'
+  time {1.h * task.attempt }
+  tag "${params.collection_name}/${chunk}"
 
   input:
     each file(chunk) from to_calc_hwe.flatten()
     file input_bim from to_hwe_bim
     file input_bed from to_hwe_bed
     file input_fam from to_hwe_fam
-    file individuals_annotation // not directly used in the script below but hwe-script.r expects this to be staged
-    file hwe_template_script
+    file individuals_annotation
 
   output:
   file "${chunk}-out.auto.R" into from_calc_hwe
-//  file "${chunk}-out.nosex"
-
-  tag { chunk }
-
 
 shell:
 '''
@@ -165,59 +165,23 @@ shell:
     module load IKMB
     module load Plink/1.9
 
-<!{individuals_annotation} awk ' { if($9 == "Control" || $9 == "diagnosis") print $1,$2,$3,$4,$5,$6,$7,$8,$9,$10 }' >individuals_annotation.txt
+# Filter annotations to include only controls
+<!{individuals_annotation} awk ' { if($9 == "Control" || $9 == "diagnosis") print $1,$2,$3,$4,$5,$6,$7,$8,$9,$10 }' >individuals_annotation
 
-RETRY=1
-while [ $RETRY -eq 1 ]; do
-    rm -f /scratch/rserve.sock /scratch/rserve.pid "!{chunk}-out.auto.R"
+ANNOT_LINES=$(wc -l individual_annotations)
 
-    # Start Rserve process in background. Keep in mind that --RS-pidfile is an undocumented feature that writes the PID after daemonizing (that is, not the R pid but the Rserve pid) into the specified file. It might be changed in the future
-    R CMD Rserve --RS-socket /scratch/rserve.sock --no-save --RS-pidfile /scratch/rserve.pid
+# annotation file always has at least one header line
+if [ "$ANNOT_LINES" -gt 1 ]; then
 
-    # Wait for R to spawn the Rserve daemon and open its socket. Rule out race conditions with plink not finding the Rserve socket on time
-    echo Waiting for Rserve to create the socket
-    while [ ! -e /scratch/rserve.sock ]
-    do
-       sleep 0.5
-    done
+    # Filter dataset
+    plink --bfile "!{new File(input_bim.toString()).getBaseName()}" --filter-controls --extract !{chunk} --make-bed --out !{chunk}-controls
 
-    # File is there but it does not need to be populated on slow nodes. Wait for that to happen.
-    echo Waiting for Rserve to create the pid file
-    while [ ! -s /scratch/rserve.pid ]
-    do
-        sleep 1
-    done
+    # Calc HWE
+    Rscript !{hwe_script} !{chunk}-controls individuals_annotation !{chunk}-out.auto.R
+else
+    touch !{chunk}-out.auto.R
+fi
 
-    RSERVE_PID=$(cat /scratch/rserve.pid)
-    echo Rserve process spawned with pid $RSERVE_PID
-
-    # Cwd to the staging directory where the scripts and chunks are stored
-    THEPWD=$(pwd)
-    echo "setwd('$THEPWD')" >hwe-script-local.r
-    cat !{hwe_template_script} >>hwe-script-local.r
-    plink --bfile "!{new File(input_bim.toString()).getBaseName()}" --filter-controls --R-socket /scratch/rserve.sock --R hwe-script-local.r --threads 1 --memory 512 --allow-no-sex --extract !{chunk} --out !{chunk}-out
-    sleep 1
-
-    RETRY=0
-    kill $RSERVE_PID || {
-        echo "Rserve/PLINK failed. Retrying."
-        rm -f /scratch/rserve.sock /scratch/rserve.pid "!{chunk}-out.auto.R"
-        RETRY=1
-    }
-
-    # Did we create a result file? If not, retry.
-    if [ ! -e "!{chunk}-out.auto.R" ]; then
-        RETRY=1
-    else
-        # Does our result file contain NAs? If so, retry.
-        LINES=$(grep -E '\\sNA\\s?$' "!{chunk}-out.auto.R" | wc -l)
-        if [ $LINES -gt 1 ]; then
-            RETRY=1
-        else
-            RETRY=0
-        fi
-    fi
-done
 '''
 }
 
@@ -227,7 +191,9 @@ done
  */
 
 process hwe_fdr_filter {
-    publishDir params.snpqci_dir ?: '.', mode: 'copy'
+
+  tag "${params.collection_name}"
+publishDir params.snpqci_dir ?: '.', mode: 'copy'
     input:
     file 'chunk' from from_calc_hwe.collect()
     file input_bim from to_verify_bim
@@ -238,23 +204,41 @@ process hwe_fdr_filter {
     file draw_fdr
 
     output:
-    file "${params.collection_name}_exclude-whole-collection-worst-batch-removed" into excludes_whole
-    file "${params.collection_name}_exclude-per-batch-fail-in-2-plus-batches" into excludes_perbatch
-    file "${params.collection_name}_exclude-whole-collection-all-batches" into excludes_allbatches
-    file "${params.collection_name}_exclude-whole-collection-worst-batch-removed.FDRthresholds.SNPQCI.1.txt.png"
-    file "${params.collection_name}_exclude-per-batch-fail-in-2-plus-batches.FDRthresholds.SNPQCI.2.txt.png"
-    file "${params.collection_name}_exclude-whole-collection-worst-batch-removed.FDRthresholds.SNPQCI.1.txt"
-    file "${params.collection_name}_exclude-per-batch-fail-in-2-plus-batches.FDRthresholds.SNPQCI.2.txt"
+    file ("${params.collection_name}_exclude-whole-collection-worst-batch-removed") into excludes_whole
+    file ("${params.collection_name}_exclude-per-batch-fail-in-2-plus-batches") into excludes_perbatch
+    file ("${params.collection_name}_exclude-whole-collection-all-batches") into excludes_allbatches
+    file ("${params.collection_name}_exclude-whole-collection-worst-batch-removed.FDRthresholds.SNPQCI.1.txt.png")
+    file ("${params.collection_name}_exclude-per-batch-fail-in-2-plus-batches.FDRthresholds.SNPQCI.2.txt.png")
+    file ("${params.collection_name}_exclude-whole-collection-worst-batch-removed.FDRthresholds.SNPQCI.1.txt")
+    file ("${params.collection_name}_exclude-per-batch-fail-in-2-plus-batches.FDRthresholds.SNPQCI.2.txt")
 
     shell:
     hwe_result = file("${params.collection_name}_chunks_combined.hwe")
 '''
 #!/usr/bin/env bash
-HWE_RESULTS="!{params.collection_name}_chunks_combined.hwe"
-cat chunk[0-9]* >$HWE_RESULTS
 
-combined_hwe_nas=`grep -c NA $HWE_RESULTS`
-input_nas=`grep -c NA !{input_bim}`
+HWE_RESULTS="!{params.collection_name}_chunks_combined.hwe"
+cat chunk* >$HWE_RESULTS
+
+
+N_CONTROLS=$(awk '{if($9=="Control") print}' "!{individuals_annotation}"| wc -l)
+
+# see if we really do not have controls or if some upstream process just failed silently
+# ...then early abort. Create dummy outputs for the non-optional files
+if [ "$N_CONTROLS" -eq 0 ] && [ ! -s "$HWE_RESULTS" ]; then
+    touch "!{params.collection_name}_exclude-whole-collection-worst-batch-removed"
+    touch "!{params.collection_name}_exclude-per-batch-fail-in-2-plus-batches"
+    touch "!{params.collection_name}_exclude-whole-collection-all-batches"
+    touch "!{params.collection_name}_exclude-whole-collection-worst-batch-removed.FDRthresholds.SNPQCI.1.txt.png"
+    touch "!{params.collection_name}_exclude-per-batch-fail-in-2-plus-batches.FDRthresholds.SNPQCI.2.txt.png"
+    touch "!{params.collection_name}_exclude-whole-collection-worst-batch-removed.FDRthresholds.SNPQCI.1.txt"
+    touch "!{params.collection_name}_exclude-per-batch-fail-in-2-plus-batches.FDRthresholds.SNPQCI.2.txt"
+    exit 0
+fi
+
+# Count only those NAs that appear in the value columns
+combined_hwe_nas=$(awk '{$1=$2=$3=$4="";print $0}' $HWE_RESULTS | grep -c NA)
+input_nas=$(awk '{$1=$2=$3=$4=""; print $0}' !{input_bim} |grep -c NA)
 if [ "$combined_hwe_nas" -ne "$input_nas" ]
 then
    echo "There are missing HWE calculations, $combined_hwe_nas NAs in chunked HWE calculations and $input_nas in input."
@@ -274,19 +258,23 @@ N_CONTROLS=$(<!{individuals_annotation} tr -s '\\t ' ' ' | cut -f7,9 -d' ' | uni
 echo Found $N_CONTROLS control batches
 
 if [ "$N_CONTROLS" -gt 2 ]; then
-    SNPQCI_fdr_filter.py "$HWE_RESULTS" "!{individuals_annotation}" "!{draw_fdr}" \
-       !{params.collection_name}_exclude-whole-collection-worst-batch-removed \
-       !{params.collection_name}_exclude-per-batch-fail-in-2-plus-batches \
-       !{params.collection_name}_exclude-whole-collection-all-batches \
-       !{params.FDR_index_remove_variants}
+    DRAWSCRIPT="!{draw_fdr}"
 else
-    SNPQCI_fdr_filter.py "$HWE_RESULTS" "!{individuals_annotation}" "!{draw_fdr_allbatches}"\
-       !{params.collection_name}_exclude-whole-collection-worst-batch-removed\
-       !{params.collection_name}_exclude-per-batch-fail-in-2-plus-batches \
-       !{params.collection_name}_exclude-whole-collection-all-batches \
-       !{params.FDR_index_remove_variants}
+    DRAWSCRIPT="!{draw_fdr_allbatches}"
 fi
 
+fdrfilter.pl "$HWE_RESULTS" !{params.FDR_index_remove_variants} \
+    !{params.collection_name}_exclude-whole-collection-worst-batch-removed.FDRthresholds.SNPQCI.1.txt \
+    !{params.collection_name}_exclude-whole-collection-all-batches \
+    !{params.collection_name}_exclude-whole-collection-worst-batch-removed \
+    !{params.collection_name}_exclude-per-batch-fail-in-2-plus-batches.FDRthresholds.SNPQCI.2.txt \
+    !{params.collection_name}_exclude-per-batch-fail-in-2-plus-batches
+
+R --slave --args \
+    !{params.collection_name}_exclude-whole-collection-worst-batch-removed.FDRthresholds.SNPQCI.1.txt \
+    !{params.collection_name}_exclude-per-batch-fail-in-2-plus-batches.FDRthresholds.SNPQCI.2.txt \
+    !{params.FDR_index_remove_variants} \
+    <$DRAWSCRIPT
 '''
 }
 
@@ -297,7 +285,9 @@ fi
 process determine_missingness_entire {
     publishDir params.snpqci_dir ?: '.', mode: 'copy'
     errorStrategy 'retry'
-    memory { 8.GB * task.attempt }
+    memory { 16.GB * task.attempt }
+    time { 4.h * task.attempt }
+    tag "${params.collection_name}"
 
     input:
     file input_bim from to_miss_bim
@@ -322,7 +312,9 @@ SNPQCI_extract_missingness_entire.py missingness_entire.lmiss ${params.geno_enti
 process determine_missingness_per_batch {
     publishDir params.snpqci_dir ?: '.', mode: 'copy'
     errorStrategy 'retry'
-    memory { 8.GB * task.attempt }
+    memory { 16.GB * task.attempt }
+    time { 4.h * task.attempt }
+    tag "${params.collection_name}"
 
     input:
     file individuals_annotation
@@ -348,6 +340,7 @@ process exclude_bad_variants {
     publishDir params.snpqci_dir ?: '.', mode: 'copy'
     errorStrategy 'retry'
     memory { 8.GB * task.attempt }
+    tag "${params.collection_name}"
 
     input:
     file individuals_annotation
@@ -368,8 +361,9 @@ process exclude_bad_variants {
 
 """
     module load IKMB
-    module load Plink/1.7
+    module load Plink/1.9
 
+TMPDIR=.
 NUM_CTRL_BATCHES=\$(tr -s '\\t ' ' ' <${individuals_annotation} | cut -f7,9 -d" " | grep Control | uniq | wc -l)
 
 if [ "\$NUM_CTRL_BATCHES" -gt "4" ]; then
@@ -377,15 +371,17 @@ if [ "\$NUM_CTRL_BATCHES" -gt "4" ]; then
     (tail -n +2 "$excludes_whole" | cut -f1; cat "$excludes_perbatch"; cat "$missingness_excludes_entire"; cat "$missingness_excludes_perbatch") | sort -n | uniq >variant-excludes
 else
     echo "Found \$NUM_CTRL_BATCHES control batches. Skipping 'worst batch removed' excludes from HWE testing."
-    (tail -n +2 "$excludes_allbatches" | cut -f1; cat "$missingness_excludes_entire"; cat "$missingness_excludes_perbatch") | sort -n | uniq >variant-excludes
+    (tail -n +1 "$excludes_allbatches" | cut -f1; cat "$missingness_excludes_entire"; cat "$missingness_excludes_perbatch") | sort -n | uniq >variant-excludes
+#    (cat "$missingness_excludes_entire"; cat "$missingness_excludes_perbatch") | sort -n | uniq >variant-excludes
 fi
 
-plink --noweb --bfile "${new File(input_bim.toString()).getBaseName()}" --exclude variant-excludes --make-bed --out ${params.collection_name}_QCI
+plink --memory 15000 --bfile "${new File(input_bim.toString()).getBaseName()}" --exclude variant-excludes --make-bed --out ${params.collection_name}_QCI
 """
 }
 
 process hwe_definetti_qci {
     publishDir params.snpqci_dir ?: '.', mode: 'copy'
+    tag "${params.collection_name}"
 
     def prefix = "${params.collection_name}_QCI_hardy"
 
@@ -412,9 +408,3 @@ R --slave --args ${prefix}.hwe ${prefix}_controls_DeFinetti ${prefix}_cases_DeFi
 """
 }
 
-workflow.onComplete {
-    println "Generating phase summary..."
-    def cmd = ["./generate-phase-summary", "SNPQCI", params.collection_name ?: params.disease_data_set_prefix, workflow.workDir, params.trace_target].join(' ')
-    def gensummary = ["bash", "-c", cmd].execute()
-    gensummary.waitFor()
-}
