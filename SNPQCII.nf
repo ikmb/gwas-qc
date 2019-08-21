@@ -473,6 +473,7 @@ else
 fi
 
 gawk '{ print $1, $2 }' "!{prefix}.unknown_diagnosis" "!{prefix}.individuals_remove_manually" | sort | uniq >"!{prefix}.individuals_remove_final"
+
 '''
 }
 

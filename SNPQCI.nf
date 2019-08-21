@@ -118,14 +118,20 @@ process split_dataset {
   tag "${params.collection_name}"
 input:
   file input_bim from to_split_bim
+  file individuals_annotation
 
 output:
   file 'chunk_*' into to_calc_hwe
 
-  """
-
-  cut -f 2 $input_bim | split -l 10000 -a 5 -d - chunk_
-  """
+shell:
+'''
+  CONTROLS=$(awk '{if($9=="Control") print}' "!{individuals_annotation}"| wc -l)
+  if [ "$CONTROLS" -ge 1 ]; then
+    cut -f 2 $input_bim | split -l 10000 -a 5 -d - chunk_
+  else
+    touch chunk_00000
+  fi
+'''
 }
 
 
@@ -147,7 +153,7 @@ process calculate_hwe {
     file input_bim from to_hwe_bim
     file input_bed from to_hwe_bed
     file input_fam from to_hwe_fam
-    file individuals_annotation // not directly used in the script below but hwe-script.r expects this to be staged
+    file individuals_annotation
 
   output:
   file "${chunk}-out.auto.R" into from_calc_hwe
@@ -162,11 +168,20 @@ shell:
 # Filter annotations to include only controls
 <!{individuals_annotation} awk ' { if($9 == "Control" || $9 == "diagnosis") print $1,$2,$3,$4,$5,$6,$7,$8,$9,$10 }' >individuals_annotation
 
-# Filter dataset
-plink --bfile "!{new File(input_bim.toString()).getBaseName()}" --filter-controls --extract !{chunk} --make-bed --out !{chunk}-controls
+ANNOT_LINES=$(wc -l individual_annotations)
 
-# Calc HWE
-Rscript !{hwe_script} !{chunk}-controls individuals_annotation !{chunk}-out.auto.R
+# annotation file always has at least one header line
+if [ "$ANNOT_LINES" -gt 1 ]; then
+
+    # Filter dataset
+    plink --bfile "!{new File(input_bim.toString()).getBaseName()}" --filter-controls --extract !{chunk} --make-bed --out !{chunk}-controls
+
+    # Calc HWE
+    Rscript !{hwe_script} !{chunk}-controls individuals_annotation !{chunk}-out.auto.R
+else
+    touch !{chunk}-out.auto.R
+fi
+
 '''
 }
 
@@ -189,20 +204,37 @@ publishDir params.snpqci_dir ?: '.', mode: 'copy'
     file draw_fdr
 
     output:
-    file "${params.collection_name}_exclude-whole-collection-worst-batch-removed" into excludes_whole
-    file "${params.collection_name}_exclude-per-batch-fail-in-2-plus-batches" into excludes_perbatch
-    file "${params.collection_name}_exclude-whole-collection-all-batches" into excludes_allbatches
-    file "${params.collection_name}_exclude-whole-collection-worst-batch-removed.FDRthresholds.SNPQCI.1.txt.png"
-    file "${params.collection_name}_exclude-per-batch-fail-in-2-plus-batches.FDRthresholds.SNPQCI.2.txt.png"
-    file "${params.collection_name}_exclude-whole-collection-worst-batch-removed.FDRthresholds.SNPQCI.1.txt"
-    file "${params.collection_name}_exclude-per-batch-fail-in-2-plus-batches.FDRthresholds.SNPQCI.2.txt"
+    file ("${params.collection_name}_exclude-whole-collection-worst-batch-removed") into excludes_whole
+    file ("${params.collection_name}_exclude-per-batch-fail-in-2-plus-batches") into excludes_perbatch
+    file ("${params.collection_name}_exclude-whole-collection-all-batches") into excludes_allbatches
+    file ("${params.collection_name}_exclude-whole-collection-worst-batch-removed.FDRthresholds.SNPQCI.1.txt.png")
+    file ("${params.collection_name}_exclude-per-batch-fail-in-2-plus-batches.FDRthresholds.SNPQCI.2.txt.png")
+    file ("${params.collection_name}_exclude-whole-collection-worst-batch-removed.FDRthresholds.SNPQCI.1.txt")
+    file ("${params.collection_name}_exclude-per-batch-fail-in-2-plus-batches.FDRthresholds.SNPQCI.2.txt")
 
     shell:
     hwe_result = file("${params.collection_name}_chunks_combined.hwe")
 '''
 #!/usr/bin/env bash
+
 HWE_RESULTS="!{params.collection_name}_chunks_combined.hwe"
 cat chunk* >$HWE_RESULTS
+
+
+N_CONTROLS=$(awk '{if($9=="Control") print}' "!{individuals_annotation}"| wc -l)
+
+# see if we really do not have controls or if some upstream process just failed silently
+# ...then early abort. Create dummy outputs for the non-optional files
+if [ "$N_CONTROLS" -eq 0 ] && [ ! -s "$HWE_RESULTS" ]; then
+    touch "!{params.collection_name}_exclude-whole-collection-worst-batch-removed"
+    touch "!{params.collection_name}_exclude-per-batch-fail-in-2-plus-batches"
+    touch "!{params.collection_name}_exclude-whole-collection-all-batches"
+    touch "!{params.collection_name}_exclude-whole-collection-worst-batch-removed.FDRthresholds.SNPQCI.1.txt.png"
+    touch "!{params.collection_name}_exclude-per-batch-fail-in-2-plus-batches.FDRthresholds.SNPQCI.2.txt.png"
+    touch "!{params.collection_name}_exclude-whole-collection-worst-batch-removed.FDRthresholds.SNPQCI.1.txt"
+    touch "!{params.collection_name}_exclude-per-batch-fail-in-2-plus-batches.FDRthresholds.SNPQCI.2.txt"
+    exit 0
+fi
 
 # Count only those NAs that appear in the value columns
 combined_hwe_nas=$(awk '{$1=$2=$3=$4="";print $0}' $HWE_RESULTS | grep -c NA)
