@@ -264,7 +264,7 @@ fi
 
 '''
 }
-
+*/
 process generate_hf_excludes {
     publishDir params.qc_dir ?: '.', mode: 'copy', overwrite: true
     tag "${params.collection_name}"
@@ -282,6 +282,8 @@ process generate_hf_excludes {
     shell:
     dataset = mapFileList(SampleQCI_final_staged)
     plotscript = SCRIPT_DIR + "/SNP_QCII_draw_FDR_CaseControl.r"
+    results = ""
+    hf_test_excludes_anno = ""
 '''
 touch hf-excludes
 
@@ -463,7 +465,6 @@ process det_unknown_diagnosis {
     annotation = dataset.annotation
     prefix = "${params.collection_name}_SNPQCII"
 '''
-# TODO: Might need to process "!{params.diagnoses}" into an actual list before calling
 python -c 'from SNPQC_helpers import *; determine_unknown_diagnosis(annotationfile="!{annotation}", outfile="!{prefix}.unknown_diagnosis", diagnoses="!{params.diagnoses}")'
 
 if [ -e "!{params.individuals_remove_manually}" ]; then
