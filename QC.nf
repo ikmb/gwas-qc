@@ -292,5 +292,6 @@ PERL5LIB=/home/sukmb388/nxf-report perl /home/sukmb388/nxf-report/report.pl $NXF
 singularity exec $RUNOPTIONS lualatex report.tex
 singularity exec $RUNOPTIONS lualatex report.tex
 mv report.pdf "!{dataset}-report.pdf"
+
 '''
 }
