@@ -168,7 +168,7 @@ shell:
 # Filter annotations to include only controls
 <!{individuals_annotation} awk ' { if($9 == "Control" || $9 == "diagnosis") print $1,$2,$3,$4,$5,$6,$7,$8,$9,$10 }' >individuals_annotation
 
-ANNOT_LINES=$(wc -l individuals_annotation)
+ANNOT_LINES=$(wc -l <individuals_annotation)
 
 # annotation file always has at least one header line
 if [ "$ANNOT_LINES" -gt 1 ]; then
