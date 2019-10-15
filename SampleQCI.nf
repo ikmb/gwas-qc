@@ -191,7 +191,7 @@ plink --memory 10000 --bfile "${base}" --missing --out ${prefix}miss
 """
 }
 
-final calc_imiss_job_count = 80 // should work for ~200k samples
+final calc_imiss_job_count = 200 // 80 should work for ~200k samples
 
 calc_imiss_job_ids = Channel.from(1..calc_imiss_job_count) // plink expects 1-based job indices
 process calc_imiss_IBS {
@@ -390,6 +390,7 @@ fi
 process flashpca2_pruned {
      publishDir params.sampleqci_dir ?: '.', mode: 'copy'   
     tag "${params.collection_name}"
+    time 8.h
 
     input:
     file pruned from for_second_pca_flashpca
@@ -427,6 +428,7 @@ process flashpca2_pruned {
 process flashpca2_pruned_1kG {
         publishDir params.sampleqci_dir ?: '.', mode: 'copy'
     tag "${params.collection_name}"
+    time 8.h
 
     input:
     file pruned from for_second_pca_flashpca_1kg
@@ -471,7 +473,7 @@ do
             POS=\$(echo \$f | cut -f2 -d:)
             grep -E "^\$CHR\\\\s.*\$POS" \${BASE_PRUNED}.bim | cut -f2 -d\$'\\t' >>removelist
         done <"${base_pruned_1kG}-merge.missnp"
-        plink --bfile "\$BASE_PRUNED" --exclude removelist --make-bed --out "\$NEW_PRUNED"
+        plink --bfile "\$BASE_PRUNED" --memory 10000 --exclude removelist --make-bed --out "\$NEW_PRUNED"
         BASE_PRUNED=\$NEW_PRUNED
         mv "${base_pruned_1kG}-merge.missnp" "${base_pruned_1kG}.missnp.removed"
     else
@@ -681,6 +683,7 @@ fi
 process pca_without_projection {
     publishDir params.sampleqci_dir ?: '.', mode: 'copy'
     tag "${params.collection_name}"
+    time 12.h
 
     input:
     file pruned_1kg from for_pca_without_projection
@@ -764,6 +767,8 @@ python -c 'from SampleQCI_helpers import *; extract_QCsamples_from_annotationfil
 process prune_withoutRelatives {
 
     tag "${params.collection_name}"
+    time {12.h * task.attempt}
+    maxRetries 5
     input:
     file dataset from for_prune_wr
     file miss_outliers from for_prune_wr_miss

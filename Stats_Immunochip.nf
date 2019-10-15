@@ -80,6 +80,7 @@ params.disease_data_set_prefix_release_statistics = "dummy"
 process preprocess_infofilter_dosage {
     tag "chr${chrom}"
     time 12.h
+    errorStrategy { task.exitStatus == 128 ? 'retry' : 'terminate' }
 
     input:
     file vcfgz from ds_imp_input
@@ -184,6 +185,7 @@ process preprocess_hrc_vcf_map {
 
 process extract_genotyped_variants {
 	cpus 4
+    errorStrategy { task.exitStatus == 128 ? 'retry' : 'terminate' }
 
 	input:
 //	file ds_stats_staged from Channel.from(ds_stats_input).collect()
@@ -208,7 +210,7 @@ plink --bfile "!{ds.bim.baseName}" \
 	--threads 4 \
 	--pheno "!{ds.fam}.single-id.pheno" \
 	--make-bed --allow-no-sex \
-	--out "!{target}"
+	--out "!{target}" || true
 
 
 #	--remove "${ds.relatives}" \
@@ -226,7 +228,7 @@ gawk 'FILENAME~/fam$/{samples[$2]=1}(FILENAME~/covar$/ && FNR==1) {print $0} (FI
 // Steps 1.1 and 1.2: per-chromosome dosage and logistic calculations,
 // results will be merged in merge_log_dos_results
 process plink_dosage_logistic {
-
+    validExitStatus 0,128
     cpus 4
     tag "chr$chromosome"
 
@@ -312,6 +314,7 @@ gawk '{ OFS="\t"; print $1, $2, $3, $4, $19, $17, $18, "genotyped", $7, $8, $12 
 
 process merge_log_dos_results {
 publishDir params.output ?: '.', mode: 'copy', overwrite: true
+    validExitStatus 0,128
     input:
     file dosage_files from merge_log_dos_results_dosage.collect()
     file log_files from merge_log_dos_results_logistic.collect()
@@ -498,7 +501,7 @@ manhattan_plot "!{rsq08}_excludeRegions"
 
 
 process convert_dosages {
-
+validExitStatus 0,128
 tag "chr$chromosome"
 
 input:
@@ -815,15 +818,16 @@ echo "Detecting duplicates..."
 <"!{rsq8.bim}" tr -s '\t ' ' ' | cut -f2 -d' ' | uniq -d >rsq8-duplicates
 
 # output those records that are not in the 'duplicates' list
-echo "Removing duplicates from locuszoom tables..."
-awk 'NR==FNR{duplicates[$0];next} {f=!($2 in duplicates)} f' rsq3-duplicates "!{rsq3_lz}" >rsq3_lz
-awk 'NR==FNR{duplicates[$0];next} {f=!($2 in duplicates)} f' rsq8-duplicates "!{rsq8_lz}" >rsq8_lz
+echo "Checking for and removing duplicates from locuszoom tables..."
+if [ ! -s rsq3-duplicates ]; then
+    awk 'NR==FNR{duplicates[$0];next} {f=!($2 in duplicates)} f' rsq3-duplicates "!{rsq3_lz}" >rsq3_lz
+    plink --bfile "!{rsq3.bim.baseName}" --memory 10000 --threads 1 --exclude rsq3-duplicates --make-bed --out rsq3 --allow-no-sex
+fi
 
-# remove the duplicates from the respective plink sets
-echo "Removing duplicates from Plink sets"
-plink --bfile "!{rsq3.bim.baseName}" --memory 10000 --threads 1 --exclude rsq3-duplicates --make-bed --out rsq3 --allow-no-sex&
-plink --bfile "!{rsq8.bim.baseName}" --memory 10000 --threads 1 --exclude rsq8-duplicates --make-bed --out rsq8 --allow-no-sex&
-wait
+if [ ! -s rsq8-duplicates ]; then
+    awk 'NR==FNR{duplicates[$0];next} {f=!($2 in duplicates)} f' rsq8-duplicates "!{rsq8_lz}" >rsq8_lz
+    plink --bfile "!{rsq8.bim.baseName}" --memory 10000 --threads 1 --exclude rsq8-duplicates --make-bed --out rsq8 --allow-no-sex
+fi
 
 echo "Calculate clumping..."
 python -c 'from Stats_helpers import *; \
