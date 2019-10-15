@@ -109,7 +109,7 @@ process lift_genome_build {
 module load Plink/1.02
 TARGETNAME="!{original[1].baseName}_lift"
 BASENAME="!{original[1].baseName}"
-STRAND_FILE="!{params.lift_to}"
+STRAND_FILE="!{params.liftover}"
 
 plink --bfile "!{original[1].baseName}" --make-bed --out converted
 

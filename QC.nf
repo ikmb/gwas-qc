@@ -66,6 +66,7 @@ output:
     file "Rs-${dataset}-${batch}.trace.txt" into Rs_traces
 shell:
     dsconfig = params.dataset_config[dataset]
+    liftover = params.batch_liftover[batch]
 '''
 echo !{task}
 echo !{workflow}
@@ -77,6 +78,7 @@ NXF_PARAMS="!{Rs_script} -c !{params.qc_config} \\
     -c !{dsconfig} \\
     --filebase=!{filebase} \\
     --batch_name=!{batch} \\
+    --liftover=!{liftover} \\
     --ds_name=!{dataset} \\
     --chip_defs=!{workflow.projectDir}/config/ChipDefinitions.groovy \\
     --rs_dir=!{params.output}/!{dataset}/Rs \\
