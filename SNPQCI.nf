@@ -42,6 +42,8 @@ process merge_batches {
 module load IKMB
 module load Plink/1.9
 
+set -x
+
 # Param input: space-separated file names, relative to params.rs_dir
 BIMS=(!{params.rs_bims})
 BEDS=(!{params.rs_beds})
@@ -64,6 +66,22 @@ done
 
 if [ "${#BIMS[*]}" -gt 1 ]; then
     plink --memory 30000 --bed !{params.rs_dir}/${BEDS[0]} --bim !{params.rs_dir}/${BIMS[0]} --fam !{params.rs_dir}/${FAMS[0]} --merge-list merge-list --make-bed --out !{params.collection_name}_Rs --allow-no-sex
+    if [ -s "!{params.collection_name}_Rs-merge.missnp" ]; then
+        echo "Removing $(wc -l !{params.collection_name}_Rs.missnp) variants that would have 3 or more alleles after merge."
+
+        # Remove from every entry in the merge list
+        rm -f merge-list
+        for idx in ${!BIMS[@]}; do
+            plink --memory 30000 --bed !{params.rs_dir}/${BEDS[$idx]} --bim !{params.rs_dir}/${BIMS[$idx]} --fam !{params.rs_dir}/${FAMS[$idx]} --exclude !{params.collection_name}_Rs-merge.missnp --allow-no-sex --make-bed --out ds-$idx
+
+            # All values except the first go into the merge list
+            if [ "$idx" -gt 0 ]; then
+                echo ds-$idx.bed ds-$idx.bim ds-$idx.fam >>merge-list
+            fi
+        done
+
+        plink --memory 30000 --bfile ds-0 --merge-list merge-list --make-bed --out !{params.collection_name}_Rs --allow-no-sex
+    fi
 else
     echo "No merge necessary, only one batch found." | tee !{params.collection_name}_Rs.log
     ln -s !{params.rs_dir}/${BIMS[0]} !{params.collection_name}_Rs.bim
