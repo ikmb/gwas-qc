@@ -159,11 +159,11 @@ shell:
 
 process calculate_hwe {
   // Should have been zero, but killall -q returns 1 if it didn't find anything
-  validExitStatus 0
+  validExitStatus 0,128
   errorStrategy 'retry'
 //  memory {8.GB * task.attempt }
   memory '60 GB'
-  time {1.h * task.attempt }
+  time {7.h * task.attempt }
   tag "${params.collection_name}/${chunk}"
 
   input:
