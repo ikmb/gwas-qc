@@ -808,6 +808,7 @@ calc_imiss_job_ids_wr = Channel.from(1..calc_imiss_job_count) // plink expects 1
 process calc_imiss_IBS_wr {
     memory '20 GB'
     time '8 h'
+    validExitStatus 0,128
     tag "${params.collection_name}/$job"
     input:
     file dataset from for_calc_imiss_IBS_wr
