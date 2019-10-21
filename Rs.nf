@@ -340,8 +340,6 @@ fi
 '''
 }
 
-individuals_annotation = file(ANNOTATION_DIR + "/" + params.individuals_annotation)
-
 /*
  Apply an exclude list to the translated Plink data set
  */
