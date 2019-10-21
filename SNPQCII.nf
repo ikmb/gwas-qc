@@ -264,7 +264,7 @@ fi
 
 '''
 }
-*/
+
 process generate_hf_excludes {
     publishDir params.qc_dir ?: '.', mode: 'copy', overwrite: true
     tag "${params.collection_name}"

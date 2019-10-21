@@ -280,7 +280,7 @@ process final_merge_pruned_with_1kg {
     if(params.PCA_SNPexcludeList == "") {
         snpexclude = ""
     } else {
-        snpexclude = BATCH_DIR + "/${params.PCA_SNPexcludeList}"
+        snpexclude = "${params.PCA_SNPexcludeList}"
     }
 '''
     module load "IKMB"

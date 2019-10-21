@@ -34,7 +34,7 @@ params.projection_on_populations_CON_only = "False"
 individuals_annotation = file(params.individuals_annotation)
 
 script_dir = file(SCRIPT_DIR)
-batch_dir = file(BATCH_DIR)
+// batch_dir = file(BATCH_DIR)
 
 input_ch = Channel.create()
 Channel.fromFilePairs("${params.snpqci_dir}/${params.collection_name}_QCI.{bed,bim,fam}", size: 3, flat: true) { file -> file.baseName } \
@@ -303,7 +303,7 @@ process pca_with_hapmap {
     shell:
         base_pruned = pruned[0].baseName
         bim_pruned = pruned[1]
-        exclude = BATCH_DIR + "/" + params.PCA_SNPexcludeList
+        exclude = params.PCA_SNPexcludeList
         hapmap = params.preQCIMDS_HapMap2
 
         annotations = params.individuals_annotation_hapmap2
@@ -449,7 +449,7 @@ process flashpca2_pruned_1kG {
     if (params.PCA_SNPexcludeList == "nofileexists") {
         PCA_SNPexcludeList = ""
     } else {
-        PCA_SNPexcludeList = BATCH_DIR + "/" + params.PCA_SNPexcludeList
+        PCA_SNPexcludeList = params.PCA_SNPexcludeList
     }
 
 """
@@ -546,7 +546,7 @@ process remove_bad_samples {
 
     shell:
     target_basename = params.collection_name + "_SampleQCI_final"
-    remove_manually = BATCH_DIR + "/${params.individuals_remove_manually}"
+    remove_manually = "/${params.individuals_remove_manually}"
 '''
     module load 'IKMB'
     module load 'Plink/1.7'
