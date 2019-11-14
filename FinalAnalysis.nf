@@ -104,7 +104,8 @@ plink --bfile !{dataset.bed.baseName} --extract "!{params.PCA_SNPList}" --make-b
     module load "IKMB"
     module load "Plink/1.9"
 
-<!{dataset.bim} tr -s '\\t ' ' ' | cut -f2 -d' ' | grep ^unk_ >unknowns
+# note that grep returns 1 if the pattern was not found, thus || true
+<!{dataset.bim} tr -s '\\t ' ' ' | cut -f2 -d' ' | grep ^unk_ >unknowns || true
 plink --bim !{dataset.bim} --bed !{dataset.bed} --fam !{dataset.fam} --exclude unknowns --make-bed --out no-unknowns
 
 plink --bfile no-unknowns --indep-pairwise 50 5 0.2 --out after-indep-pairwise --allow-no-sex
