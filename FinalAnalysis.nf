@@ -73,6 +73,7 @@ Channel.from(fileExists(file(params.individuals_annotation)))
 
 // part 4
 process prune_final {
+    validExitStatus 0,128
     publishDir params.qc_dir ?: '.', mode: 'copy', overwrite: true, pattern: '*.prune.{in,out,out.unknown_variants}'
     time '2 h'
     tag "${params.collection_name}"

@@ -166,6 +166,7 @@ ln -fs !{params.output}/!{dataset}/SNPQCI/!{prefix}.fam
 }
 
 process SampleQC {
+	validExitStatus 0,1
     tag "${dataset}"
 input:
     set val(dataset), val(filebase), file(bed), file(bim), file(fam) from SampleQC_ds
@@ -205,6 +206,7 @@ ln -fs !{params.output}/!{dataset}/SampleQCI/!{prefix}.pca.evec
 }
 
 process SNPQCII {
+	validExitStatus 0,1
     tag "${dataset}"
 input:
     set val(dataset), val(filebase), file(bed), file(bim), file(fam) from SNPQCII_ds
@@ -241,6 +243,7 @@ ln -fs !{params.output}/!{dataset}/SNPQCII/!{prefix}_annotation.txt
 }
 
 process FinalAnalysis {
+validExitStatus 0,1
 tag "${dataset}"
 input:
     set val(dataset), val(filebase), file(bed), file(bim), file(fam), file(anno) from FinalAnalysis_ds
