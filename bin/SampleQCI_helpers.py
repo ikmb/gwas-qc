@@ -443,32 +443,32 @@ def merge__new_plink_collection_pruned__1kG(new_plink_pruned, new_plink_pruned_1
     # remove some variants if specified in file PCA_SNPexcludeList, SNPIDs in chr:pos format required
     if os.path.isfile(PCA_SNPexcludeList):
 
-        cmd = Command("plink --noweb --bfile %s.chrpos --extract %s.bim.chrpos --exclude %s --make-bed --out %s --allow-no-sex" \
+        cmd = Command("plink --memory 10000 --bfile %s.chrpos --extract %s.bim.chrpos --exclude %s --make-bed --out %s --allow-no-sex" \
                    %(new_plink_pruned,\
                      preQCIMDS_1kG,\
                      PCA_SNPexcludeList,\
                      new_plink_pruned + "_tmp") )
         cmd.run() ; del cmd
-        cmd = Command("plink --noweb --bfile %s --extract %s.chrpos.bim.txt --exclude %s --make-bed --out %s --allow-no-sex" \
+        cmd = Command("plink --nmemory 10000 --bfile %s --extract %s.chrpos.bim.txt --exclude %s --make-bed --out %s --allow-no-sex" \
                    %(preQCIMDS_1kG,\
                      new_plink_pruned,\
                      PCA_SNPexcludeList,\
                      os.path.basename(preQCIMDS_1kG + "_tmp")) )
         cmd.run() ; del cmd
     else:
-        cmd = Command("plink --noweb --bfile %s.chrpos --extract %s.bim.chrpos --make-bed --out %s --allow-no-sex" \
+        cmd = Command("plink --memory 10000 --bfile %s.chrpos --extract %s.bim.chrpos --make-bed --out %s --allow-no-sex" \
                    %(new_plink_pruned,\
                      preQCIMDS_1kG,\
                      new_plink_pruned + "_tmp") )
         cmd.run() ; del cmd
-        cmd = Command("plink --noweb --bfile %s --extract %s.chrpos.bim.txt --make-bed --out %s --allow-no-sex" \
+        cmd = Command("plink --memory 10000 --bfile %s --extract %s.chrpos.bim.txt --make-bed --out %s --allow-no-sex" \
                    %(preQCIMDS_1kG,\
                      new_plink_pruned,\
                      os.path.basename(preQCIMDS_1kG + "_tmp")) )
         cmd.run() ; del cmd
 
     # merge
-    cmd = Command("plink --noweb --bfile %s --bmerge %s.bed %s.bim %s.fam --make-bed --out %s --allow-no-sex" \
+    cmd = Command("plink --memory 10000 --bfile %s --bmerge %s.bed %s.bim %s.fam --make-bed --out %s --allow-no-sex" \
                %(new_plink_pruned + "_tmp",\
                  os.path.basename(preQCIMDS_1kG + "_tmp"),\
                  os.path.basename(preQCIMDS_1kG + "_tmp"),\

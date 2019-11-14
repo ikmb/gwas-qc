@@ -429,6 +429,7 @@ process flashpca2_pruned_1kG {
         publishDir params.sampleqci_dir ?: '.', mode: 'copy'
     tag "${params.collection_name}"
     time 8.h
+    memory 110.GB
 
     input:
     file pruned from for_second_pca_flashpca_1kg

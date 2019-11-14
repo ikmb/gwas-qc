@@ -272,7 +272,7 @@ process generate_hf_excludes {
     input:
     file SampleQCI_final_staged from Channel.from(SampleQCI_final).collect()
     file results from hf_test_results
-    file hf_test_excludes_anno
+    file annotations from hf_test_excludes_anno
     file diagnoses from hf_generate_excludes_diagnoses
 
     output:
@@ -282,7 +282,6 @@ process generate_hf_excludes {
     shell:
     dataset = mapFileList(SampleQCI_final_staged)
     plotscript = SCRIPT_DIR + "/SNP_QCII_draw_FDR_CaseControl.r"
-    results = ""
     hf_test_excludes_anno = ""
 '''
 touch hf-excludes
@@ -299,7 +298,7 @@ do
     DIAG="${diagnoses[$i]}"
 
     # prepare annotations and hf_results to contain only one disease
-    awk "{if(\\$9==\\"$DIAG\\"||\\$9==\\"diagnosis\\"){print \\$0}}" !{hf_test_excludes_anno} >"annotations_$DIAG"
+    awk "{if(\\$9==\\"$DIAG\\"||\\$9==\\"diagnosis\\"){print \\$0}}" !{annotations} >"annotations_$DIAG"
     #awk "OFS=\\"\\t\\" { print \\$1,\\$2,\\$3,\\$4,\\$5,\\$6,\\$$((7+$i)),\\$$((7+$i+1)) }" !{results} >"!{results}_$DIAG"
     COL_START=$((7 + $BATCHES_PROCESSED * 2))
     BATCH_COUNT=$(tail -n+2 "annotations_$DIAG" | awk '{print $7}' | sort | uniq | wc -l)
