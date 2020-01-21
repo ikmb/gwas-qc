@@ -589,14 +589,14 @@ plink --allow-no-sex --bfile !{ds.bim.baseName} --chr 1-22 --exclude !{ds.bim}.i
 
 for chr in {1..22}
 do
-    THENAME="!{ds.bim.baseName}_${chr}_tmp1"
+    THENAME="!{ds.bim.baseName}_${chr}"
     plink --allow-no-sex --bfile final_noindels --chr $chr --recode vcf --out $THENAME
     bgzip $THENAME.vcf || true
 
     echo "$chr Check the REF allele ...";
     bcftools norm --check-ref w -f $ANNOTATION $THENAME.vcf.gz >/dev/null || true
     echo "$chr Fix the REF allele ...";
-    bcftools norm --check-ref s -f $ANNOTATION $THENAME.vcf.gz >!{ds.bim.baseName}.vcf.refchecked || true
+    bcftools norm --check-ref s -f $ANNOTATION $THENAME.vcf.gz >$THENAME.vcf.refchecked || true
     echo "$chr Tabix ...";
     tabix -p vcf $THENAME.vcf.refchecked.gz
 done
