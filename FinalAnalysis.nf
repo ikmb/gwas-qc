@@ -64,9 +64,10 @@ for_sex_check = Channel.create()
 for_det_monomorphics_final = Channel.create()
 for_plot_maf = Channel.create()
 for_prepare_imputation = Channel.create()
+for_prepare_imputation_split = Channel.create()
 
 Channel.from([[params.bed, params.bim, params.fam, params.individuals_annotation, params.evec ].collect { fileExists(file(it)) }])
-       .separate(for_snprelate_prune, for_draw_final_pca_histograms_ds, for_sex_check, for_det_monomorphics_final,for_plot_maf,for_prepare_imputation) {a -> [a,a,a,a,a,a] }
+       .separate(for_snprelate_prune, for_draw_final_pca_histograms_ds, for_sex_check, for_det_monomorphics_final,for_plot_maf,for_prepare_imputation,for_prepare_imputation_split) {a -> [a,a,a,a,a,a,a] }
 
 Channel.from(fileExists(file(params.individuals_annotation)))
        .separate(for_snprelate_ann, for_snprelate_ann_atcg, for_final_pca_1kg_frauke_ann, for_twstats_final_pruned_ann) {a -> [a,a,a,a] }
@@ -562,4 +563,43 @@ tabix -p vcf !{ds.bim.baseName}.vcf.refchecked.gz
 }
 
 
+process prepare_sanger_imputation_split {
+    publishDir params.qc_dir ?: '.', mode: 'copy'
+    tag "${params.collection_name}"
+    time {8.h * task.attempt}
+
+    input:
+    file ds_staged from for_prepare_imputation
+
+    output:
+    file "${ds.bim.baseName}.*.vcf.refchecked.gz"
+    file "${ds.bim.baseName}.*.vcf.refchecked.gz.tbi"
+
+    shell:
+    ds = mapFileList(ds_staged)
+
+    '''
+module load IKMB
+module load Plink/1.9
+
+ANNOTATION=/ifs/data/nfs_share/sukmb388/human_g1k_v37.fasta.gz
+
+grep D !{ds.bim} | awk '{ print $2 }' >!{ds.bim}.indels.txt
+plink --allow-no-sex --bfile !{ds.bim.baseName} --chr 1-22 --exclude !{ds.bim}.indels.txt --make-bed --out final_noindels
+
+for chr in {1..22}
+do
+    THENAME="!{ds.bim.baseName}_${chr}_tmp1"
+    plink --allow-no-sex --bfile final_noindels --chr $chr --recode vcf --out $THENAME
+    bgzip $THENAME.vcf || true
+
+    echo "$chr Check the REF allele ...";
+    bcftools norm --check-ref w -f $ANNOTATION $THENAME.vcf.gz >/dev/null || true
+    echo "$chr Fix the REF allele ...";
+    bcftools norm --check-ref s -f $ANNOTATION $THENAME.vcf.gz >!{ds.bim.baseName}.vcf.refchecked || true
+    echo "$chr Tabix ...";
+    tabix -p vcf $THENAME.vcf.refchecked.gz
+done
+'''
+}
 
