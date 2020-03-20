@@ -543,7 +543,7 @@ process prepare_sanger_imputation {
 module load IKMB
 module load Plink/1.9
 
-ANNOTATION=/ifs/data/nfs_share/sukmb388/human_g1k_v37.fasta.gz
+ANNOTATION=/work_ifs/sukmb388/human_g1k_v37.fasta.gz
 
 grep D !{ds.bim} | awk '{ print $2 }' >!{ds.bim}.indels.txt
 plink --allow-no-sex --bfile !{ds.bim.baseName} --chr 1-22 --exclude !{ds.bim}.indels.txt --make-bed --out final_noindels
@@ -583,7 +583,7 @@ process prepare_sanger_imputation_split {
 module load IKMB
 module load Plink/1.9
 
-ANNOTATION=/ifs/data/nfs_share/sukmb388/human_g1k_v37.fasta.gz
+ANNOTATION=/work_ifs/sukmb388/human_g1k_v37.fasta.gz
 
 grep D !{ds.bim} | awk '{ print $2 }' >!{ds.bim}.indels.txt
 plink --allow-no-sex --bfile !{ds.bim.baseName} --chr 1-22 --exclude !{ds.bim}.indels.txt --make-bed --out final_noindels

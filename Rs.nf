@@ -85,7 +85,7 @@ process check_chip_type {
     shell:
 
 '''
-$NXF_DIR/bin/chipmatch --verbose --output !{original[1].baseName}.chip_detect.log --threads 2 !{original[1].baseName}.bim /work_beegfs/sukmb388/wayne_strands
+$NXF_DIR/bin/chipmatch --verbose --output !{original[1].baseName}.chip_detect.log --threads 2 !{original[1].baseName}.bim /work_ifs/sukmb388/wayne_strands/Source
 <!{original[1].baseName}.bim awk '{if(($5=="A" && $6=="T")||($5=="T" && $6=="A")) { printf("%s %s%s\\n", $2, $5, $6); }}' >!{original[1].baseName}.flag_atcg
 <!{original[1].baseName}.bim awk '{if(($5=="C" && $6=="G")||($5=="G" && $6=="C")) { printf("%s %s%s\\n", $2, $5, $6); }}' >>!{original[1].baseName}.flag_atcg
 '''

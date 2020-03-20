@@ -29,7 +29,7 @@ params.dataset_prefixes.each { key, value ->
 input_datasets.close()
 
 /* Additional external files */
-hapmap2_samples = file("/ifs/data/nfs_share/sukmb388/regeneron_annotations/hapmap2-annotations.txt")
+hapmap2_samples = file("/work_ifs/sukmb388/regeneron_annotations/hapmap2-annotations.txt")
 
 params.nxfdir = "."
 
@@ -291,8 +291,8 @@ output:
     file "${dataset}-report.pdf"
 shell:
 '''
-module load perl5.22.0
-RUNOPTIONS="-B /work_beegfs /home/sukmb388/texlive.img"
+
+RUNOPTIONS="-B /work_ifs /home/sukmb388/texlive.img"
 PERL5LIB=/home/sukmb388/nxf-report perl /home/sukmb388/nxf-report/report.pl $NXF_WORK /home/sukmb388/nxf-report/preamble.tex\
     Rs-!{dataset}-*.txt SNPQCI-!{dataset}.trace.txt SampleQC-!{dataset}.trace.txt SNPQCII-!{dataset}.trace.txt FinalAnalysis-!{dataset}.trace.txt
 singularity exec $RUNOPTIONS lualatex report.tex
