@@ -345,7 +345,7 @@ process exclude_variants {
     dataset = mapFileList(SampleQCI_final_staged)
 '''
     module load "IKMB"
-    module load "Plink/1.7"
+    module load "Plink/1.9"
 
 excludes=$(wc -l <!{exclude})
 variants=$(wc -l <!{dataset.bim})
@@ -356,12 +356,12 @@ if [ "$variants" -eq "$excludes" ]; then
     ln -s "!{dataset.bim}" "!{prefix}.bim"
     ln -s "!{dataset.fam}" "!{prefix}.fam"
 else
-    plink --noweb --bfile "!{dataset.bed.baseName}" --exclude "!{exclude}" --make-bed --out "!{prefix}" --allow-no-sex
+    plink --bfile "!{dataset.bed.baseName}" --exclude "!{exclude}" --make-bed --out "!{prefix}" --allow-no-sex
 fi
 
 cp "!{dataset.annotation}" "!{prefix}_annotation.txt"
 
-plink --noweb --bfile "!{dataset.bed.baseName}" --test-missing --out !{prefix}_test_missingness --allow-no-sex
+plink --bfile "!{dataset.bed.baseName}" --test-missing --out !{prefix}_test_missingness --allow-no-sex
 
 '''
 }
