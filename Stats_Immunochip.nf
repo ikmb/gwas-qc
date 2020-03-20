@@ -135,8 +135,13 @@ BEGIN {
                 printf $1" "$2" "$1":"$2" "$4" "$5" "info
                 for (i=10; i<=NF; i++) {
                     split($i,array,":")
-                    split(array[4],array_GP,",")
-                    printf " "array_GP[1]" "array_GP[2]" "array_GP[3]
+                    # Missing fields are specified as ".", not splittable by ","
+                    if(array[4] == ".") {
+                        printf " . . ."
+                    } else {
+                        split(array[4],array_GP,",")
+                        printf " "array_GP[1]" "array_GP[2]" "array_GP[3]
+                    }
                 }
                 printf "\\n"
             }
