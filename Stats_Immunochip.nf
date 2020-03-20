@@ -838,19 +838,19 @@ echo "Calculate clumping..."
 python -c 'from Stats_helpers import *; \
     PLINK_clumping("rsq3", \
         "rsq8", \
-        "rsq3_lz", \
-        "rsq8_lz", \
+        "!{rsq3_lz}", \
+        "!{rsq8_lz}", \
         !{params.clumpr2}, \
         !{params.clumpp1}, \
         !{params.clumpp2}, \
         !{params.clumpkb})'
 
 # rename rsq3_lz "!{rsq3.bim.baseName}" rsq3_lz_clump.clumped*
-mv rsq3_lz_clumped.clumped "!{rsq3_lz}_clump.clumped"
-mv rsq3_lz_clumped.clumped_all "!{rsq3_lz}_clump.clumped_all"
-mv rsq3_lz_clumped.clumped_all.noXMHC "!{rsq3_lz}_clump.clumped_all.noXMHC"
-mv rsq3_lz_clumped.clumped_groups "!{rsq3_lz}_clump.clumped_groups"
-mv rsq3_lz_clumped.clumped_groups.noXMHC "!{rsq3_lz}_clump.clumped_groups.noXMHC"
+#mv rsq3_lz_clumped.clumped "!{rsq3_lz}_clump.clumped"
+#mv rsq3_lz_clumped.clumped_all "!{rsq3_lz}_clump.clumped_all"
+#mv rsq3_lz_clumped.clumped_all.noXMHC "!{rsq3_lz}_clump.clumped_all.noXMHC"
+#mv rsq3_lz_clumped.clumped_groups "!{rsq3_lz}_clump.clumped_groups"
+#mv rsq3_lz_clumped.clumped_groups.noXMHC "!{rsq3_lz}_clump.clumped_groups.noXMHC"
 
 '''
 }
