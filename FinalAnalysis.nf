@@ -533,8 +533,8 @@ process prepare_sanger_imputation {
     file ds_staged from for_prepare_imputation
 
     output:
-    file "${ds.bim.baseName}.vcf.refchecked.gz"
-    file "${ds.bim.baseName}.vcf.refchecked.gz.tbi"
+    file("${ds.bim.baseName}.vcf.refchecked.gz") optional true
+    file("${ds.bim.baseName}.vcf.refchecked.gz.tbi") optional true
 
     shell:
     ds = mapFileList(ds_staged)
@@ -569,11 +569,12 @@ process prepare_sanger_imputation_split {
     time {8.h * task.attempt}
 
     input:
-    file ds_staged from for_prepare_imputation
+    file ds_staged from for_prepare_imputation_split
+
 
     output:
-    file "${ds.bim.baseName}.*.vcf.refchecked.gz"
-    file "${ds.bim.baseName}.*.vcf.refchecked.gz.tbi"
+    file(  "${ds.bim.baseName}.*.vcf.refchecked.gz" ) optional true
+    file(  "${ds.bim.baseName}.*.vcf.refchecked.gz.tbi" ) optional true
 
     shell:
     ds = mapFileList(ds_staged)
@@ -597,6 +598,7 @@ do
     bcftools norm --check-ref w -f $ANNOTATION $THENAME.vcf.gz >/dev/null || true
     echo "$chr Fix the REF allele ...";
     bcftools norm --check-ref s -f $ANNOTATION $THENAME.vcf.gz >$THENAME.vcf.refchecked || true
+    bgzip $THENAME.vcf.refchecked || true
     echo "$chr Tabix ...";
     tabix -p vcf $THENAME.vcf.refchecked.gz
 done

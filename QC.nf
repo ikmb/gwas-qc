@@ -68,8 +68,8 @@ shell:
     dsconfig = params.dataset_config[dataset]
     liftover = params.batch_liftover[batch]
 '''
-echo !{task}
-echo !{workflow}
+
+
 MYPWD=$(pwd)
 mkdir -p !{workflow.workDir}/!{dataset}-!{batch}-Rs
 cd !{workflow.workDir}/!{dataset}-!{batch}-Rs
