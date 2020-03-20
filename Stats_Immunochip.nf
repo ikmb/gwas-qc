@@ -79,7 +79,7 @@ params.disease_data_set_prefix_release_statistics = "dummy"
 
 process preprocess_infofilter_dosage {
     tag "chr${chrom}"
-    time 12.h
+    time { 24.h * task.attempt }
     errorStrategy { task.exitStatus == 128 ? 'retry' : 'terminate' }
 
     input:

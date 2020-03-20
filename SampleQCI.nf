@@ -174,7 +174,8 @@ plink --noweb --bfile intermediate --extract include_variants --make-bed --out "
 
 process calc_imiss {
     tag "${params.collection_name}"
-    memory "24 GB"
+    memory {24.GB * task.attempt }
+    time {8.h * task.attempt }
     input:
     file dataset from for_calc_imiss
 
@@ -191,12 +192,12 @@ plink --memory 10000 --bfile "${base}" --missing --out ${prefix}miss
 """
 }
 
-final calc_imiss_job_count = 200 // 80 should work for ~200k samples
+final calc_imiss_job_count = 200// 80 should work for ~200k samples
 
 calc_imiss_job_ids = Channel.from(1..calc_imiss_job_count) // plink expects 1-based job indices
 process calc_imiss_IBS {
     memory '64 GB'
-    time '8 h'
+    time { 8.h * task.attempt }
     input:
     tag "${params.collection_name}/$job"
     file dataset from for_calc_imiss_ibs
@@ -289,6 +290,8 @@ $NXF_DIR/bin/genericplotter $OUTFILE $OUTFILE.png
 
 process pca_with_hapmap {
     tag "${params.collection_name}"
+    memory { 50.GB * task.attempt }
+    time { 24.h * task.attempt }
     input:
     file pruned from for_merge_hapmap
 
@@ -390,7 +393,7 @@ fi
 process flashpca2_pruned {
      publishDir params.sampleqci_dir ?: '.', mode: 'copy'   
     tag "${params.collection_name}"
-    time 8.h
+    time { 24.h * task.attempt }
 
     input:
     file pruned from for_second_pca_flashpca

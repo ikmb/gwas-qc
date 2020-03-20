@@ -145,7 +145,7 @@ shell:
 '''
   CONTROLS=$(awk '{if($9=="Control") print}' "!{individuals_annotation}"| wc -l)
   if [ "$CONTROLS" -ge 1 ]; then
-    cut -f 2 !{input_bim} | split -l 10000 -a 5 -d - chunk_
+    cut -f 2 !{input_bim} | split -l 1000 -a 5 -d - chunk_
   else
     touch chunk_00000
   fi
@@ -162,7 +162,7 @@ process calculate_hwe {
   validExitStatus 0,128
   errorStrategy 'retry'
 //  memory {8.GB * task.attempt }
-  memory '60 GB'
+  memory '30 GB'
   time {7.h * task.attempt }
   tag "${params.collection_name}/${chunk}"
 
@@ -331,7 +331,7 @@ process determine_missingness_per_batch {
     publishDir params.snpqci_dir ?: '.', mode: 'copy'
     errorStrategy 'retry'
     memory { 16.GB * task.attempt }
-    time { 4.h * task.attempt }
+    time { 8.h * task.attempt }
     tag "${params.collection_name}"
 
     input:
