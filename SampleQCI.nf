@@ -210,7 +210,19 @@ process calc_imiss_IBS {
 module load "IKMB"
 module load "Plink/1.9"
 
-plink --memory 60000 --bfile ${dataset[0].baseName} --genome --parallel ${job} ${calc_imiss_job_count} --threads 1 --out ${dataset[0].baseName}.part
+plink --memory 60000 --bfile ${dataset[0].baseName} --genome\
+    --parallel ${job} ${calc_imiss_job_count} --threads 1 \
+    --out ${dataset[0].baseName}.part
+
+if [ "${job}" -eq 1 ]; then
+    head -n1 ${dataset[0].baseName}.part.genome.${job} >part
+fi
+
+# filter by relatives thresholds, so we don't produce huge files here
+awk '{if(\$10 >= ${params.max_ibd_threshold_relatives}) print}' ${dataset[0].baseName}.part.genome.${job} >>part
+
+rm ${dataset[0].baseName}.part.genome.${job}
+mv part ${dataset[0].baseName}.part.genome.${job}
 """
 }
 
@@ -238,53 +250,19 @@ process ibs_merge_and_verify {
 '''
     module load "IKMB"
     module load "Plink/1.9"
-#IFS=' '
-#UNSORTED_CHUNKS='!{chunks}'
-
-CHUNKS=$(ls --sort=extension *.genome.*)
-
-echo Chunks: $CHUNKS
+CHUNKS=$(ls --sort=extension -v *.genome.*)
 
 OUTFILE="!{dataset[0].baseName}_IBS.genome"
-#FIRST=1
-#echo Got ${#CHUNKS} chunks.
 echo "Merging..."
 
 for chunk in $CHUNKS; do
-#    echo "Processing $chunk"
-#    if [ $FIRST -eq 1 ]; then
-#        ((FIRST--))
         cat $chunk >>$OUTFILE
-#    else
-#        tail -n +2 $chunk >>$OUTFILE
-#    fi
 done
 
-echo "Verifying..."
-
-# Count samples in merged set (without header line)
-LINES_MERGED=$(wc -l $OUTFILE | cut -d " " -f 1 | tr -d '[:space:]')
-let LINES_MERGED--
-
-# Count samples in original dataset (need only "half of the matrix")
-LINES_MATRIX=$(wc -l !{dataset[2]} | cut -d " " -f 1 | tr -d '[:space:]')
-let LINES_ORIG="$LINES_MATRIX * ($LINES_MATRIX - 1) / 2"
-
-if [ $LINES_MERGED -ne $LINES_ORIG ]; then
-    echo Warning: merged genome files are broken. >&2
-    echo   FAM file !{dataset[2]} has $LINES_MATRIX samples >&2
-    echo   Expected pairwise estimates: $LINES_ORIG >&2
-    echo   Observed pairwise estimates: $LINES_MERGED >&2
-    exit 1
-else
-    echo Check passed, genome files do have the expected number of pairwise estimates.
-fi
-
-echo Drawing plot for $LINES_ORIG points...
-
-# R --slave --args $OUTFILE < !{ibdplot}
+tail -n +2 $OUTFILE >tmp
+rm $OUTFILE
+mv tmp $OUTFILE
 $NXF_DIR/bin/genericplotter $OUTFILE $OUTFILE.png
-
 '''
 }
 
@@ -822,9 +800,26 @@ process calc_imiss_IBS_wr {
     file "*.part.genome.*" into for_ibs_merge_and_verify_wr
 
 """
-    module load "IKMB"
-    module load "Plink/1.9"
-plink --bfile ${dataset[0].baseName} --genome --parallel ${job} ${calc_imiss_job_count} --threads 1 --memory ${task.memory.toMega()} --out ${dataset[0].baseName}.part
+
+
+module load "IKMB"
+module load "Plink/1.9"
+
+plink --bfile ${dataset[0].baseName} --genome\
+    --parallel ${job} ${calc_imiss_job_count} --threads 1 \
+    --memory ${task.memory.toMega()} \
+    --out ${dataset[0].baseName}.part
+
+if [ "${job}" -eq 1 ]; then
+    head -n1 ${dataset[0].baseName}.part.genome.${job} >part
+fi
+
+# filter by relatives thresholds, so we don't produce huge files here
+awk '{if(\$10 >= ${params.max_ibd_threshold_relatives}) print}' ${dataset[0].baseName}.part.genome.${job} >>part
+
+rm ${dataset[0].baseName}.part.genome.${job}
+mv part ${dataset[0].baseName}.part.genome.${job}
+
 """
 }
 
@@ -862,56 +857,20 @@ process ibs_merge_and_verify_withoutRelatives {
     ibdplot = NXF_DIR + "/bin/ibd-plot-genomefile.r"
 '''
 
-#IFS=' '
-#UNSORTED_CHUNKS='!{chunks}'
-
-CHUNKS=$(ls --sort=extension *.genome.*)
-
-echo Chunks: $CHUNKS
+    module load "IKMB"
+    module load "Plink/1.9"
+CHUNKS=$(ls --sort=extension -v *.genome.*)
 
 OUTFILE="!{dataset[0].baseName}_IBS.genome"
-
-rm -f "!{dataset[0].baseName}_IBS.genome.png"
-rm -f "$OUTFILE"
-
-#FIRST=1
-#echo Got ${#CHUNKS} chunks.
 echo "Merging..."
 
 for chunk in $CHUNKS; do
-#    echo "Processing $chunk"
-#    if [ $FIRST -eq 1 ]; then
-#        ((FIRST--))
         cat $chunk >>$OUTFILE
-#    else
-#        tail -n +2 $chunk >>$OUTFILE
-#    fi
 done
 
-echo "Verifying..."
-
-# Count samples in merged set (without header line)
-LINES_MERGED=$(wc -l $OUTFILE | cut -d " " -f 1 | tr -d '[:space:]')
-let LINES_MERGED--
-
-# Count samples in original dataset (need only "half of the matrix")
-LINES_MATRIX=$(wc -l !{dataset[2]} | cut -d " " -f 1 | tr -d '[:space:]')
-let LINES_ORIG="$LINES_MATRIX * ($LINES_MATRIX - 1) / 2"
-
-if [ $LINES_MERGED -ne $LINES_ORIG ]; then
-    echo Warning: merged genome files are broken. >&2
-    echo   FAM file !{dataset[2]} has $LINES_MATRIX samples >&2
-    echo   Expected pairwise estimates: $LINES_ORIG >&2
-    echo   Observed pairwise estimates: $LINES_MERGED >&2
-    exit 1
-else
-    echo Check passed, genome files do have the expected number of pairwise estimates.
-    echo Plotting genome file result for comparison.
-fi
-
-echo Drawing plot for $LINES_ORIG points...
-
-# R --slave --args $OUTFILE < !{ibdplot}
+tail -n +2 $OUTFILE >tmp
+rm $OUTFILE
+mv tmp $OUTFILE
 $NXF_DIR/bin/genericplotter $OUTFILE $OUTFILE.png
 '''
 }
