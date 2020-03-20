@@ -111,18 +111,20 @@ TARGETNAME="!{original[1].baseName}_lift"
 BASENAME="!{original[1].baseName}"
 STRAND_FILE="!{params.liftover}"
 
-plink --bfile "!{original[1].baseName}" --make-bed --out converted
+# plink --bfile "!{original[1].baseName}" --make-bed --out converted
+
 
 module unload Plink/1.02
 module load Plink/1.9
 
 if [ -e "$STRAND_FILE" ]; then
-    $NXF_DIR/bin/update_build_PLINK1.9.sh converted "$STRAND_FILE" "$TARGETNAME"
+    $NXF_DIR/bin/update_build_PLINK1.9.sh  "!{original[1].baseName}" "$STRAND_FILE" "$TARGETNAME"
+#    $NXF_DIR/bin/update_build_PLINK1.9.sh converted "$STRAND_FILE" "$TARGETNAME"
 else
     echo "No strand file specified for lifting."
-    ln -s "converted.bed" "$TARGETNAME.bed"
-    ln -s "converted.bim" "$TARGETNAME.bim"
-    ln -s "converted.fam" "$TARGETNAME.fam"
+    ln -s "!{original[1].baseName}.bed" "$TARGETNAME.bed"
+    ln -s "!{original[1].baseName}.bim" "$TARGETNAME.bim"
+    ln -s "!{original[1].baseName}.fam" "$TARGETNAME.fam"
 fi
 '''
 }
