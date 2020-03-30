@@ -531,7 +531,8 @@ def addbatchinfo_10PCs(evec_file, eval_file, new_evec_file, new_eval_file, indiv
     while line:
         list = re.split("\s+", line)
         id = list[1]
-        fh3.writelines(list[0] + "\t" +
+        if id in id2batch:
+            fh3.writelines(list[0] + "\t" +
                        list[1] + "\t" +
                        list[2] + "\t" +
                        list[3] + "\t" +
@@ -602,7 +603,8 @@ def addphenoinfo_10PCs(evec_file, eval_file, new_evec_file, new_eval_file, indiv
     while line:
         list = re.split("\s+", line)
         id = list[1]
-        fh3.writelines(list[0] + "\t" +
+        if id in id2pheno:
+            fh3.writelines(list[0] + "\t" +
                        list[1] + "\t" +
                        list[2] + "\t" +
                        list[3] + "\t" +
@@ -615,6 +617,7 @@ def addphenoinfo_10PCs(evec_file, eval_file, new_evec_file, new_eval_file, indiv
                        list[10] + "\t" +
                        list[11] + "\t" +
                        id2pheno[id] + "\n")
+
         line = fh2.readline().rstrip('\n')
 
     fh2.close()
@@ -673,7 +676,8 @@ def addcountryinfo_10PCs(evec_file, eval_file, new_evec_file, new_eval_file, ind
     while line:
         list = re.split("\s+", line)
         id = list[1]
-        fh3.writelines(list[0] + "\t" +
+        if id in id2country:
+            fh3.writelines(list[0] + "\t" +
                        list[1] + "\t" +
                        list[2] + "\t" +
                        list[3] + "\t" +

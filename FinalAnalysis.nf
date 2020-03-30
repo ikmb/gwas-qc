@@ -447,7 +447,7 @@ plink --allow-no-sex --bfile "!{ds.bim.baseName}" --chr X --recode --out !{ds.bi
 plink --allow-no-sex --bfile "!{ds.bim.baseName}" --chr Y --recode --out !{ds.bim.baseName}_sex.Y || true
 
 if [ -e "!{ds.bim.baseName}"_sex.X.ped -a -e "!{ds.bim.baseName}"_sex.Y.ped ]; then
-    Rscript $NXF_DIR/bin/indivplot.R "!{ds.bed.baseName}" "!{ds.bim.baseName}"_sex.X.ped "!{ds.bim.baseName}"_sex.Y.ped
+    Rscript $NXF_DIR/bin/indivplot.R "!{ds.bed.baseName}" "!{ds.bim.baseName}"_sex.X.ped "!{ds.bim.baseName}"_sex.Y.ped !{ds.bim.baseName}.imiss !{ds.bim.baseName}.het
 else
     echo "Sex check requires X and Y chromosomes to be present in the dataset" | tee sex-check-not-possible.txt
 fi
@@ -534,8 +534,8 @@ process prepare_sanger_imputation {
     file ds_staged from for_prepare_imputation
 
     output:
-    file("${ds.bim.baseName}.vcf.refchecked.gz") optional true
-    file("${ds.bim.baseName}.vcf.refchecked.gz.tbi") optional true
+    file("${ds.bim.baseName}.vcf.refchecked.gz")
+    file("${ds.bim.baseName}.vcf.refchecked.gz.tbi")
 
     shell:
     ds = mapFileList(ds_staged)
@@ -574,8 +574,8 @@ process prepare_sanger_imputation_split {
 
 
     output:
-    file(  "${ds.bim.baseName}.*.vcf.refchecked.gz" ) optional true
-    file(  "${ds.bim.baseName}.*.vcf.refchecked.gz.tbi" ) optional true
+    file(  "*.refchecked.gz" )
+    file(  "*.refchecked.gz.tbi" )
 
     shell:
     ds = mapFileList(ds_staged)
