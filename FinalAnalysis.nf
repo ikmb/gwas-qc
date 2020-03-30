@@ -395,14 +395,12 @@ process twstats_final_pruned {
     //    template "run_tracy_widom_stats.sh"
     '''
     module load 'IKMB'
-    module load 'Eigensoft/4.2'
-# NUM_CASES=$(grep -P 'After.*\\d+.cases' !{dataset.log} | cut -d' ' -f3)
-# NUM_CONTROLS=$(grep -P 'After .*\\d+.controls' !{dataset.log} | cut -d' ' -f5)
-NUM_CASES=$(grep controls !{dataset.log} | cut -d' ' -f4)
-NUM_CONTROLS=$(grep controls !{dataset.log} | cut -d' ' -f8)
+    module load 'Eigensoft/6.1.4'
+NUM_CASES=$(grep -Po '\\d+(?= are cases)' !{dataset.log})
+NUM_CONTROLS=$(grep -Po '\\d+(?= are controls)' !{dataset.log})
 echo Cases: $NUM_CASES, controls: $NUM_CONTROLS
 NUM_SAMPLES=$(($NUM_CASES + $NUM_CONTROLS))
-NUM_SNPS=$(grep 'pass filters and QC' !{dataset.log} | cut -d' ' -f1)
+NUM_SNPS=$(grep -Po '\\d+(?= variants load)' !{dataset.log})
 echo Samples: $NUM_SAMPLES, markers: $NUM_SNPS
 
 head -n 2000 !{pca.eval} >eval.tw
@@ -477,19 +475,18 @@ publishDir params.qc_dir ?: '.', mode: 'copy', overwrite: true
     prefix = "${params.collection_name}_QCed_final"
 '''
 module load IKMB
-module load Plink/1.7
+module load Plink/1.9
 
 echo "PYLIB_DIR: $PYLIB_DIR"
 echo "PYTHONPATH: $PYTHONPATH"
 
 # determine monomorphic variants
-plink --noweb --bfile "!{dataset.bed.baseName}" --freq --out "!{prefix}_freq" --allow-no-sex
+plink --bfile "!{dataset.bed.baseName}" --freq --out "!{prefix}_freq" --allow-no-sex
 python -c 'from SNPQC_helpers import *; frq =  Frq(frq_file="!{prefix}_freq.frq", write_monomorphic_file="!{prefix}.flag.monomorphic"); frq.write_monomorphic_variants_file(); del frq'
 
 # determine nearly monomorphic variants
 if [ "!{params.hf_test_CON_only}" != "True" ]; then
     grep -v -e "Unknown" "!{dataset.annotation}" >clean-annotations
-    module switch Plink/1.7 Plink/1.9
     plink --bfile "!{dataset.bed.baseName}" --freq --mwithin 7 --within clean-annotations --out "!{prefix}_freq" --allow-no-sex
     python -c 'from SNPQC_helpers import *; \
         frq = FrqStrat(frq_file="!{prefix}_freq.frq.strat", write_nearly_monomorphic_file="!{prefix}.flag.nearly_monomorphic", maf_thresh=!{params.maf_thresh}); \

@@ -389,19 +389,18 @@ publishDir params.qc_dir ?: '.', mode: 'copy', overwrite: true
     prefix = "${params.collection_name}_SNPQCII"
 '''
 module load IKMB
-module load Plink/1.7
+module load Plink/1.9
 
 echo "PYLIB_DIR: $PYLIB_DIR"
 echo "PYTHONPATH: $PYTHONPATH"
 
 # determine monomorphic variants
-plink --noweb --bfile "!{dataset.bed.baseName}" --freq --out "!{prefix}_freq" --allow-no-sex
+plink --bfile "!{dataset.bed.baseName}" --freq --out "!{prefix}_freq" --allow-no-sex
 python -c 'from SNPQC_helpers import *; frq =  Frq(frq_file="!{prefix}_freq.frq", write_monomorphic_file="!{prefix}.flag.monomorphic"); frq.write_monomorphic_variants_file(); del frq'
 
 # determine nearly monomorphic variants
 if [ "!{params.hf_test_CON_only}" != "True" ]; then
     grep -v -e "Unknown" "!{dataset.annotation}" >clean-annotations
-    module switch Plink/1.7 Plink/1.9
     plink --bfile "!{dataset.bed.baseName}" --freq --mwithin 7 --within clean-annotations --out "!{prefix}_freq" --allow-no-sex
     python -c 'from SNPQC_helpers import *; \
         frq = FrqStrat(frq_file="!{prefix}_freq.frq.strat", write_nearly_monomorphic_file="!{prefix}.flag.nearly_monomorphic", maf_thresh=!{params.maf_thresh}); \
@@ -523,10 +522,10 @@ process final_cleaning {
     prefix = params.disease_data_set_prefix_release
 '''
     module load "IKMB"
-    module load "Plink/1.7"
+    module load "Plink/1.9"
 
 # Remove sample and SNP outliers
-plink --noweb --bfile "!{dataset.bed.baseName}" --remove "!{individuals}" --exclude "!{variants}" --make-bed --out "!{prefix}" --allow-no-sex
+plink --bfile "!{dataset.bed.baseName}" --remove "!{individuals}" --exclude "!{variants}" --make-bed --out "!{prefix}" --allow-no-sex
 
 touch !{params.collection_name}_SNPQCII_final_flag.relatives.txt
 

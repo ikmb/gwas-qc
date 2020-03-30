@@ -319,7 +319,7 @@ process determine_missingness_entire {
 
 """
 module load IKMB
-module load Plink/1.7
+module load Plink/1.9
 
 plink  --bfile "${new File(input_bim.toString()).getBaseName()}" --missing --out missingness_entire --allow-no-sex
 SNPQCI_extract_missingness_entire.py missingness_entire.lmiss ${params.geno_entire_collection} missingness-excludes-entire
@@ -347,9 +347,12 @@ process determine_missingness_per_batch {
 
 """
     module load IKMB
-    module load Plink/1.7
+    module load Plink/1.9
 awk '{print \$1, \$2, \$7 }' "${individuals_annotation}" | grep -v "familyID" >cluster_file
-plink --noweb --bfile "${new File(input_bim.toString()).getBaseName()}" --missing --out missingness_perbatch --missing-phenotype 0 --allow-no-sex --within cluster_file
+plink --bfile "${new File(input_bim.toString()).getBaseName()}" --missing \
+    --out missingness_perbatch \
+    --allow-no-sex \
+    --within cluster_file
 SNPQCI_extract_missingness_perbatch.py missingness_perbatch.lmiss ${params.geno_batch} "$individuals_annotation" missingness-excludes-perbatch
 """
 }

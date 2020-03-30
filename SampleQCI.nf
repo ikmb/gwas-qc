@@ -155,9 +155,9 @@ process prune {
     if (params.PCA_SNPList != "" && params.PCA_SNPList != "nofileexists") {
 """
     module load "IKMB"
-    module load "Plink/1.7"
+    module load "Plink/1.9"
 echo Using PCA SNP List file and sample outliers for variant selection
-plink --noweb --bfile "${base}" --extract "$params.PCA_SNPList" --remove  "$outliers" --make-bed --out pruned
+plink --bfile "${base}" --extract "$params.PCA_SNPList" --remove  "$outliers" --make-bed --out pruned
 """
     } else {
 """
@@ -393,7 +393,7 @@ process flashpca2_pruned {
 """
     module load "IKMB"
     module load "FlashPCA"
-    module load "Plink/1.7"
+    module load "Plink/1.9"
   flashpca2 -d ${params.numof_pc} --bfile "${base_pruned}" --outval "${base_pruned}_eigenvalues_flashpca2" --outvec "${base_pruned}_eigenvectors_flashpca2" --outpc "${base_pruned}_pcs_flashpca2" --outpve "${base_pruned}_pve_flashpca2" --numthreads 2 --outload "${base_pruned}_loadings_flashpca2" --outmeansd "${base_pruned}_meansd_flashpca2"
   echo Adding batch info | ts
   python -c 'from SampleQCI_helpers import *; addbatchinfo_10PCs("${base_pruned}_pcs_flashpca2", "${base_pruned}_eigenvalues_flashpca2", "${plink_pca}.pca.evec", "${plink_pca}.eval", "${individuals_annotation}", "${params.preQCIMDS_1kG_sample}")'
@@ -531,7 +531,7 @@ process remove_bad_samples {
     remove_manually = "/${params.individuals_remove_manually}"
 '''
     module load 'IKMB'
-    module load 'Plink/1.7'
+    module load 'Plink/1.9'
 touch remove-samples
 
 # pre-calculated remove list for individuals
@@ -556,7 +556,7 @@ cat !{flashpca_outliers} | tr -s ' \t' ' ' >>remove-samples
 
 cut -f1,2 -d' ' remove-samples | sort | uniq | TMPDIR=. sponge remove-samples
 
-plink --noweb --bfile !{pruned[0].baseName} --remove remove-samples --make-bed --out !{target_basename} --allow-no-sex
+plink --bfile !{pruned[0].baseName} --remove remove-samples --make-bed --out !{target_basename} --allow-no-sex
 '''
 }
 
@@ -634,25 +634,25 @@ process tracy_widom_stats {
     shell:
 '''
     module load 'IKMB'
-    module load 'Eigensoft/4.2'
-NUM_CASES=$(grep -P 'After.*\\d+.cases' !{logfile} | cut -d' ' -f3)
-NUM_CONTROLS=$(grep -P 'After .*\\d+.controls' !{logfile} | cut -d' ' -f5)
+    module load 'Eigensoft/6.1.4'
+NUM_CASES=$(grep -Po '\\d+(?= are cases)' !{logfile})
+NUM_CONTROLS=$(grep -Po '\\d+(?= are controls)' !{logfile})
 echo Cases: $NUM_CASES, controls: $NUM_CONTROLS
 NUM_SAMPLES=$(($NUM_CASES + $NUM_CONTROLS))
-NUM_SNPS=$(grep -P 'After.*\\d+.SNPs' !{logfile} | cut -d' ' -f8)
+NUM_SNPS=$(grep -Po '\\d+(?= variants load)' !{logfile})
 echo Samples: $NUM_SAMPLES, markers: $NUM_SNPS
 
 head -n 2000 !{eval[0]} >eval.tw
 
 if [ "!{params.projection_on_populations_CON_only}" == "True" ]; then
-    if [ "$NUM_CONTROLS" -gr "$NUM_SNPS" ]; then
+    if [ "$NUM_CONTROLS" -gt "$NUM_SNPS" ]; then
         let NUM_CONTROLS--
         twstats -t !{params.twtable} -i eval.tw -o !{dataset[0].baseName}.eval.tracy_widom -n "$NUM_CONTROLS"
     else
         twstats -t !{params.twtable} -i eval.tw -o !{dataset[0].baseName}.eval.tracy_widom
     fi
 else
-    if [ "$NUM_SAMPLES" -gr "$NUM_SNPS" ]; then
+    if [ "$NUM_SAMPLES" -gt "$NUM_SNPS" ]; then
         let NUM_SAMPLES--
         twstats -t !{params.twtable} -i eval.tw -o !{dataset[0].baseName}.eval.tracy_widom -n "$NUM_SAMPLES"
     else
@@ -682,10 +682,9 @@ process pca_without_projection {
     pcaplot_1KG = SCRIPT_DIR + "/pcaplot_1KG_v2.R"
 '''
     module load 'IKMB'
-    module load 'Plink/1.7'
+    module load 'Plink/1.9'
     module load 'FlashPCA'
-plink --noweb \
-      --bfile "!{pruned_1kg[0].baseName}" \
+plink --bfile "!{pruned_1kg[0].baseName}" \
       --remove "!{remove_list}" \
       --make-bed \
       --out "!{kg_out}" \
@@ -737,8 +736,8 @@ process remove_relatives {
     /*individuals_annotation = ANNOTATION_DIR + "/${params.individuals_annotation}"*/
 '''
     module load "IKMB"
-    module load "Plink/1.7"
-plink --noweb --bfile "!{dataset[0].baseName}" --remove !{relatives} --make-bed --out "!{dataset[0].baseName}_withoutRelatives"
+    module load "Plink/1.9"
+plink --bfile "!{dataset[0].baseName}" --remove !{relatives} --make-bed --out "!{dataset[0].baseName}_withoutRelatives"
 
 python -c 'from SampleQCI_helpers import *; extract_QCsamples_from_pc_file("!{evec[0]}", "!{dataset[0].baseName}_withoutRelatives.pca.evec", "!{dataset[2]}")'
 python -c 'from SampleQCI_helpers import *; extract_QCsamples_from_annotationfile("!{dataset[0].baseName}_withoutRelatives.pca.evec", "!{individuals_annotation}", "!{dataset[0].baseName}_withoutRelatives.annotation.txt")'
@@ -768,9 +767,9 @@ process prune_withoutRelatives {
     if (params.PCA_SNPList != "" && params.PCA_SNPList != "nofileexists") {
 """
     module load "IKMB"
-    module load "Plink/1.7"
+    module load "Plink/1.9"
 echo Using PCA SNP List file and sample outliers for variant selection
-plink --noweb --bfile "${base}" --extract "$params.PCA_SNPList" --remove  "$miss_outliers" --make-bed --out ${target}
+plink --bfile "${base}" --extract "$params.PCA_SNPList" --remove  "$miss_outliers" --make-bed --out ${target}
 """
     } else {
 """
