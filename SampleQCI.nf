@@ -64,26 +64,20 @@ process apply_precalc_remove_list {
     file "manually-removed.{bed,bim,fam}" into for_det_miss_het, for_calc_pi_hat
 
 
-    script:
+    shell:
     base = plink[0].baseName
-    remove_list = "/${params.individuals_remove_manually}"
 
-    if(params.individuals_remove_manually == '' || params.individuals_remove_manually == 'nothing.txt' || params.individuals_remove_manually == '/dev/null') {
-        """
-        module load "IKMB"
-        module load "Plink/1.9"
+'''
+module load IKMB
+module load Plink/1.9
 
-        # generates manually-removed.{bim,bed,fam,log,nosex,hh}
-        plink --bfile ${base} --make-bed --out manually-removed --allow-no-sex --memory ${task.memory.toMega()} 
-        """
-    } else {
-        """
-        module load "IKMB"
-        module load "Plink/1.9"
-
-        plink --bfile ${base} --remove ${remove_list} --make-bed --out manually-removed --allow-no-sex --memory ${task.memory.toMega()} 
-        """
-    }
+if [ -e "!{params.individuals_remove_manually}" ]; then
+    plink --bfile "!{base}" --remove "!{params.individuals_remove_manually}" --make-bed --out manually-removed --allow-no-sex --memory !{task.memory.toMega()}
+else
+    touch nofiles
+    plink --bfile "!{base}" --remove nofiles --make-bed --out manually-removed --allow-no-sex --memory !{task.memory.toMega()}
+fi
+'''
 }
 
 

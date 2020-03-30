@@ -799,6 +799,7 @@ def pca_convert(plink, eigenstrat_parameter_file, annotation_file):
 
 
 pca_main_program = "smartpca.perl.DE"
+#pca_main_program = "smartpca.perl"
 
 def pca_run(plink, sigmathreshold, projection_on_populations, numof_pc, numof_threads, draw_evec, draw_without_projection):
     """ run eigenstrat program """
@@ -825,7 +826,7 @@ def pca_run(plink, sigmathreshold, projection_on_populations, numof_pc, numof_th
                     numof_threads,
                     plink_pca)
     print >> sys.stderr, teststring
-    cmd = Command("%s -i %s.eigenstratgeno -a %s.snp -b %s.ind -k %s -o %s.pca -p %s.plot -e %s.eval -l %s.log -m 5 -t %s -s %s -w %s -f %s -g %s.snpweights"
+    cmd = Command("%s -i %s.eigenstratgeno -a %s.snp -b %s.ind -k %s -o %s.pca -p %s.plot -e %s.eval -l %s.log -m 5 -t %s -s %s -w %s -f 1 -g %s.snpweights"
                   % (pca_main_program,
                      plink,
                      plink,
@@ -838,7 +839,6 @@ def pca_run(plink, sigmathreshold, projection_on_populations, numof_pc, numof_th
                      numof_pc,
                      sigmathreshold,
                      projection_on_populations,
-                     numof_threads,
                      plink_pca))
     cmd.run()
     del cmd

@@ -24,12 +24,18 @@ library("stats")
 ped_x = args[2]
 ped_y = args[3]
 
+print("Vor laden 1")
+
 options(stringsAsFactors=F)
 X = read.table(ped_x,h=F, colClass="character")
 Y = read.table(ped_y,h=F,colClass="character")
 fam= X[,1:6]
 colnames(fam)=c("FID","IID","","","SEX","PHENO")
 fam = data.frame(fam)
+
+
+print("nach laden 1")
+
 X =X[,-(1:6)]
 X = t(apply(X,1,function(x){tmp = x[seq(1,length(x),2)] == x[seq(2,length(x),2)] & x[seq(1,length(x),2)]!="0";
                                   x[tmp]=0; x[!tmp]=2; return(as.numeric(x))}))
@@ -55,7 +61,7 @@ write.table(data.frame(FID=as.matrix(fam$FID), IID=as.matrix(fam$IID))[fam$out,]
             quote = F, row.names = F, col.names =T)
 
 # Color for plotting
-
+print("nach write.table")
 
 pch_sexcheck = as.numeric(fam$SEX)
 col_sexcheck =  adjustcolor("grey", alpha=0.5)
@@ -65,7 +71,7 @@ col_sexcheck =  adjustcolor("grey", alpha=0.5)
 # GENOTPYE
 
 imiss=read.table(imissfile,h=T, fill=TRUE)
-
+print("genotype geladen")
 
 # HETEROZYGOSITY
 
