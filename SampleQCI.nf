@@ -192,7 +192,7 @@ plink --memory 10000 --bfile "${base}" --missing --out ${prefix}miss
 """
 }
 
-final calc_imiss_job_count = 200// 80 should work for ~200k samples
+final calc_imiss_job_count = 20// 80 should work for ~200k samples
 
 calc_imiss_job_ids = Channel.from(1..calc_imiss_job_count) // plink expects 1-based job indices
 process calc_imiss_IBS {

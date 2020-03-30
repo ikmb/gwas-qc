@@ -76,7 +76,7 @@ Channel.from(fileExists(file(params.individuals_annotation)))
 process prune_final {
     validExitStatus 0,128
     publishDir params.qc_dir ?: '.', mode: 'copy', overwrite: true, pattern: '*.prune.{in,out,out.unknown_variants}'
-    time '2 h'
+    time {4.h * task.attempt}
     tag "${params.collection_name}"
     input:
     file ds_staged from for_snprelate_prune
@@ -126,6 +126,7 @@ plink --bfile after-correlated-remove --extract include-variants-with-atcg --mak
 process final_pca_con_projection {
     publishDir params.qc_dir ?: '.', mode: 'copy', overwrite: true
     memory {25.GB * task.attempt}
+    time {12.h * task.attempt}
     errorStrategy 'retry'
     tag "${params.collection_name}"
 
@@ -181,6 +182,7 @@ R --slave --args "!{prefix}.country" "!{params.preQCIMDS_1kG_sample}" <"!{draw_e
 process final_pca_con_projection_atcg {
     publishDir params.qc_dir ?: '.', mode: 'copy', overwrite: true
     memory {12.GB*task.attempt}
+    time {12.h * task.attempt}
     tag "${params.collection_name}"
 
     input:
@@ -265,7 +267,8 @@ fi
 
 process final_merge_pruned_with_1kg {
     tag "${params.collection_name}"
-
+    memory { 8.GB * task.attempt }
+    time { 4.h * task.attempt }
     input:
 
     file dataset_pruned_staged from for_merge_1kg_pruned_final
@@ -320,6 +323,7 @@ done
 process pca_plot_1kg_frauke_final {
     publishDir params.qc_dir ?: '.', mode: 'copy', overwrite: true
     memory {25.GB * task.attempt}
+    time { 8.h * task.attempt }
     tag "${params.collection_name}"
 
     input:

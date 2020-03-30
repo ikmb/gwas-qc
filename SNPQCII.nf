@@ -375,6 +375,8 @@ plink --bfile "!{dataset.bed.baseName}" --test-missing --out !{prefix}_test_miss
 process det_monomorphics {
 publishDir params.qc_dir ?: '.', mode: 'copy', overwrite: true
     tag "${params.collection_name}"
+    time {8.h * task.attempt }
+    memory {8.GB * task.attempt }
 
     input:
     file dataset_staged from for_det_monomorphics // SNPQCII_final
@@ -502,6 +504,8 @@ process compile_variants_exclusion {
 process final_cleaning {
     publishDir params.qc_dir ?: '.', mode: 'copy', overwrite: true
     tag "${params.collection_name}"
+    time { 12.h * task.attempt }
+    memory { 16.GB * task.attempt }
     input:
 
     // from diff_missingness/det_monomorphics/det_diagnoses to prune/1kg.
