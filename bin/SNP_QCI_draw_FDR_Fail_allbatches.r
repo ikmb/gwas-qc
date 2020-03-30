@@ -2,7 +2,10 @@ rm(list=ls())
 
 file_entire_collection  <- commandArgs()[4]
 file_perbatch <- commandArgs()[5]
-FDR_index_remove_variants  <- as.integer(commandArgs()[6])
+
+# FDR index indexes a 0-based array at [10e-1, 10e-2, ...]
+# => actual threshold = 10e-(index+1)
+FDR_index_remove_variants  <- as.integer(commandArgs()[6]) + 1
 
 # ------------------------------------------- #
 # -- SNP QCI: HWE across entire collection -- #
