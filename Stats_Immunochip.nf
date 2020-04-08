@@ -101,30 +101,106 @@ process preprocess_infofilter_dosage {
 '''
 module load Plink/1.9
 
+AWK=mawk
+
 # for each chromosome:
+# vcf.gz -> vcf.map, uncompressed tmp.vcf
+
+# Here we would need to uncompress the large vcfgz two times. This takes ages
+# on seriously large files. A way to circumvent:
+# 1. Create FIFO (uncompressed data will be put here later)
+# 2. Connect some process that will consume uncompressed data
+# 3. Start creating uncompressed data and duplicate the stream into the FIFO
+
+# 1.
+rm -f vcfgz_fifo
+mkfifo vcfgz_fifo
+
+# 2.
 # vcf.gz -> vcf.map
-zcat !{vcfgz} \
-    | gawk '$0!~/^#/ {NF=8; print $0}' \
-    >!{chrom}.vcf.map
+(cat vcfgz_fifo | $AWK '$0!~/^#/ {NF=8; print $0}') >!{chrom}.vcf.map &
 
-# vcf.gz -> INFO.vcf.gz
-zcat !{chrom}.vcf.gz \
-    | gawk '$0~/^#/ { print $0 } {val=substr($8, match($8, /INFO=/)+5)+0; if(val >= !{params.min_info_score}){print $0}}' \
-    | bgzip >!{chrom}.INFO!{params.min_info_score}.vcf.gz
+# 3.
+# vcf.gz -> INFO.vcf.gz, uncompressed INFO.vcf.gz
+bgzip -c -d !{vcfgz} | tee vcfgz_fifo \
+    | $AWK '
+    $0~/^#/ { 
+        print $0
+        next
+    }
+    {
+        split($8, fields, /;|=/)
+        for(i=1; i in fields; i++) {
+            if(fields[i]=="INFO" || fields[i]=="DR2") {
+                val=fields[i+1]
+                break
+            }
+        }
+        
+        if(val >= !{params.min_info_score})
+            {print $0}
+        }' \
+    | bgzip >!{chrom}.INFO!{params.min_info_score}.vcf.gz 
 
-tabix -p vcf !{chrom}.INFO!{params.min_info_score}.vcf.gz
+wait
 
+tabix -p vcf !{chrom}.INFO!{params.min_info_score}.vcf.gz &
+
+rm -f vcfgz_map_fifo
+mkfifo vcfgz_map_fifo
 # INFO.vcf.gz -> INFO.vcf.map
-zcat !{chrom}.INFO!{params.min_info_score}.vcf.gz \
-    | gawk '$0!~/^#/{NF=8; print $0}' \
-    >!{chrom}.INFO!{params.min_info_score}.vcf.map
+
+(cat vcfgz_map_fifo | $AWK '$0!~/^#/{NF=8; print $0}') >!{chrom}.INFO!{params.min_info_score}.vcf.map &
+
+# AwkProg v2, more robust and faster than v1
+cat <<'AwkProg2' >awkprog2.awk
+BEGIN{
+    printf "CHR BP SNP A1 A2 INFO"
+}
+{
+    # skip header lines
+    if (($1 ~ /^##/)) {
+    } else {
+        # Copy header line
+        if (($1 ~ /^#CHROM/)) {
+            for (i=10; i<=NF; i++)
+                printf " "$i" "$i
+            printf "\\n"
+        } else {
+            # Extract r^2 score from INFO field
+            {
+                split($8, fields, /(;|=)/)
+                for(i=1; i in fields; i++) {
+                    if(fields[i] == "INFO" || fields[i] == "DR2") {
+                            info = fields[i+1]
+                            break
+                    }
+                }
+            }
+
+
+            printf $1" "$2" "$1":"$2" "$4" "$5" "info
+            for (i=10; i<=NF; i++) {
+                split($i,array,":")
+                # Missing fields are specified as ".", not splittable by ","
+                if(array[4] == ".") {
+                    printf " . . ."
+                } else {
+                    split(array[4],array_GP,",")
+                    printf " "array_GP[1]" "array_GP[2]" "array_GP[3]
+                }
+            }
+            printf "\\n"
+        }
+    }
+}
+AwkProg2
 
 cat <<'AwkProg' >awkprog.awk
 BEGIN {
-    file1 = ARGV[1]
-    cmd="zcat " file1
-    printf "CHR BP SNP A1 A2 INFO"
-    while (cmd | getline) {
+printf "CHR BP SNP A1 A2 INFO"
+}
+{
         if (($1 ~ /^##/))  { # if comment line starting with hash character
         } else {
             if (($1 ~ /^#CHROM/)) { # if header line
@@ -147,18 +223,23 @@ BEGIN {
                 printf "\\n"
             }
         }
-    }
-    exit (0)
 }
 AwkProg
 
-awk -f awkprog.awk -- !{chrom}.INFO!{params.min_info_score}.vcf.gz \
+rm -f plinkdosage
+mkfifo plinkdosage
+
+(cat plinkdosage    | tail -n +2 \
+    | $AWK '{print $1, $3, 0, $2}' \
+    | uniq) >!{chrom}.INFO!{params.min_info_score}.vcf.PLINKdosage.map &
+
+bgzip -c -d !{chrom}.INFO!{params.min_info_score}.vcf.gz | tee vcfgz_map_fifo \
+    | $AWK -f awkprog2.awk \
+    | tee plinkdosage \
     | gzip >!{chrom}.INFO!{params.min_info_score}.vcf.PLINKdosage.gz
 
-zcat !{chrom}.INFO!{params.min_info_score}.vcf.PLINKdosage.gz \
-    | tail -n +2 \
-    | gawk '{print $1, $3, 0, $2}' \
-    | uniq >!{chrom}.INFO!{params.min_info_score}.vcf.PLINKdosage.map
+wait
+
 '''
 }
 
@@ -174,7 +255,7 @@ publishDir params.output ?: '.', mode: 'copy', overwrite: true
 
     output:
     file "1-22.vcf.map"
-    file "1-22.INFO${params.min_info_score}.vcf.map"
+    file "1-22.INFO${params.min_info_score}.vcf.map" into for_gen_sumstats_info
 
     shell:
     '''
@@ -214,8 +295,9 @@ process extract_genotyped_variants {
 
 '''
 module load Plink/1.9
+AWK=mawk
 
-gawk '{ print $1, $2, $6 }' "!{ds.fam}" >"!{ds.fam}.single-id.pheno"
+$AWK '{ print $1, $2, $6 }' "!{ds.fam}" >"!{ds.fam}.single-id.pheno"
 plink --bfile "!{ds.bim.baseName}" \
 	--threads 4 \
 	--pheno "!{ds.fam}.single-id.pheno" \
@@ -226,12 +308,12 @@ plink --bfile "!{ds.bim.baseName}" \
 #	--remove "${ds.relatives}" \
 #	  --keep-fam "${ds_stats.fam}"
 
-gawk '{ print $1\"_\"$2, $1\"_\"$2, $6 }' "!{target}.fam" >"!{target}.fam.double-id.pheno"
-gawk '{ print $1\"_\"$2, $1\"_\"$2, $5 }' "!{target}.fam" >"!{target}.fam.double-id.gender"
-gawk '{ print $1\"_\"$2, $1\"_\"$2, $3, $4, $5, $6 }' "!{target}.fam" | TMPDIR="." sponge "!{target}_fid_iid.fam"
+$AWK '{ print $1\"_\"$2, $1\"_\"$2, $6 }' "!{target}.fam" >"!{target}.fam.double-id.pheno"
+$AWK '{ print $1\"_\"$2, $1\"_\"$2, $5 }' "!{target}.fam" >"!{target}.fam.double-id.gender"
+$AWK '{ print $1\"_\"$2, $1\"_\"$2, $3, $4, $5, $6 }' "!{target}.fam" | TMPDIR="." sponge "!{target}_fid_iid.fam"
 
 cp !{params.covar} covar
-gawk 'FILENAME~/fam$/{samples[$2]=1}(FILENAME~/covar$/ && FNR==1) {print $0} (FILENAME~/covar$/ && ($2 in samples || FNR!=1)){$1=$1"_"$2;$2=$1;print $0}' !{target}.fam covar >"!{target}.dat.pca.evec"
+$AWK 'FILENAME~/fam$/{samples[$2]=1}(FILENAME~/covar$/ && FNR==1) {print $0} (FILENAME~/covar$/ && ($2 in samples || FNR!=1)){$1=$1"_"$2;$2=$1;print $0}' !{target}.fam covar >"!{target}.dat.pca.evec"
 '''
 }
 
@@ -358,14 +440,15 @@ done
 
 
 process extract_rsq_variants {
+    tag "${params.collection_name}"
     input:
     file dosage from for_extract_rsq_variants_dos
     file logistic from for_extract_rsq_variants_log
 
     output:
-    file "${rsq3}" into for_l95u95_rsq3
+    file "${rsq3}" into for_l95u95_rsq3, for_gen_sumstats_rsq3
     file "${rsq3}.locuszoom" into for_l95u95_rsq3lz
-    file "${rsq8}" into for_l95u95_rsqs8
+    file "${rsq8}" into for_l95u95_rsq8, for_gen_sumstats_rsq8
     file "${rsq8}.locuszoom" into for_l95u95_rsq8lz
 
 shell:
@@ -381,11 +464,11 @@ python -c 'from Stats_helpers import *; extract_Rsq_variants(\
 }
 
 process addL95_U95 {
-
+    tag "${params.collection_name}"
 input:
     file rsq03    from for_l95u95_rsq3
     file rsq03_lz from for_l95u95_rsq3lz
-    file rsq08    from for_l95u95_rsqs8
+    file rsq08    from for_l95u95_rsq8
     file rsq08_lz from for_l95u95_rsq8lz
 
 output:
@@ -417,6 +500,7 @@ addL95_U95 "!{rsq08_lz}"
 }
 
 process qq_manhattan {
+tag "${params.collection_name}"
 publishDir params.output ?: '.', mode: 'copy', overwrite: true
 validExitStatus 0,1
 time 10.h
@@ -513,7 +597,7 @@ manhattan_plot "!{rsq08}_excludeRegions"
 
 process convert_dosages {
 validExitStatus 0,128
-tag "chr$chromosome"
+tag "${params.collection_name}.$chromosome"
 
 input:
 //each chromosome from Channel.from(params.first_chr .. params.last_chr)
@@ -524,8 +608,8 @@ file ds_stats_staged from for_convert_dosages_stats
 //file ds_stats_orig_staged from Channel.from(ds_stats_input).collect()
 
 output:
-file "$plink_target.{bim,bed,fam,log}" into for_merge_dosages_rsq03//,for_merge_dosages
-// file "$target.{bim,bed,fam,log}" into for_merge_dosages_rsq03
+// file "$plink_target.{bim,bed,fam,log}" into for_merge_dosages_rsq03//,for_merge_dosages
+file "$target.{bim,bed,fam,log}" into for_merge_dosages_rsq03
 
 
 shell:
@@ -535,24 +619,47 @@ ds_stats = mapFileList(ds_stats_staged)
 flag_relatives_doubleid = ds_release.relatives_doubleID
 multiallelic_exclude = params.Multiallelic_SNPexcludeList
 
-target = "${params.disease_data_set_prefix_release_statistics}.genotyped.imputed.rsq${params.min_info_score}.chr${chromosome}.rs"
-plink_target = "${params.disease_data_set_prefix_release_statistics}.genotyped.imputed.rsq${params.min_info_score}.chr${chromosome}"
+target = "${params.disease_data_set_prefix_release_statistics}.genotyped.imputed.rsq${params.min_info_score}.chr${chromosome}"
+plink_target = "${params.disease_data_set_prefix_release_statistics}.genotyped.imputed.rsq${params.min_info_score}.chr${chromosome}.chrpos"
 
 rs2chrpos = SCRIPT_DIR+"/awk_rs2CHRPOS_bimfiles.awk"
 '''
 module load Plink/1.9
 TMPDIR=.
 
+### Convert VCF to Plink which will include multiallelics and same-id-different-position SNPs
 plink --vcf "!{vcfgz}" --double-id --make-bed --out "!{target}_with_multiallelics" --allow-no-sex
+
+### Find multi-position rs ids
+cut -f2 "!{target}_with_multiallelics.bim" | sort | uniq -d >multi-position.rs
+awk 'NR==FNR{rsids[$0];next} {if($2 in rsids){$2=$1":"$4} print}' multi-position.rs "!{target}_with_multiallelics.bim" >new.bim
+cp new.bim "!{target}_with_multiallelics.bim"
+rm new.bim
+
+### Convert Rs to chr:pos so we can identify different Rs IDs on the same position, i.e. multiallelics
 LC_NUMERIC=POSIX gawk -f "!{rs2chrpos}" -- "!{target}_with_multiallelics.bim" >"!{target}_chrpos_with_multiallelics.bim"
 <"!{target}_chrpos_with_multiallelics.bim" awk '{print $2}' | TMPDIR=. sort | uniq -d >"!{target}.multiallelics"
-plink --bim "!{target}_chrpos_with_multiallelics.bim" --bed "!{target}_with_multiallelics.bed" --fam "!{target}_with_multiallelics.fam" --exclude "!{target}.multiallelics" --make-bed --out "!{plink_target}"
+
+# plink --bim "!{target}_chrpos_with_multiallelics.bim" --bed "!{target}_with_multiallelics.bed" --fam "!{target}_with_multiallelics.fam" --exclude "!{target}.multiallelics" --make-bed --out "!{plink_target}"
+
+### Find the variant names with the listed chr:pos multiallelics, so we can remove them
+gawk 'NR==FNR{ids[$0];next} {if( ($1 ":" $4) in ids) {print $2}}' "!{target}.multiallelics" "!{target}_with_multiallelics.bim" >"!{target}.multiallelics.rs"
+
+# Remove multiallelics
+if [ -e "!{multiallelic_exclude}" ]; then
+    cat "!{multiallelic_exclude}" >>"!{target}.multiallelics.rs"
+fi
+
+plink --bfile "!{target}_with_multiallelics" --exclude "!{target}.multiallelics.rs" --make-bed --out "!{target}"
+# Replace '.'-Variants with chr:pos names
+mv "!{target}.bim" "!{target}.bim_with_dots"
+gawk '{if($2==".") {$2=$1 ":" $4} print $0}' <"!{target}.bim_with_dots" >"!{target}.bim"
 
 
 #NEWTARG="!{target}.tmp"
-#cp "!{target}.fam" "${NEWTARG}.fam"
-#cp "!{target}.bed" "${NEWTARG}.bed"
-#cp "!{target}.log" "${NEWTARG}.log"
+#ln -s "!{target}.fam" "${NEWTARG}.fam"
+#ln -s "!{target}.bed" "${NEWTARG}.bed"
+#ln -s "!{target}.log" "${NEWTARG}.log"
 
 # LC_NUMERIC=POSIX gawk -f "!{rs2chrpos}" -- "!{target}.bim" >"${NEWTARG}.bim"
 
@@ -707,23 +814,29 @@ tag "${params.collection_name}"
 
     output:
 //    file "${rsq3base}.{bim,bed,fam,log}" into for_definetti_rsq03
-    set file("${rsq3base}.bim"), file("${rsq3base}.bed"), file ("${rsq3base}.fam"), file ("${rsq3base}.log") into for_definetti_rsq03
+    set file("${rsq3base}.bim"), file("${rsq3base}.bed"), file ("${rsq3base}.fam"), file ("${rsq3base}.log") into for_definetti_rsq03, for_gen_sumstats
     set file("${rsq8base}.bim"), file("${rsq8base}.bed"), file ("${rsq8base}.fam"), file ("${rsq8base}.log") into for_definetti_rsq08
 //    file "${rsq8base}.{bim,bed,fam,log}" into for_definetti_rsq08
     set file("${rsq3.bim.baseName}.locuszoom.bim"),file("${rsq3.bim.baseName}.locuszoom.bed"),file("${rsq3.bim.baseName}.locuszoom.fam"),file("${rsq3.bim.baseName}.locuszoom.log") into for_clump_rsq03_ds, for_lz_rsq03
     set file("${rsq8.bim.baseName}.locuszoom.bim"),file("${rsq8.bim.baseName}.locuszoom.bed"),file("${rsq8.bim.baseName}.locuszoom.fam"),file("${rsq8.bim.baseName}.locuszoom.log") into for_clump_rsq08_ds
+
     shell:
+    
     ds_stats = mapFileList(ds_stats_staged)
     rsq3 = mapFileList(rsq03_staged)
     rsq8 = mapFileList(rsq08_staged)
     rsq3base = rsq3.bim.baseName
     rsq8base = rsq8.bim.baseName
+    
+    
 '''
 module load Plink/1.9
 echo "DS_STATS: !{ds_stats}"
 echo "rsq3: !{rsq3}"
 echo "RSQ8: !{rsq8}"
-
+echo "DS_STATS_staged: !{ds_stats_staged}"
+echo "rsq3_staged: !{rsq03_staged}"
+echo "rsq8_staged: !{rsq08_staged}"
 
 # if things don't work out, remove snps with more than 2 alleles
 plink --memory 16000 --bfile "!{rsq3.bim.baseName}" --bmerge "!{ds_stats.bim.baseName}" --make-bed --out "!{rsq3.bim.baseName}_tmp" --allow-no-sex || true
@@ -736,7 +849,7 @@ if [ -e "!{rsq3.bim.baseName}_tmp-merge.missnp" ]; then
     plink --memory 16000 --bfile rsq8 --bmerge ds --make-bed --out "!{rsq8.bim.baseName}_tmp" --allow-no-sex &
     wait
 else
-    plink --memory 16000 --bfile "!{rsq8.bim.baseName}" --bmerge "!{ds_stats.bim.baseName}" --make-bed --out "!{rsq8.bim.baseName}_tmp" --allow-no-sex &
+    plink --memory 16000 --bfile "!{rsq8.bim.baseName}" --bmerge "!{ds_stats.bim.baseName}" --make-bed --out "!{rsq8.bim.baseName}_tmp" --allow-no-sex
 fi
 
 # determine the duplicate SNPs from genotyping (rs numbers) and imputation (chr.:...)
