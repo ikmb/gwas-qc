@@ -423,6 +423,7 @@ fi
 '''
 }
 
+
 process sex_check {
     publishDir params.qc_dir ?: '.', mode: 'copy'
     tag "${params.collection_name}"
@@ -441,17 +442,17 @@ module load IKMB
 module load Plink/1.9
 
 # Check if we have data on both X and Y chromosomes
-plink --allow-no-sex --bfile "!{ds.bim.baseName}" --missing --out !{ds.bim.baseName}
-plink --allow-no-sex --bfile "!{ds.bim.baseName}" --het --out !{ds.bim.baseName}
-plink --allow-no-sex --bfile "!{ds.bim.baseName}" --chr X --recode --out !{ds.bim.baseName}_sex.X || true
-plink --allow-no-sex --bfile "!{ds.bim.baseName}" --chr Y --recode --out !{ds.bim.baseName}_sex.Y || true
+#plink --allow-no-sex --bfile "!{ds.bim.baseName}" --missing --out !{ds.bim.baseName}
+#plink --allow-no-sex --bfile "!{ds.bim.baseName}" --het --out !{ds.bim.baseName}
+#plink --allow-no-sex --bfile "!{ds.bim.baseName}" --chr X --recode --out !{ds.bim.baseName}_sex.X || true
+#plink --allow-no-sex --bfile "!{ds.bim.baseName}" --chr Y --recode --out !{ds.bim.baseName}_sex.Y || true
 
-if [ -e "!{ds.bim.baseName}"_sex.X.ped -a -e "!{ds.bim.baseName}"_sex.Y.ped ]; then
-    Rscript $NXF_DIR/bin/indivplot.R "!{ds.bed.baseName}" "!{ds.bim.baseName}"_sex.X.ped "!{ds.bim.baseName}"_sex.Y.ped !{ds.bim.baseName}.imiss !{ds.bim.baseName}.het
-else
+#if [ -e "!{ds.bim.baseName}"_sex.X.ped -a -e "!{ds.bim.baseName}"_sex.Y.ped ]; then
+#    Rscript $NXF_DIR/bin/indivplot.R "!{ds.bed.baseName}" "!{ds.bim.baseName}"_sex.X.ped "!{ds.bim.baseName}"_sex.Y.ped !{ds.bim.baseName}.imiss !{ds.bim.baseName}.het
+#else
     echo "Sex check requires X and Y chromosomes to be present in the dataset" | tee sex-check-not-possible.txt
-fi
-rm -f "!{ds.bim.baseName}.log"
+#fi
+#rm -f "!{ds.bim.baseName}.log"
 
 '''
 }
