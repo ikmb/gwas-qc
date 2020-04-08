@@ -205,6 +205,8 @@ ln -fs !{params.output}/!{dataset}/SampleQCI/!{prefix}.pca.evec
 '''
 }
 
+params.keep_related=false
+
 process SNPQCII {
 	validExitStatus 0,1
     tag "${dataset}"
@@ -228,7 +230,8 @@ nextflow run !{SNPQCII_script} -c !{params.qc_config} -c !{params.dataset_config
     --collection_name="!{dataset}" \\
     --individuals_annotation="$ANNO" \\
     -with-report "!{params.output}/!{dataset}/SNPQCII/execution-report.html" \\
-    -resume -ansi-log false
+    -resume -ansi-log false \\
+    --keep_related=!{params.keep_related}
 
 mv trace.txt SNPQCII-!{dataset}.trace.txt
 cp SNPQCII-!{dataset}.trace.txt $MYPWD
