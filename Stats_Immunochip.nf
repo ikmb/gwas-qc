@@ -75,11 +75,12 @@ ds_imp_input = Channel.fromPath("${params.input_imp}/{[1-9],[1-2][0-9]}.vcf?gz",
 params.min_info_score = 0.3
 params.first_chr = 1
 params.last_chr = 22
-params.disease_data_set_prefix_release_statistics = "dummy"
+params.disease_data_set_prefix_release_statistics = "${params.collection_name}_Release"
 
 process preprocess_infofilter_dosage {
-    tag "chr${chrom}"
-    time { 24.h * task.attempt }
+    tag "${params.collection_name}.${chrom}"
+    cpus 2
+    time { 48.h * task.attempt }
     errorStrategy { task.exitStatus == 128 ? 'retry' : 'terminate' }
 
     input:
@@ -164,6 +165,9 @@ zcat !{chrom}.INFO!{params.min_info_score}.vcf.PLINKdosage.gz \
 
 
 process preprocess_hrc_vcf_map {
+publishDir params.output ?: '.', mode: 'copy', overwrite: true
+    time { 24.h * task.attempt }
+    tag "${params.collection_name}"
     input:
     file(mapfiles) from vcfmaps_preproc.collect()
     file(infomapfiles) from infomaps_preproc.collect()
@@ -190,6 +194,7 @@ process preprocess_hrc_vcf_map {
 
 process extract_genotyped_variants {
 	cpus 4
+    tag "${params.collection_name}"
     errorStrategy { task.exitStatus == 128 ? 'retry' : 'terminate' }
 
 	input:
@@ -235,7 +240,7 @@ gawk 'FILENAME~/fam$/{samples[$2]=1}(FILENAME~/covar$/ && FNR==1) {print $0} (FI
 process plink_dosage_logistic {
     validExitStatus 0,128
     cpus 4
-    tag "chr$chromosome"
+    tag "${params.collection_name}.$chromosome"
 
     input:
     set val(chromosome), file(vcfgz), file(vcfmap), file(dosage_gz), file(dosage_map) from plinkdosage_gz_map
@@ -320,6 +325,7 @@ gawk '{ OFS="\t"; print $1, $2, $3, $4, $19, $17, $18, "genotyped", $7, $8, $12 
 process merge_log_dos_results {
 publishDir params.output ?: '.', mode: 'copy', overwrite: true
     validExitStatus 0,128
+    tag "${params.collection_name}"
     input:
     file dosage_files from merge_log_dos_results_dosage.collect()
     file log_files from merge_log_dos_results_logistic.collect()
@@ -563,7 +569,8 @@ plink --bim "!{target}_chrpos_with_multiallelics.bim" --bed "!{target}_with_mult
 process merge_dosages {
     errorStrategy 'retry'
     memory { 20.GB * task.attempt }
-    time { 2.h * task.attempt }
+    time { 8.h * task.attempt }
+    tag "${params.collection_name}"
     input:
     //file dosages from for_merge_dosages.collect()
     file rsq03_staged from for_merge_dosages_rsq03.collect()
@@ -688,6 +695,7 @@ process cleanup_dataset {
 memory 35.GB
 time 12.h
 publishDir params.output ?: '.', mode: 'copy', overwrite: true
+tag "${params.collection_name}"
     cpus 2
     stageInMode 'copy' // some files need to be overwritten, cannot stage them as links
 
@@ -767,8 +775,37 @@ wait
 '''
 }
 
+process generate_sumstats {
+publishDir params.output ?: '.', mode: 'copy', overwrite: true
+tag "${params.collection_name}"
+cpus 2
+time {4.h * task.attempt }
+    input:
+    set file(bim), file(bed), file(fam), file(log) from for_gen_sumstats
+    file(assoc03) from for_gen_sumstats_rsq3
+    file(assoc08) from for_gen_sumstats_rsq8
+    file(info) from for_gen_sumstats_info
+
+    output:
+    file "${params.collection_name}.INFO0.3.sumstats.gz"
+    file "${params.collection_name}.INFO0.8.sumstats.gz"
+shell:
+'''
+
+plink2sumstats.py "!{log}" "!{assoc03}" >"!{params.collection_name}.INFO0.3.sumstats.tmp" &
+plink2sumstats.py "!{log}" "!{assoc08}" >"!{params.collection_name}.INFO0.8.sumstats.tmp" &
+wait
+
+(vcf2sumstats.pl "!{info}" "!{params.collection_name}.INFO0.3.sumstats.tmp" | gzip >"!{params.collection_name}.INFO0.3.sumstats.gz") &
+(vcf2sumstats.pl "!{info}" "!{params.collection_name}.INFO0.8.sumstats.tmp" | gzip >"!{params.collection_name}.INFO0.8.sumstats.gz") &
+wait
+'''
+
+}
+
 
 process definetti_plots {
+tag "${params.collection_name}"
 publishDir params.output ?: '.', mode: 'copy', overwrite: true
     input:
     file rsq03_staged from for_definetti_rsq03
@@ -794,6 +831,7 @@ R --slave --args "!{rsq08base}_hardy.hwe" "!{rsq08base}_controls_DeFinetti" "!{r
 
 
 process plink_clumping {
+tag "${params.collection_name}"
 memory 24.GB
 input:
     file ds_imp_staged from for_clumping_ds
@@ -854,5 +892,4 @@ python -c 'from Stats_helpers import *; \
 
 '''
 }
-
 
