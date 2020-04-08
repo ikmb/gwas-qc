@@ -14,7 +14,7 @@ echo "Installing basic build system"
 #sed -i 's/$/ universe/' /etc/apt/sources.list
 apt -y update
 apt -y dist-upgrade
-apt -y install build-essential locales wget unzip r-base git tclsh bash psmisc curl gnuplot ghostscript tabix libswitch-perl moreutils gawk libgfortran3 r-cran-rserve sqlite3 libdbd-sqlite3-perl
+apt -y install build-essential locales wget unzip r-base git tclsh bash psmisc curl gnuplot ghostscript tabix libswitch-perl moreutils gawk libgfortran3 r-cran-rserve sqlite3 libdbd-sqlite3-perl python-scipy python3-scipy
 
 echo "Setting bash as default shell (instead of dash, thanks Canonical Inc)"
 rm /bin/sh
