@@ -58,6 +58,7 @@ mapFileList = { fn -> fn.collectEntries {
 // initialize configuration
 params.qc_dir = "."
 params.PCA_SNPList = ""
+params.keep_related = false
 
 // match auto-generated "no file exists" to actual not-existing files
 if (params.PCA_SNPList == "nofileexists") {
@@ -76,7 +77,17 @@ SampleQCI_final_wr = ["${params.sampleqci_dir}/${params.collection_name}_SampleQ
                       "${params.sampleqci_dir}/${params.collection_name}_SampleQCI_final_withoutRelatives.fam",
                       "${params.sampleqci_dir}/${params.collection_name}_SampleQCI_final_withoutRelatives.annotation.txt",
                       "${params.sampleqci_dir}/${params.collection_name}_SampleQCI_final_withoutRelatives.pca.evec" ].collect { fileExists(file(it)) }
-SampleQCI_final = SampleQCI_final_wr
+
+if(params.keep_related == true) {
+    SampleQCI_final = ["${params.sampleqci_dir}/${params.collection_name}_SampleQCI_final.bed",
+                      "${params.sampleqci_dir}/${params.collection_name}_SampleQCI_final.bim",
+                      "${params.sampleqci_dir}/${params.collection_name}_SampleQCI_final.fam",
+                      "${params.sampleqci_dir}/${params.collection_name}_SampleQCI_final.annotation.txt",
+                      "${params.sampleqci_dir}/${params.collection_name}_SampleQCI_final.pca.evec" ].collect { fileExists(file(it)) }
+    
+} else {
+    SampleQCI_final = SampleQCI_final_wr
+}
 
 for_prune = Channel.create()
 for_flashpca_1kg_final = Channel.create()
