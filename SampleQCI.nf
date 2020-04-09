@@ -291,6 +291,7 @@ process pca_with_hapmap {
 module load IKMB
 module load Plink/1.9
 module load Eigensoft/4.2
+#module load Eigensoft/6.1.4
 
 if [ -e "!{exclude}" ]; then
     plink --bfile "!{base_pruned}" --extract "!{hapmap}.bim" --exclude "!{exclude}" --make-bed --out pruned_tmp --allow-no-sex --memory !{task.memory.toMega()} 

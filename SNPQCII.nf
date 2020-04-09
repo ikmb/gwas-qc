@@ -540,12 +540,17 @@ plink --bfile "!{dataset.bed.baseName}" --remove "!{individuals}" --exclude "!{v
 
 touch !{params.collection_name}_SNPQCII_final_flag.relatives.txt
 
+head -n1 "!{params.individuals_annotation}" >"!{prefix}_annotation.txt"
+mawk 'NR==FNR {samples[$2];next} {if($2 in samples) print $0}' "!{prefix}.fam" "!{params.individuals_annotation}" >>"!{prefix}_annotation.txt"
+
+mawk 'NR==FNR {samples[$2];next} {if($1 in samples) print $0}' "!{prefix}.fam" "!{params.collection_name}_SNPQCII_final_flag.relatives.txt" >"!{prefix}_flag.relatives.txt"
+
 # Fix annotations
-python -c 'from SNPQC_helpers import *; extract_QCsamples_annotationfile_relativesfile( \
-    fam="!{prefix}.fam", individuals_annotation_QCed="!{prefix}_annotation.txt", \
-    related_samples_file="!{params.collection_name}_SNPQCII_final_flag.relatives.txt", \
-    related_samples_file_QCed="!{prefix}_flag.relatives.txt", \
-    individuals_annotation="!{params.individuals_annotation}", \
-    diagnoses="!{params.diagnoses}")'
+#python -c 'from SNPQC_helpers import *; extract_QCsamples_annotationfile_relativesfile( \
+#    fam="!{prefix}.fam", individuals_annotation_QCed="!{prefix}_annotation.txt", \
+#    related_samples_file="!{params.collection_name}_SNPQCII_final_flag.relatives.txt", \
+#    related_samples_file_QCed="!{prefix}_flag.relatives.txt", \
+#    individuals_annotation="!{params.individuals_annotation}", \
+#    diagnoses="!{params.diagnoses}")'
 '''
 }
