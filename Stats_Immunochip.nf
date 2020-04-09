@@ -780,7 +780,7 @@ process cleanup_dataset {
     input:
     file rsq03_staged from for_cleanup_dataset_rsq03
     file rsq08_staged from for_cleanup_dataset_rsq08
-    file (fam: "${params.disease_data_set_prefix_release_statistics}.fam") from for_cleanup_dataset_fam
+    file (fam: "doubleid.fam") from for_cleanup_dataset_fam
     file ds_stats_staged from for_cleanup_dataset_stats
 
     output:
@@ -809,7 +809,7 @@ tag "${params.collection_name}"
     input:
     file rsq03_staged from for_cleanup_dataset_rsq03
     file rsq08_staged from for_cleanup_dataset_rsq08
-    file (fam: "${params.disease_data_set_prefix_release_statistics}.fam") from for_cleanup_dataset_fam
+    file (fam: "doubleid.fam") from for_cleanup_dataset_fam
     file ds_stats_staged from for_cleanup_dataset_stats
 
     output:
@@ -819,6 +819,9 @@ tag "${params.collection_name}"
 //    file "${rsq8base}.{bim,bed,fam,log}" into for_definetti_rsq08
     set file("${rsq3.bim.baseName}.locuszoom.bim"),file("${rsq3.bim.baseName}.locuszoom.bed"),file("${rsq3.bim.baseName}.locuszoom.fam"),file("${rsq3.bim.baseName}.locuszoom.log") into for_clump_rsq03_ds, for_lz_rsq03
     set file("${rsq8.bim.baseName}.locuszoom.bim"),file("${rsq8.bim.baseName}.locuszoom.bed"),file("${rsq8.bim.baseName}.locuszoom.fam"),file("${rsq8.bim.baseName}.locuszoom.log") into for_clump_rsq08_ds
+    
+    set file("${rsq3base}.bim"), file("${rsq3base}.bed"), file ("${rsq3base}.fam"), file ("${rsq3base}.log")
+    set file("${rsq8base}.bim"), file("${rsq8base}.bed"), file ("${rsq8base}.fam"), file ("${rsq8base}.log")
 
     shell:
     
@@ -837,6 +840,10 @@ echo "RSQ8: !{rsq8}"
 echo "DS_STATS_staged: !{ds_stats_staged}"
 echo "rsq3_staged: !{rsq03_staged}"
 echo "rsq8_staged: !{rsq08_staged}"
+
+# silently replace staged fam file by doubleid.fam because plink --bmerge does not support giving a separate fam file
+mv "!{ds_stats.fam}" "!{ds_stats.fam}.single-id"
+mv doubleid.fam "!{ds_stats.fam}"
 
 # if things don't work out, remove snps with more than 2 alleles
 plink --memory 16000 --bfile "!{rsq3.bim.baseName}" --bmerge "!{ds_stats.bim.baseName}" --make-bed --out "!{rsq3.bim.baseName}_tmp" --allow-no-sex || true
