@@ -71,7 +71,7 @@ ds_input = ["${params.input}.bed",
 // From Imputation server (1.vcf.gz, 2.vcf.gz, ...)
 ds_imp_input = Channel.fromPath("${params.input_imp}/{[1-9],[1-2][0-9]}.vcf?gz", checkIfExists: true)
 
-
+params.debug = 0
 params.min_info_score = 0.3
 params.first_chr = 1
 params.last_chr = 22
@@ -717,30 +717,6 @@ plink --bfile "!{dosage_basename}.chr!{params.first_chr}" \
     --memory 16000\
     --make-bed --out "!{target}_tmp" --allow-no-sex
 
-#TRIES=0
-#RETRY=1
-#while [ "$RETRY" -eq 1 ]
-#do
-#    touch "multiallelic-excludes"
-#    plink --bfile "!{dosage_basename}.chr!{params.first_chr}" \
-#        --merge-list merge-list \
-#        --exclude "multiallelic-excludes" \
-#        --make-bed --out "!{target}_tmp" --allow-no-sex \
-#        || true
-#
-#    (( TRIES++ ))
-#    if [ "$TRIES" -le 10 ] && [ -s "!{target}_tmp-merge.missnp" ]; then
-#        cat "!{target}_tmp-merge.missnp" >>multiallelic-excludes
-#        rm "!{target}_tmp-merge.missnp"
-#    elif ! [ -e "!{target}_tmp-merge.missnp" ]; then
-#        RETRY=0
-#        echo "All $(wc -l multiallelic-excludes) multiallelics removed."
-#    else
-#        RETRY=0
-#        echo "Error: could not remove all multiallelics - check input data" >>/dev/stderr
-#        exit 1
-#    fi
-#done
 
 plink --bfile "!{target}_tmp" \
       --pheno "!{pheno}" \
@@ -752,6 +728,10 @@ plink --bfile "!{target}" \
       --extract "!{dosage_basename}.rsq0.8.rs.txt" \
       --memory 16000 \
       --make-bed --out "!{rsq08_target_name}" --allow-no-sex
+
+if [ "!{params.debug}" == "0" ]; then
+    rm -rf "!{target}_tmp".*
+fi
 
 # Check number of individuals pre and post imputation
 COUNT1=$(wc -l "!{fam}" | cut -d" " -f 1)
@@ -765,38 +745,6 @@ fi
 '''
 }
 
-/*for_cleanup_dataset_rsq03.subscribe { println "Channel rsq3: $it\n" }*/
-/*for_cleanup_dataset_rsq08.subscribe { println "Channel rsq8: $it\n" }*/
-/*for_cleanup_dataset_fam.subscribe { println "Channel fam: $it\n" }*/
-/*for_cleanup_dataset_stats.subscribe { println "Channel stats: $it" }*/
-
-/*for_definetti_rsq03 = Channel.create()*/
-/*for_definetti_rsq08 = Channel.create()*/
-/*for_clump_rsq03_ds = Channel.create()*/
-/*for_clump_rsq08_ds = Channel.create()*/
-
-/*
-process cleanup_dataset {
-    input:
-    file rsq03_staged from for_cleanup_dataset_rsq03
-    file rsq08_staged from for_cleanup_dataset_rsq08
-    file (fam: "doubleid.fam") from for_cleanup_dataset_fam
-    file ds_stats_staged from for_cleanup_dataset_stats
-
-    output:
-    file 'dummy' into for_definetti_rsq03, for_definetti_rsq08, for_clump_rsq03_ds, for_clump_rsq08_ds
-
-    shell:
-    rsq3 = mapFileList(rsq03_staged)
-    rsq8 = mapFileList(rsq08_staged)
-    ds_stats = mapFileList(ds_stats_staged)
-    '''
-    echo "DS_STATS: !{ds_stats}"
-    echo "RSQ3: !{rsq3}"
-    echo "RSQ8: !{rsq8}"
-    '''
-}
-*/
 
 process cleanup_dataset {
 memory 35.GB
@@ -859,6 +807,8 @@ else
     plink --memory 16000 --bfile "!{rsq8.bim.baseName}" --bmerge "!{ds_stats.bim.baseName}" --make-bed --out "!{rsq8.bim.baseName}_tmp" --allow-no-sex
 fi
 
+### datasets: rsq3, ds, !{rsq8.bim.baseName}_tmp, !{rsq3.bim.baseName}_tmp
+
 # determine the duplicate SNPs from genotyping (rs numbers) and imputation (chr.:...)
 # tmp version without duplicate genotyped and imputed SNPs - exclude imputed SNPs which are already genotyped
 gawk '{ print $1":"$4 }' "!{rsq3.bim.baseName}_tmp.bim" | sort | uniq -d > "!{rsq3.bim.baseName}.excluded.duplicates.imputed"
@@ -891,6 +841,14 @@ awk '{ print $1"\t"$1":"$4"\t"$3"\t"$4"\t"$5"\t"$6 }' "!{rsq8.bim}"> "!{rsq8.bim
 plink --memory 16000 --bfile "!{rsq3.bim.baseName}.locuszoom.tmp" --exclude "!{rsq3.bim}.duplicates" --make-bed --out "!{rsq3.bim.baseName}.locuszoom" &
 plink --memory 16000 --bfile "!{rsq8.bim.baseName}.locuszoom.tmp" --exclude "!{rsq8.bim}.duplicates" --make-bed --out "!{rsq8.bim.baseName}.locuszoom" &
 wait
+
+if [ "!{params.debug}" == "0" ]; then
+    rm -f ds.* rsq3.*
+    rm -f !{rsq3.bim.baseName}_tmp*
+    rm -f !{rsq8.bim.baseName}_tmp*
+    rm -f !{rsq3.bim.baseName}.locuszoom.tmp*
+    rm -f !{rsq8.bim.baseName}.locuszoom.tmp*
+fi
 
 '''
 }
