@@ -124,12 +124,16 @@ def extract_Rsq_variants(assoc_logistic_input, assoc_dosage_input, assoc_merge_o
             del list[-1]
         # if not already genotyped --> add
         if not (list[0] + ":" + list[2]) in snp2line:
-            if float(list[7]) >= 0.3:
-                chr  = decimal.Decimal(list[0])
-                pos  = decimal.Decimal(list[2])
-                store_lines_rsq0_3.append((chr, pos, line))
-                if float(list[7]) >= 0.8:
-                    store_lines_rsq0_8.append((chr, pos, line))
+            chr  = decimal.Decimal(list[0])
+            pos  = decimal.Decimal(list[2])
+            store_lines_rsq0_3.append((chr, pos, line))
+            store_lines_rsq0_8.append((chr, pos, line))
+#            if float(list[7]) >= 0.3:
+#                chr  = decimal.Decimal(list[0])
+#                pos  = decimal.Decimal(list[2])
+#                store_lines_rsq0_3.append((chr, pos, line))
+#                if float(list[7]) >= 0.8:
+#                    store_lines_rsq0_8.append((chr, pos, line))
         line = fh_r.readline().rstrip('\n')
     fh_r.close()
 
