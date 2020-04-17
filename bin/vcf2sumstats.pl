@@ -57,21 +57,33 @@ while(<$vcfmap_fh>) {
     my $typed = 0;
     my $af = 0.0;
     my $infoscore = 0.0;
+    my $refa1 = '';
 
+    $refa1 = $parts[3];
     $typed = 1 if $info =~ /(TYPED|PHASED)/;
     $af = $2 if $info =~ /(RefPanelAF|RefPAF)=(\d+\.\d+);/;
     $infoscore = $2 if $info =~ /(DR2|INFO)=(\d+(\.\d+)?)/;
+
     my $vcfkey = $parts[0].":".$parts[1]."_".$parts[3].$parts[4];
+
     #    print "$vcfkey\n";
-    $vcfentries{$vcfkey} = [ $typed, $af, $infoscore ];
+    $vcfentries{$vcfkey} = [ $typed, $af, $infoscore, $refa1 ];
 }
 
+sub cmp_sumstats {
+    my @pa = @$a;
+    my @pb = @$b;
+
+    return $pa[0] <=> $pb[0] unless $pa[0] == $pb[0];
+    return $pa[1] <=> $pb[1];
+}
 
 chomp $header;
 $header .= "\t" . join("\t", qw(INFO RefPanelAF_A1 RefPanelAF Genotyped));
 print "$header\n";
+my @sorted = sort cmp_sumstats @sumstats;
 
-foreach(@sumstats) {
+foreach(@sorted) {
     my @orig_parts =@$_;
     print join("\t", @orig_parts);
     my $key = "$orig_parts[0]:$orig_parts[1]_$orig_parts[4]$orig_parts[3]";
@@ -82,7 +94,7 @@ foreach(@sumstats) {
 
     if(defined($partref)) {
         my @newparts = @{$partref};
-        print "\t". join("\t",($newparts[2], $orig_parts[3],  $newparts[1])) . "\t";
+        print "\t". join("\t",($newparts[2], $newparts[3],  $newparts[1])) . "\t";
         if($newparts[0]) {
             print "GenotypedImputed";
         } else {
