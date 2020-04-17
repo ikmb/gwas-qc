@@ -441,19 +441,19 @@ process det_diff_missingness {
     prefix = "${params.collection_name}_SNPQCII"
 
     missingness = mapFileList(missingness_staged)
+    // Differential missingness does only make sense if both cases and controls
+    // are available. The missingness test fails if this is not the case.
 '''
 #!/usr/bin/env python
 
 from SNPQC_helpers import *
 
-test_missing = Test_missing(missing_file="!{missingness.missing}", write_file="!{prefix}.variants_exclude_diff_missingness", threshold=!{params.test_missing_thresh})
-test_missing.write_variants_file();
-del test_missing;
-
-#python -c 'from SNPQC_helpers import *; \
-#    test_missing = Test_missing(missing_file="!{missingness.missing}", write_file="!{prefix}.differential_missingness", threshold=!{params.test_missing_thresh}); \
-#    test_missing.write_variants_file(); \
-#    del test_missing'
+if "!{missingness.missing}" == "null":
+    open('!{prefix}.variants_exclude_diff_missingness','a').close()
+else:
+    test_missing = Test_missing(missing_file="!{missingness.missing}", write_file="!{prefix}.variants_exclude_diff_missingness", threshold=!{params.test_missing_thresh})
+    test_missing.write_variants_file();
+    del test_missing;
 
 '''
 }

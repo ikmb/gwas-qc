@@ -444,6 +444,10 @@ def qqplot_null(file_PLINK_null, numof_cases, numof_controls, qqplotp, qqplotp2,
             qqplotp2))
 
 
+# rsq4: PLINK basename, INFO-filtered
+# rsq8: PLINK basename, INFO-filtered for different threshold (optional, will not be processed if rsq8=="")
+# file_PLINK_geno_imp_rsq*: association test report that was prepared for use with LocusZoom
+# clump*: floating-point parameters for clumping, see PLINK manual
 def PLINK_clumping(rsq4, rsq8, file_PLINK_geno_imp_rsq0_4, file_PLINK_geno_imp_rsq0_8, clumpr2, clumpp1, clumpp2, clumpkb):
     """ run clumping from PLINK association program """
 
@@ -484,6 +488,9 @@ def PLINK_clumping(rsq4, rsq8, file_PLINK_geno_imp_rsq0_4, file_PLINK_geno_imp_r
               %(file_PLINK_geno_imp_rsq0_4, file_PLINK_geno_imp_rsq0_4))
     os.system("gawk '{ if (!($1 == 6 && ($4 >= 25000000 && $4 < 34000000))) print }' %s_clump.clumped_groups > %s_clump.clumped_groups.noXMHC"\
               %(file_PLINK_geno_imp_rsq0_4, file_PLINK_geno_imp_rsq0_4))
+
+    if file_PLINK_geno_imp_rsq0_8 == "":
+        return None
 
     # --------------------------------------------------------- #
     # -- clumping                                            -- #
