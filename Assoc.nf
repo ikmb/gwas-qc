@@ -42,6 +42,7 @@ process PlinkAssoc {
     file "*.bim"
     file "*.bed"
     file "*.fam"
+    file "dag.html"
     
 shell:
 '''
@@ -66,6 +67,8 @@ process SAIGEAssoc {
     file "${ds_name}.SAIGE.txt"
     file "trace.txt"
     file "dag.html"
+    file "${ds_name}.SAIGE.sumstats.gz"
+    file "*clump*"
 shell:
 '''
 NXF_PARAMS="-c !{config} !{Saige_script} --input=!{qced} --output="." --plink_trace=plink_trace.txt --covar=!{covars} -resume -ansi-log false -with-dag dag.html --collection_name=!{ds_name}"

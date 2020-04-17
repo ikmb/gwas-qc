@@ -2,10 +2,14 @@
 
 /* Verify config parameter*/
 params.dataset_prefixes = [:]
+// params.datasets = "" // used to only process a subset of specified datasets
+
 if(params.dataset_prefixes.count({true}) == 0) {
     System.err.println("You didn't specify a configuration or the configuration does not contain dataset definitions!")
     return
 }
+
+used_datasets = params.datasets?.tokenize(',')
 
 /* Verify dataset file list */
 def assertFileExists(f) {
@@ -18,14 +22,17 @@ def assertFileExists(f) {
 
 input_datasets = Channel.create()
 params.dataset_prefixes.each { key, value ->
-    value.each { b -> 
-        assertFileExists(file(b + ".bim")) 
-        assertFileExists(file(b + ".bed")) 
-        assertFileExists(file(b + ".fam")) 
-        assertFileExists(file(b + "_individuals_annotation.txt"))
-        input_datasets << [key, b, file(b+".bim").getBaseName()]
+    if(!used_datasets || used_datasets.contains(key)) {
+        value.each { b -> 
+            assertFileExists(file(b + ".bim")) 
+            assertFileExists(file(b + ".bed")) 
+            assertFileExists(file(b + ".fam")) 
+            assertFileExists(file(b + "_individuals_annotation.txt"))
+            input_datasets << [key, b, file(b+".bim").getBaseName()]
+        }
     }
 }
+
 input_datasets.close()
 
 /* Additional external files */
