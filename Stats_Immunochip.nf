@@ -80,7 +80,6 @@ params.disease_data_set_prefix_release_statistics = "${params.collection_name}_R
 process preprocess_infofilter_dosage {
     tag "${params.collection_name}.${chrom}"
     cpus 2
-    time { 48.h * task.attempt }
     errorStrategy { task.exitStatus == 128 ? 'retry' : 'terminate' }
 
     input:
@@ -247,7 +246,6 @@ wait
 
 process preprocess_hrc_vcf_map {
 publishDir params.output ?: '.', mode: 'copy', overwrite: true
-    time { 24.h * task.attempt }
     tag "${params.collection_name}"
     input:
     file(mapfiles) from vcfmaps_preproc.collect()
@@ -503,7 +501,6 @@ process qq_manhattan {
 tag "${params.collection_name}"
 publishDir params.output ?: '.', mode: 'copy', overwrite: true
 validExitStatus 0,1
-time 10.h
 cpus 2
 
 input:
@@ -676,7 +673,6 @@ gawk '{if($2==".") {$2=$1 ":" $4} print $0}' <"!{target}.bim_with_dots" >"!{targ
 process merge_dosages {
     errorStrategy 'retry'
     memory { 20.GB * task.attempt }
-    time { 8.h * task.attempt }
     tag "${params.collection_name}"
     input:
     //file dosages from for_merge_dosages.collect()
@@ -857,7 +853,6 @@ process generate_sumstats {
 publishDir params.output ?: '.', mode: 'copy', overwrite: true
 tag "${params.collection_name}"
 cpus 2
-time {4.h * task.attempt }
     input:
     set file(bim), file(bed), file(fam), file(log) from for_gen_sumstats
     file(assoc03) from for_gen_sumstats_rsq3

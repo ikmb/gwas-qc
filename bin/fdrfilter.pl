@@ -159,7 +159,7 @@ close $thresfh;
 #
 print STDERR "Writing whole-collection outliers to $whole_fn...\n";
 open my $wholefh, '>', $whole_fn or die($!);
-print $wholefh "Variant\tP_HWE\n";
+# print $wholefh "Variant\tP_HWE\n";
 for(my $i=0; $i < $whole_fdr{$filter_threshold}{'count'}; $i++) {
     print $wholefh sprintf("%s\t%e\n", $hwe[$i]->[0], $hwe[$i]->[1]);
 }
@@ -167,7 +167,7 @@ close $wholefh;
 
 print STDERR "Writing worst-batch-removed outliers to $worstbatchremoved_fn...\n";
 open my $wbmfh, '>', $worstbatchremoved_fn or die($!);
-print $wbmfh "Variant\tP_HWE\n";
+# print $wbmfh "Variant\tP_HWE\n";
 
 for(my $i=0; $i < $worst_removed_fdr{$filter_threshold}{'count'}; $i++) {
     print $wbmfh sprintf("%s\t%e\n", $hwe_worst_batch_removed[$i]->[0], $hwe_worst_batch_removed[$i]->[1]);
@@ -209,8 +209,8 @@ open my $perbatch_t_fh, '>', $perbatch_thresholds_fn or die($!);
 
 print $perbatch_t_fh "FDRthres\tFail_1plusbatches\tFail_2plusbatches\n";
 for(my $f=0; $f<@fdr_thresholds; $f++) {
-    %excludes_fail_one = {};
-    %excludes_fail_two = {};
+    %excludes_fail_one = ();
+    %excludes_fail_two = ();
     for(my $b=0; $b < $batchcount; $b++) {
         for(my $i=0; $i < $perbatch_fdr[$b]->[$f]; $i++) {
             my $variant = $hwe_per_batch[$b]->[$i]->[0];
@@ -223,6 +223,7 @@ for(my $f=0; $f<@fdr_thresholds; $f++) {
             }
         }
     }
+
     print $perbatch_t_fh sprintf("%e\t%d\t%d\n",
         $fdr_thresholds[$f],
         scalar(keys(%excludes_fail_one)),

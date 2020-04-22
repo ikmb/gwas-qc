@@ -271,7 +271,6 @@ process prepare_spa_genotyped {
 process saige_spa_imputed {
     tag "${params.collection_name}.$chrom"
     container "docker://wzhou88/saige:0.36.3.2"
-    time {24.h * task.attempt}
     errorStrategy 'retry'
     maxRetries 5
     input:
@@ -306,7 +305,6 @@ step2_SPAtests.R \
 process saige_spa_genotyped {
     tag "${params.collection_name}.$chrom"
     container "docker://wzhou88/saige:0.36.3.2"
-    time {24.h * task.attempt}
     errorStrategy 'retry'
     maxRetries 5
     input:
@@ -377,7 +375,6 @@ process generate_sumstats {
 publishDir params.output ?: '.', mode: 'copy', overwrite: true
 tag "${params.collection_name}"
 cpus 2
-time {4.h * task.attempt}
 
 input:
     file ds_staged from for_generate_sumstats_ds

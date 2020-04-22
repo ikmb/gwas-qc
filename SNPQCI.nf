@@ -145,7 +145,7 @@ shell:
 '''
   CONTROLS=$(awk '{if($9=="Control") print}' "!{individuals_annotation}"| wc -l)
   if [ "$CONTROLS" -ge 1 ]; then
-    cut -f 2 !{input_bim} | split -l 1000 -a 5 -d - chunk_
+    cut -f 2 !{input_bim} | split -l 10000 -a 5 -d - chunk_
   else
     touch chunk_00000
   fi
@@ -389,7 +389,7 @@ NUM_CTRL_BATCHES=\$(tr -s '\\t ' ' ' <${individuals_annotation} | cut -f7,9 -d" 
 
 if [ "\$NUM_CTRL_BATCHES" -gt "4" ]; then
     echo "Found \$NUM_CTRL_BATCHES control batches."
-    (tail -n +2 "$excludes_whole" | cut -f1; cat "$excludes_perbatch"; cat "$missingness_excludes_entire"; cat "$missingness_excludes_perbatch") | sort -n | uniq >variant-excludes
+    (tail -n +1 "$excludes_whole" | cut -f1; cat "$excludes_perbatch"; cat "$missingness_excludes_entire"; cat "$missingness_excludes_perbatch") | sort -n | uniq >variant-excludes
 else
     echo "Found \$NUM_CTRL_BATCHES control batches. Skipping 'worst batch removed' excludes from HWE testing."
     (tail -n +1 "$excludes_allbatches" | cut -f1; cat "$missingness_excludes_entire"; cat "$missingness_excludes_perbatch") | sort -n | uniq >variant-excludes
