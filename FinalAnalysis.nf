@@ -526,6 +526,7 @@ module load Plink/1.9
 }
 
 
+/*
 process prepare_sanger_imputation {
     publishDir params.qc_dir ?: '.', mode: 'copy'
     tag "${params.collection_name}"
@@ -535,8 +536,8 @@ process prepare_sanger_imputation {
     file ds_staged from for_prepare_imputation
 
     output:
-    file("${ds.bim.baseName}.vcf.refchecked.gz")
-    file("${ds.bim.baseName}.vcf.refchecked.gz.tbi")
+    file("${ds.bim.baseName}.vcf.refchecked.gz") optional
+    file("${ds.bim.baseName}.vcf.refchecked.gz.tbi") optional
 
     shell:
     ds = mapFileList(ds_staged)
@@ -546,6 +547,9 @@ module load IKMB
 module load Plink/1.9
 
 ANNOTATION=/work_ifs/sukmb388/human_g1k_v37.fasta.gz
+
+# temporarily disabled
+exit 0
 
 grep D !{ds.bim} | awk '{ print $2 }' >!{ds.bim}.indels.txt
 plink --allow-no-sex --bfile !{ds.bim.baseName} --chr 1-22 --exclude !{ds.bim}.indels.txt --make-bed --out final_noindels
@@ -563,12 +567,13 @@ tabix -p vcf !{ds.bim.baseName}.vcf.refchecked.gz
 
     '''
 }
-
+*/
 
 process prepare_sanger_imputation_split {
     publishDir params.qc_dir ?: '.', mode: 'copy'
     tag "${params.collection_name}"
     time {8.h * task.attempt}
+    validExitStatus 0,1
 
     input:
     file ds_staged from for_prepare_imputation_split
@@ -588,22 +593,44 @@ module load Plink/1.9
 ANNOTATION=/work_ifs/sukmb388/human_g1k_v37.fasta.gz
 
 grep D !{ds.bim} | awk '{ print $2 }' >!{ds.bim}.indels.txt
-plink --allow-no-sex --bfile !{ds.bim.baseName} --chr 1-22 --exclude !{ds.bim}.indels.txt --make-bed --out final_noindels
+plink --allow-no-sex --bfile !{ds.bim.baseName} --chr 1-25 --exclude !{ds.bim}.indels.txt --make-bed --out final_noindels
 
-for chr in {1..22}
+for chr in {1..24}
 do
-    THENAME="!{ds.bim.baseName}_${chr}"
-    plink --allow-no-sex --bfile final_noindels --chr $chr --recode vcf --out $THENAME
-    bgzip $THENAME.vcf || true
-
+    THENAME="${chr}"
+    /opt/plink2 --bfile final_noindels --chr $chr --recode vcf bgz --out $THENAME || true
+    if [ ! -e ${THENAME}.vcf.gz ]; then
+        continue
+    fi
     echo "$chr Check the REF allele ...";
     bcftools norm --check-ref w -f $ANNOTATION $THENAME.vcf.gz >/dev/null || true
     echo "$chr Fix the REF allele ...";
-    bcftools norm --check-ref s -f $ANNOTATION $THENAME.vcf.gz >$THENAME.vcf.refchecked || true
-    bgzip $THENAME.vcf.refchecked || true
+    if [ "$chr" -eq 23 ]; then
+        bcftools norm --check-ref s -f $ANNOTATION $THENAME.vcf.gz | sed 's/ID=X/ID=23/' | sed 's/^X/23/' | bgzip >$THENAME.vcf.refchecked.gz || true
+    elif [ "$chr" -eq 24 ]; then
+        bcftools norm --check-ref s -f $ANNOTATION $THENAME.vcf.gz | sed 's/ID=Y/ID=24/' | sed 's/^X/24/' | bgzip >$THENAME.vcf.refchecked.gz || true
+    else
+        bcftools norm --check-ref s -f $ANNOTATION $THENAME.vcf.gz | bgzip >$THENAME.vcf.refchecked.gz || true
+    fi
     echo "$chr Tabix ...";
     tabix -p vcf $THENAME.vcf.refchecked.gz
 done
+
+/opt/plink2 --bfile final_noindels --chr 25 --recode vcf --out 25 || true
+if [ -e 25.vcf ]; then
+	sed -i 's/ID=XY/ID=X/' 25.vcf
+	sed -i 's/^XY/X/' 25.vcf
+	bcftools norm --check-ref w -f $ANNOTATION 25.vcf >/dev/null
+	bcftools norm --check-ref s -f $ANNOTATION 25.vcf | sed 's/ID=X/ID=23/' | sed 's/^X/23/'| bgzip >25.vcf.refchecked.gz
+	tabix -p vcf 25.vcf.refchecked.gz
+	bcftools filter -r 23:10001-2781479 25.vcf.refchecked.gz | bgzip >23_PAR1.vcf.refchecked.gz
+	bcftools filter -r 23:155701383-156030895 25.vcf.refchecked.gz | bgzip >23_PAR2.vcf.refchecked.gz
+	bcftools filter -r 23:0-10000,23:2781480-155701382,23:156030895- 23.vcf.refchecked.gz | bgzip >23_noPAR.vcf.refchecked.gz
+	tabix 23_PAR1.vcf.refchecked.gz
+	tabix 23_PAR2.vcf.refchecked.gz
+	tabix 23_noPAR.vcf.refchecked.gz
+fi
+
 '''
 }
 

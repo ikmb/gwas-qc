@@ -145,7 +145,7 @@ shell:
 '''
   CONTROLS=$(awk '{if($9=="Control") print}' "!{individuals_annotation}"| wc -l)
   if [ "$CONTROLS" -ge 1 ]; then
-    cut -f 2 !{input_bim} | split -l 10000 -a 5 -d - chunk_
+    cut -f 2 !{input_bim} | split -l 1000 -a 5 -d - chunk_
   else
     touch chunk_00000
   fi
@@ -154,7 +154,10 @@ shell:
 
 
 /*
- Run the HWE calculation R script on every 1000-SNP chunk
+ Run the HWE calculation R script on every 1000-SNP chunk.
+
+ HWE Rules:
+ - Run HWE only on Controls with chr 1-22+25 (XY PAR regions), add 23 only for females
  */
 
 process calculate_hwe {
@@ -192,7 +195,31 @@ ANNOT_LINES=$(wc -l <individuals_annotation)
 if [ "$ANNOT_LINES" -gt 1 ]; then
 
     # Filter dataset
-    plink --bfile "!{new File(input_bim.toString()).getBaseName()}" --filter-controls --extract !{chunk} --make-bed --out !{chunk}-controls
+    plink --bfile "!{new File(input_bim.toString()).getBaseName()}" --filter-controls --extract !{chunk} --make-bed --out !{chunk}-controls.all
+
+    # It might be, that this chunk lies entirely in chr23, so the next one will fail and
+    # we don't need to merge later on.
+    plink --bfile !{chunk}-controls.all --chr 1-22,25 --make-bed --out 1-22and25 || true
+    HAS_OTHERS=1
+    if [ ! -e 1-22and25.bim ]; then
+        HAS_OTHERS=0
+    fi
+
+    # If we do have X chromosomes, extract them for females only and merge into main dataset
+    HAS_X=$(cut -f1 !{chunk}-controls.all.bim | grep -c 23)
+    if [ $HAS_X -ne 0 ]; then
+        if [ $HAS_OTHERS -eq 1 ]; then
+            plink --allow-no-sex --bfile !{chunk}-controls.all --filter-females --chr 23 --make-bed --out 23
+            plink --allow-no-sex --bfile 1-22and25 --bmerge 23 --make-bed --out !{chunk}-controls
+        else
+            plink --allow-no-sex --bfile !{chunk}-controls.all --filter-females --chr 23 --make-bed --out !{chunk}-controls
+        fi
+
+    else
+        ln -s !{chunk}-controls.all.bim !{chunk}-controls.bim
+        ln -s !{chunk}-controls.all.bed !{chunk}-controls.bed
+        ln -s !{chunk}-controls.all.fam !{chunk}-controls.fam
+    fi
 
     # Calc HWE
     Rscript !{hwe_script} !{chunk}-controls individuals_annotation !{chunk}-out.auto.R
@@ -252,23 +279,6 @@ if [ "$N_CONTROLS" -eq 0 ] && [ ! -s "$HWE_RESULTS" ]; then
     touch "!{params.collection_name}_exclude-whole-collection-worst-batch-removed.FDRthresholds.SNPQCI.1.txt"
     touch "!{params.collection_name}_exclude-per-batch-fail-in-2-plus-batches.FDRthresholds.SNPQCI.2.txt"
     exit 0
-fi
-
-# Count only those NAs that appear in the value columns
-combined_hwe_nas=$(awk '{$1=$2=$3=$4="";print $0}' $HWE_RESULTS | grep -c NA)
-input_nas=$(awk '{$1=$2=$3=$4=""; print $0}' !{input_bim} |grep -c NA)
-if [ "$combined_hwe_nas" -ne "$input_nas" ]
-then
-   echo "There are missing HWE calculations, $combined_hwe_nas NAs in chunked HWE calculations and $input_nas in input."
-   exit 1
-fi
-
-chunked_snps=`wc -l $HWE_RESULTS | cut -f1 -d" "`
-input_snps=`wc -l !{input_bim} | cut -f1 -d" "`
-if [ "$chunked_snps" -ne "$input_snps" ]
-then
-   echo "Some SNPs have gone missing during input splitting. I was expecting $input_snps but got only $chunked_snps."
-   exit 1
 fi
 
 N_CONTROLS=$(<!{individuals_annotation} tr -s '\\t ' ' ' | cut -f7,9 -d' ' | uniq | tail -n +2 | cut -f2 -d' ' | grep -c Control)
