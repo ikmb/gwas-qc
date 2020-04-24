@@ -106,7 +106,7 @@ shell:
 # generates  miss.{hh,imiss,lmiss,log,nosex}
 plink --memory 10000 --bfile "!{new File(dataset[0].toString()).getBaseName()}" --out !{prefix}miss --missing&
 # generates het.{het,hh,log,nosex}
-plink --memory 10000 --bfile "!{new File(dataset[0].toString()).getBaseName()}" --out !{prefix}het --het&
+plink --memory 10000 --bfile "!{new File(dataset[0].toString()).getBaseName()}" --chr 1-22 --out !{prefix}het --het&
 wait
 
 R --slave --args !{prefix}het.het !{prefix}miss.imiss < "!{script_dir + "/heterozygosity_logimiss_withoutthresh.r"}"& # generates het.het.logscale.1.png
