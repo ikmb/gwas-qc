@@ -66,7 +66,7 @@ covars = fileExists(file(params.covar))
 
 params.min_info_score = 0.3
 params.first_chr = 1
-params.last_chr = 22
+params.last_chr = 23
 params.disease_data_set_prefix_release_statistics = "dummy"
 
 params.additional_covars = ""
@@ -186,9 +186,9 @@ process stage_plink_intermediates {
 
     output:
     file '*.vcf.gz' into for_filter_vcfgz
-    file "*.genotyped.imputed.rsq0.3.chr1-22.{bed,bim,fam,log}" into for_generate_sumstats_ds, for_clumping_ds
-    file "*.genotyped.imputed.rsq0.3.chr1-22.locuszoom.{bed,bim,fam}" into for_clumping_lz
-    file "1-22.INFO*.vcf.map" into for_generate_sumstats_infomap
+    file "*.genotyped.imputed.rsq0.3.chr1-${params.last_chr}.{bed,bim,fam,log}" into for_generate_sumstats_ds, for_clumping_ds
+    file "*.genotyped.imputed.rsq0.3.chr1-${params.last_chr}.locuszoom.{bed,bim,fam}" into for_clumping_lz
+    file "1-${params.last_chr}.INFO*.vcf.map" into for_generate_sumstats_infomap
     shell:
 '''
 ### Stage INFO-filtered vcf.gz
@@ -204,14 +204,14 @@ xargs -a filelist -l -- ln -s
 mawk 'FS=";" {if($1=="cleanup_dataset") print $4}' <"!{trace}" >hashlist
 while IFS= read -r line; do compgen -d "!{workflow.workDir}/$line"; done <hashlist >dirlist
 # find bim/bed/fam
-xargs -a dirlist -l -I {} -- find {} -name '*genotyped.imputed.rsq0.3.chr1-22.*' >filelist
+xargs -a dirlist -l -I {} -- find {} -name '*genotyped.imputed.rsq0.3.chr1-!{params.last_chr}.*' >filelist
 xargs -a filelist -l -- ln -s
 
 ### Stage VCF info0.3 map for sumstats generation
 mawk 'FS=";" {if($1=="preprocess_hrc_vcf_map") print $4}' <"!{trace}" >hashlist
 while IFS= read -r line; do compgen -d "!{workflow.workDir}/$line"; done <hashlist >dirlist
-# find 1-22.INFO*.vcf.map
-xargs -a dirlist -l -I {} -- find {} -name '1-22.INFO*.vcf.map' >filelist
+# find 1-2.INFO*.vcf.map
+xargs -a dirlist -l -I {} -- find {} -name '1-!{params.last_chr}.INFO*.vcf.map' >filelist
 xargs -a filelist -l -- ln -s
 '''
 }
@@ -252,7 +252,7 @@ process prepare_spa_genotyped {
 
     input:
     tuple file(bim), file(bed), file(fam) from for_prepare_spa_genotyped
-    val chrom from Channel.of(1..22).flatten()
+    val chrom from Channel.of(1..params.last_chr).flatten()
 
     output:
     tuple val(chrom), file("samplefile"), file("${chrom}.genotyped.vcf.gz"), file("${chrom}.genotyped.vcf.gz.tbi") into for_saige_spa_genotyped_vcf
@@ -327,7 +327,9 @@ step2_SPAtests.R \
     --varianceRatioFile="!{varianceRatio}" \
     --SAIGEOutputFile=temp.stats \
     --numLinesOutput=2 \
-    --IsOutputAFinCaseCtrl=TRUE
+    --IsOutputAFinCaseCtrl=TRUE \
+    --IsOutputHetHomCountsinCaseCtrl=TRUE \
+    --IsOutputNinCaseCtrl=TRUE
 
 # add odds ratio
 <temp.stats mawk 'NR==1{print $0 " OR";next} {print $0 " " exp($10)}' \
@@ -344,23 +346,23 @@ process merge_results {
     file (gen_results) from for_merge_results_gen.collect()
 
     output:
-    file "${params.collection_name}.genotyped.SAIGE.chr1-22.txt"
-    file "${params.collection_name}.imputed.SAIGE.chr1-22.txt"
+    file "${params.collection_name}.genotyped.SAIGE.chr1-${params.last_chr}.txt"
+    file "${params.collection_name}.imputed.SAIGE.chr1-${params.last_chr}.txt"
     file "${params.collection_name}.SAIGE.txt" into for_generate_sumstats_stats
 
     shell:
     
 '''
 # Cat everything together keeping only one header line
-GENO="!{params.collection_name}.genotyped.SAIGE.chr1-22.txt"
+GENO="!{params.collection_name}.genotyped.SAIGE.chr1-!{params.last_chr}.txt"
 cp "!{params.collection_name}.genotyped.SAIGE.chr1.txt" "$GENO"
-for ((i=2; i<= 22; i++)); do
+for ((i=2; i<= !{params.last_chr}; i++)); do
     tail -n +2 "!{params.collection_name}.genotyped.SAIGE.chr${i}.txt" >>"$GENO"
 done
 
-IMP="!{params.collection_name}.imputed.SAIGE.chr1-22.txt"
+IMP="!{params.collection_name}.imputed.SAIGE.chr1-!{params.last_chr}.txt"
 cp "!{params.collection_name}.imputed.SAIGE.chr1.txt" "$IMP"
-for ((i=2; i<= 22; i++)); do
+for ((i=2; i<= !{params.last_chr}; i++)); do
     tail -n +2 "!{params.collection_name}.imputed.SAIGE.chr${i}.txt" >>"$IMP"
 done
 

@@ -1,11 +1,14 @@
 BootStrap: localimage
-From: baseimage.img
+From: baseimage.sif
 
 %files
 EIG4.2.tar.xz /opt/
 #locuszoom_1.3_nold.tgz /opt/
 
 %post -c /bin/bash
+
+echo 'deb http://cloud.r-project.org/bin/linux/ubuntu xenial-cran35/' >>/etc/apt/sources.list
+apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys E298A3A825C0D65DFD57CBB651716619E084DAB9
 
 # Uni Muenster is faster but not as stable as the GWDG one
 export CRAN_MIRROR="https://ftp.gwdg.de/pub/misc/cran/"
@@ -14,7 +17,7 @@ echo "Installing basic build system"
 #sed -i 's/$/ universe/' /etc/apt/sources.list
 apt -y update
 apt -y dist-upgrade
-apt -y install build-essential locales wget unzip r-base git tclsh bash psmisc curl gnuplot ghostscript tabix libswitch-perl moreutils gawk libgfortran3 r-cran-rserve sqlite3 libdbd-sqlite3-perl python-scipy python3-scipy
+apt -y install build-essential locales wget unzip r-base git tclsh bash psmisc curl gnuplot ghostscript tabix libswitch-perl moreutils gawk libgfortran3 r-cran-rserve sqlite3 libdbd-sqlite3-perl vcftools python
 
 echo "Setting bash as default shell (instead of dash, thanks Canonical Inc)"
 rm /bin/sh
@@ -52,6 +55,13 @@ echo "Installing Plink 1.9"
    wget -nc $(curl -s https://www.cog-genomics.org/plink/1.9/ | grep -oE 'http://s3.amazonaws.com/plink1-assets/plink_linux_x86_64_[0-9]+.zip') -O plink_linux_x86_64.zip
    unzip -o plink_linux_x86_64.zip
    rm -f plink_linux_x86_64.zip
+
+echo "Installiung Plink 2"
+   cd /opt
+   mkdir -p plink-2
+   wget -nc http://s3.amazonaws.com/plink2-assets/alpha2/plink2_linux_x86_64.zip
+   unzip -o plink2_linux_x86_64.zip
+   rm -f plink2_linux_x86_64.zip
 
 echo "Installing EIGENSTRAT 6.1.4"
    cd /opt
@@ -108,9 +118,12 @@ echo "Installing R packages"
    echo "if('plotrix' %in% rownames(installed.packages()) == FALSE) {install.packages('plotrix', repo='$CRAN_MIRROR')}" >>/tmp/packages.r
    echo "if('gridExtra' %in% rownames(installed.packages()) == FALSE) {install.packages('gridExtra', repo='$CRAN_MIRROR')}" >>/tmp/packages.r
    echo "if('R.utils' %in% rownames(installed.packages()) == FALSE) {install.packages('R.utils', repo='$CRAN_MIRROR')}" >>/tmp/packages.r
-   echo 'source("https://bioconductor.org/biocLite.R")' >>/tmp/packages.r
-   echo 'biocLite("SNPRelate")' >>/tmp/packages.r
-   echo 'biocLite("snpStats")' >>/tmp/packages.r
+#   echo 'source("https://bioconductor.org/biocLite.R")' >>/tmp/packages.r
+#   echo 'biocLite("SNPRelate")' >>/tmp/packages.r
+#   echo 'biocLite("snpStats")' >>/tmp/packages.r
+   echo 'install.packages("BiocManager")' >>/tmp/packages.r
+   echo 'BiocManager::install()' >>/tmp/packages.r
+   echo 'BiocManager::install(c("SNPRelate","snpStats"))' >>/tmp/packages.r
    Rscript /tmp/packages.r
 
 echo "Installing modules"

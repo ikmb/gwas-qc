@@ -9,6 +9,8 @@ def ChipDefinitions = this.class.classLoader.parseClass(new File(params.chip_def
 
 // initialize configuration
 params.snpqci_dir = "."
+params.skip_snpqc = 0
+
 // hwe_template_script = file("${workflow.projectDir}/"+params.hwe_template)
 hwe_script = file("${workflow.projectDir}/bin/hwe.R")
 
@@ -406,7 +408,16 @@ else
 #    (cat "$missingness_excludes_entire"; cat "$missingness_excludes_perbatch") | sort -n | uniq >variant-excludes
 fi
 
-plink --memory 15000 --bfile "${new File(input_bim.toString()).getBaseName()}" --exclude variant-excludes --make-bed --out ${params.collection_name}_QCI
+if [ ${params.skip_snpqc} -eq 0 ]; then
+    plink --memory 15000 --bfile "${new File(input_bim.toString()).getBaseName()}" --exclude variant-excludes --make-bed --out ${params.collection_name}_QCI
+else
+    BASE="${new File(input_bim.toString()).getBaseName()}"
+    NEWBASE="${params.collection_name}_QCI"
+    ln -s "\$BASE".bim "\$NEWBASE".bim
+    ln -s "\$BASE".bed "\$NEWBASE".bed
+    ln -s "\$BASE".fam "\$NEWBASE".fam
+    touch "\$NEWBASE".log
+fi
 """
 }
 

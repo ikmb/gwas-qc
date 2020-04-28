@@ -31,6 +31,8 @@ params.individuals_remove_manually = "/dev/null"
 // default value, will be overwritten by config
 params.projection_on_populations_CON_only = "False"
 
+params.skip_snpqc = 0
+
 individuals_annotation = file(params.individuals_annotation)
 
 script_dir = file(SCRIPT_DIR)
@@ -151,7 +153,13 @@ process prune {
     module load "IKMB"
     module load "Plink/1.9"
 echo Using PCA SNP List file and sample outliers for variant selection
-plink --bfile "${base}" --extract "$params.PCA_SNPList" --remove  "$outliers" --make-bed --out pruned
+if [ ${params.skip_snpqc} -eq 0 ]; then
+    plink --bfile "${base}" --extract "$params.PCA_SNPList" --remove  "$outliers" --make-bed --out pruned
+else
+    touch dummy
+    plink --bfile "${base}" --extract "$params.PCA_SNPList" --remove dummy --make-bed --out pruned
+fi
+
 """
     } else {
 """
@@ -159,7 +167,12 @@ plink --bfile "${base}" --extract "$params.PCA_SNPList" --remove  "$outliers" --
     module load "Plink/1.9"
 echo Generating PCA SNP List file for variant selection
 plink --bfile "${base}" --indep-pairwise 50 5 0.2 --out _prune --memory ${task.memory.toMega()} 
-plink --bfile "${base}" --extract _prune.prune.in --maf 0.05 --remove "$outliers" --make-bed --out intermediate --memory ${task.memory.toMega()} 
+if [ ${params.skip_snpqc} -eq 0 ]; then
+    plink --bfile "${base}" --extract _prune.prune.in --maf 0.05 --remove "$outliers" --make-bed --out intermediate --memory ${task.memory.toMega()} 
+else
+    touch dummy
+    plink --bfile "${base}" --extract _prune.prune.in --maf 0.05 --remove dummy --make-bed --out intermediate --memory ${task.memory.toMega()}
+fi
 python -c 'from SampleQCI_helpers import *; write_snps_autosomes_noLDRegions_noATandGC_noIndels("${bim}", "include_variants")'
 plink --noweb --bfile intermediate --extract include_variants --make-bed --out "${prefix}pruned"
 """
@@ -415,6 +428,7 @@ process flashpca2_pruned_1kG {
     file "${pruned[0].baseName}_1kG_${params.numof_pc}PC.fail-pca-1KG-qc.txt" into for_remove_bad_samples_flashpca
     set file("${pruned[0].baseName}_1kG.bed"), file("${pruned[0].baseName}_1kG.bim"), file("${pruned[0].baseName}_1kG.fam") into for_pca_without_projection
     file "*.pdf"
+    file "*qc.txt"
 
     script:
     base_pruned = pruned[0].baseName
@@ -538,7 +552,9 @@ fi
 cat !{het_outliers} | tr -s ' \t' ' '>>remove-samples
 
 # too high missingness
-cat !{miss_outliers} | tr -s ' \t' ' '>>remove-samples
+if [ !{params.skip_snpqc} -eq 0 ]; then
+    cat !{miss_outliers} | tr -s ' \t' ' '>>remove-samples
+fi
 
 # duplicates
 cut -d" " -f 1,2 !{duplicates} | tr -s ' \t' ' ' >>remove-samples
@@ -772,7 +788,11 @@ plink --bfile "${base}" --extract "$params.PCA_SNPList" --remove  "$miss_outlier
     module load "Plink/1.9"
 echo Generating PCA SNP List file for variant selection
 plink --bfile "${base}" --indep-pairwise 50 5 0.2 --out _prune
-plink --bfile "${base}" --extract _prune.prune.in --maf 0.05 --remove "$miss_outliers" --make-bed --out intermediate
+if [ ${params.skip_snpqc} -eq 0 ]; then
+    plink --bfile "${base}" --extract _prune.prune.in --maf 0.05 --remove "$miss_outliers" --make-bed --out intermediate
+else
+    plink --bfile "${base}" --extract _prune.prune.in --maf 0.05 --make-bed --out intermediate  
+fi
 python -c 'from SampleQCI_helpers import *; write_snps_autosomes_noLDRegions_noATandGC_noIndels("${bim}", "include_variants")'
 plink --noweb --bfile intermediate --extract include_variants --make-bed --out "${target}"
 """

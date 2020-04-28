@@ -39,6 +39,7 @@ input_datasets.close()
 hapmap2_samples = file("/work_ifs/sukmb388/regeneron_annotations/hapmap2-annotations.txt")
 
 params.nxfdir = "."
+params.skip_snpqc = 0
 
 Rs_script = file("${params.nxfdir}/Rs.nf")
 SNPQCI_script = file("${params.nxfdir}/SNPQCI.nf")
@@ -101,6 +102,7 @@ cd $MYPWD
     ln -fs !{params.output}/!{dataset}/Rs/!{batch}_Rs.bim
     ln -fs !{params.output}/!{dataset}/Rs/!{batch}_Rs.fam
     ln -fs !{params.output}/!{dataset}/Rs/!{batch}.indels
+    cp Rs-!{dataset}-!{batch}.trace.txt !{params.output}/!{dataset}/Rs/
 
 '''
 }
@@ -157,6 +159,7 @@ nextflow run !{SNPQCI_script} -c !{params.qc_config} \\
     --rs_fams="!{fam}" \\
     --rs_indels="!{indels}" \\
     --individuals_annotation="!{params.output}/!{dataset}/SNPQCI/!{dataset}_individuals_annotation.txt" \\
+    --skip_snpqc=!{params.skip_snpqc} \\
     -with-report "!{params.output}/!{dataset}/SNPQCI/execution-report.html" \\
     -ansi-log false \\
     -resume
@@ -168,7 +171,7 @@ cd $MYPWD
 ln -fs !{params.output}/!{dataset}/SNPQCI/!{prefix}.bed
 ln -fs !{params.output}/!{dataset}/SNPQCI/!{prefix}.bim
 ln -fs !{params.output}/!{dataset}/SNPQCI/!{prefix}.fam
-
+cp SNPQCI-!{dataset}.trace.txt !{params.output}/!{dataset}/SNPQCI/
 '''
 }
 
@@ -181,6 +184,7 @@ output:
     set val(dataset), val(filebase), file("${prefix}.bed"), file("${prefix}.bim"), file("${prefix}.fam") into SNPQCII_ds
     file("${prefix}.pca.evec") into FinalAnalysis_evec
     file "SampleQC-${dataset}.trace.txt" into SampleQC_trace
+//    file '*-qc.txt'
 shell:
 //    individuals_annotation = file(filebase[0]).getParent().toString() + "/" + dataset + "_individuals_annotation.txt"
     prefix = "${dataset}_SampleQCI_final_withoutRelatives"
@@ -196,6 +200,7 @@ nextflow run !{SampleQC_script} -c !{params.qc_config} -c !{params.dataset_confi
     --sampleqci_dir="!{params.output}/!{dataset}/SampleQCI" \\
     --collection_name="!{dataset}" \\
     --individuals_annotation="$ANNO" \\
+    --skip_snpqc=!{params.skip_snpqc} \\
     --individuals_annotation_hapmap2="$(pwd)/!{dataset}_individuals_annotation_hapmap2.txt" \\
     -with-report "!{params.output}/!{dataset}/SampleQCI/execution-report.html" \\
     -resume -ansi-log false
@@ -209,6 +214,8 @@ ln -fs !{params.output}/!{dataset}/SampleQCI/!{prefix}.bed
 ln -fs !{params.output}/!{dataset}/SampleQCI/!{prefix}.bim
 ln -fs !{params.output}/!{dataset}/SampleQCI/!{prefix}.fam
 ln -fs !{params.output}/!{dataset}/SampleQCI/!{prefix}.pca.evec
+cp SampleQC-!{dataset}.trace.txt !{params.output}/!{dataset}/SampleQCI/
+#cp *-qc.txt !{params.output}/!{dataset}/SampleQCI/
 '''
 }
 
@@ -238,6 +245,7 @@ nextflow run !{SNPQCII_script} -c !{params.qc_config} -c !{params.dataset_config
     --individuals_annotation="$ANNO" \\
     -with-report "!{params.output}/!{dataset}/SNPQCII/execution-report.html" \\
     -resume -ansi-log false \\
+    --skip_snpqc=!{params.skip_snpqc} \\
     --keep_related=!{params.keep_related}
 
 mv trace.txt SNPQCII-!{dataset}.trace.txt

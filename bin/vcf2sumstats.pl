@@ -62,7 +62,7 @@ while(<$vcfmap_fh>) {
     $refa1 = $parts[3];
     $typed = 1 if $info =~ /(TYPED|PHASED)/;
     $af = $2 if $info =~ /(RefPanelAF|RefPAF)=(\d+\.\d+);/;
-    $infoscore = $2 if $info =~ /(DR2|INFO)=(\d+(\.\d+)?)/;
+    $infoscore = $2 if $info =~ /(R2|INFO)=(\d+(\.\d+)?)/;
 
     my $vcfkey = $parts[0].":".$parts[1]."_".$parts[3].$parts[4];
 
@@ -79,7 +79,7 @@ sub cmp_sumstats {
 }
 
 chomp $header;
-$header .= "\t" . join("\t", qw(INFO RefPanelAF_A1 RefPanelAF Genotyped));
+$header .= "\t" . join("\t", qw(R2 RefPanelAF_A1 RefPanelAF Genotyped));
 print "$header\n";
 my @sorted = sort cmp_sumstats @sumstats;
 

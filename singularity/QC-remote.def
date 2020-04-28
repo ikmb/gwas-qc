@@ -23,6 +23,14 @@ ln -s /bin/bash /bin/sh
 
 locale-gen en_US en_US.UTF-8 de_DE.UTF-8 de_DE
 
+echo "Installiung Plink 2"
+   cd /opt
+   wget -nc http://s3.amazonaws.com/plink2-assets/alpha2/plink2_linux_x86_64.zip
+   unzip -o plink2_linux_x86_64.zip
+   rm -f plink2_linux_x86_64.zip
+               
+               
+
 echo "Installing Plink 1.9"
    cd /opt
    mkdir -p plink-1.9

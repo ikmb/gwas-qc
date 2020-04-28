@@ -57,6 +57,7 @@ mapFileList = { fn -> fn.collectEntries {
 
 // initialize configuration
 params.qc_dir = "."
+params.skip_snpqc = 0
 params.PCA_SNPList = ""
 params.keep_related = false
 
@@ -367,7 +368,13 @@ if [ "$variants" -eq "$excludes" ]; then
     ln -s "!{dataset.bim}" "!{prefix}.bim"
     ln -s "!{dataset.fam}" "!{prefix}.fam"
 else
-    plink --bfile "!{dataset.bed.baseName}" --exclude "!{exclude}" --make-bed --out "!{prefix}" --allow-no-sex
+    if [ !{params.skip_snpqc} -eq 0 ]; then
+        plink --bfile "!{dataset.bed.baseName}" --exclude "!{exclude}" --make-bed --out "!{prefix}" --allow-no-sex
+    else
+        ln -s "!{dataset.bed}" "!{prefix}.bed"                                                                                                                                                                                              
+        ln -s "!{dataset.bim}" "!{prefix}.bim"                                                                                                                                                                                              
+        ln -s "!{dataset.fam}" "!{prefix}.fam"
+    fi
 fi
 
 cp "!{dataset.annotation}" "!{prefix}_annotation.txt"
@@ -536,7 +543,11 @@ process final_cleaning {
     module load "Plink/1.9"
 
 # Remove sample and SNP outliers
-plink --bfile "!{dataset.bed.baseName}" --remove "!{individuals}" --exclude "!{variants}" --make-bed --out "!{prefix}" --allow-no-sex
+if [ !{params.skip_snpqc} -eq 0]; then
+    plink --bfile "!{dataset.bed.baseName}" --remove "!{individuals}" --exclude "!{variants}" --make-bed --out "!{prefix}" --allow-no-sex
+else
+    plink --bfile "!{dataset.bed.baseName}" --remove "!{individuals}" --make-bed --out "!{prefix}" --allow-no-sex
+fi
 
 touch !{params.collection_name}_SNPQCII_final_flag.relatives.txt
 

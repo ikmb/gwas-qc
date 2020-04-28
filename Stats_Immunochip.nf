@@ -74,7 +74,7 @@ ds_imp_input = Channel.fromPath("${params.input_imp}/{[1-9],[1-2][0-9]}.vcf?gz",
 params.debug = 0
 params.min_info_score = 0.3
 params.first_chr = 1
-params.last_chr = 22
+params.last_chr = 23
 params.disease_data_set_prefix_release_statistics = "${params.collection_name}_Release"
 
 process preprocess_infofilter_dosage {
@@ -130,7 +130,7 @@ bgzip -c -d !{vcfgz} | tee vcfgz_fifo \
     {
         split($8, fields, /;|=/)
         for(i=1; i in fields; i++) {
-            if(fields[i]=="INFO" || fields[i]=="DR2") {
+            if(fields[i]=="INFO" || fields[i]=="R2") {
                 val=fields[i+1]
                 break
             }
@@ -252,21 +252,21 @@ publishDir params.output ?: '.', mode: 'copy', overwrite: true
     file(infomapfiles) from infomaps_preproc.collect()
 
     output:
-    file "1-22.vcf.map"
-    file "1-22.INFO${params.min_info_score}.vcf.map" into for_gen_sumstats_info
+    file "1-${params.last_chr}.vcf.map"
+    file "1-${params.last_chr}.INFO${params.min_info_score}.vcf.map" into for_gen_sumstats_info
 
     shell:
     '''
-    cp 1.vcf.map 1-22.vcf.map
-    for ((i=2; i<=22; i++))
+    cp 1.vcf.map 1-!{params.last_chr}.vcf.map
+    for ((i=2; i<=!{params.last_chr}; i++))
     do
-        cat ${i}.vcf.map >> 1-22.vcf.map
+        cat ${i}.vcf.map >> 1-!{params.last_chr}.vcf.map
     done
 
-    cat 1.INFO!{params.min_info_score}.vcf.map >1-22.INFO0.3.vcf.map
-    for ((i=2; i<=22; i++))
+    cat 1.INFO!{params.min_info_score}.vcf.map >1-!{params.last_chr}.INFO0.3.vcf.map
+    for ((i=2; i<=!{params.last_chr}; i++))
     do
-        cat ${i}.INFO!{params.min_info_score}.vcf.map >> 1-22.INFO!{params.min_info_score}.vcf.map
+        cat ${i}.INFO!{params.min_info_score}.vcf.map >> 1-!{params.last_chr}.INFO!{params.min_info_score}.vcf.map
     done
     '''
 }
