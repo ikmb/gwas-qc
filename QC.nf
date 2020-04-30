@@ -40,6 +40,7 @@ hapmap2_samples = file("/work_ifs/sukmb388/regeneron_annotations/hapmap2-annotat
 
 params.nxfdir = "."
 params.skip_snpqc = 0
+params.keep_related = false
 
 Rs_script = file("${params.nxfdir}/Rs.nf")
 SNPQCI_script = file("${params.nxfdir}/SNPQCI.nf")
@@ -219,7 +220,6 @@ cp SampleQC-!{dataset}.trace.txt !{params.output}/!{dataset}/SampleQCI/
 '''
 }
 
-params.keep_related=false
 
 process SNPQCII {
 	validExitStatus 0,1
@@ -292,6 +292,14 @@ ln -fs !{params.output}/!{dataset}/SNPQCII/!{dataset}_QCed.bed !{params.output}/
 ln -fs !{params.output}/!{dataset}/SNPQCII/!{dataset}_QCed.bim !{params.output}/!{dataset}/QCed/
 ln -fs !{params.output}/!{dataset}/SNPQCII/!{dataset}_QCed.fam !{params.output}/!{dataset}/QCed/
 ln -fs !{params.output}/!{dataset}/SNPQCII/!{dataset}_QCed.log !{params.output}/!{dataset}/QCed/
+
+for ext in bim bed fam log
+do
+    cp !{params.collection_name}_QCed_noATCG.$ext !{params.output}/!{dataset}/QCed/
+done
+
+cp "FinalAnalysis-!{dataset}.trace.txt" !{params.output}/!{dataset}/QCed/
+
 '''
 }
 
@@ -311,6 +319,9 @@ shell:
 '''
 
 RUNOPTIONS="-B /work_ifs /home/sukmb388/texlive.img"
+
+WARN_SNPQC=!{params.skip_snpqc}
+WARN_RELATED=!{params.keep_related}
 PERL5LIB=/home/sukmb388/nxf-report perl /home/sukmb388/nxf-report/report.pl $NXF_WORK /home/sukmb388/nxf-report/preamble.tex\
     Rs-!{dataset}-*.txt SNPQCI-!{dataset}.trace.txt SampleQC-!{dataset}.trace.txt SNPQCII-!{dataset}.trace.txt FinalAnalysis-!{dataset}.trace.txt
 singularity exec $RUNOPTIONS lualatex report.tex
