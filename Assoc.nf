@@ -21,12 +21,20 @@ def assertFileExists(f) {
 Plink_script = file("${params.nxfdir}/Stats_Immunochip.nf")
 Saige_script = file("${params.nxfdir}/Stats_SAIGE.nf")
 
+
+used_datasets = params.datasets?.tokenize(',')
+
 input_datasets_plink = Channel.create()
 input_datasets_saige = Channel.create()
 params.imputed_dataset.each { key, value ->
+    println "Found dataset $key"
+    if(!used_datasets || used_datasets.contains(key)) {
+        println "Checking in $key"
         input_datasets_plink << [key, value, params.qced_dataset[key], params.covars[key], params.dataset_config[key]]
         input_datasets_saige << [key, value, params.qced_dataset[key], params.covars[key], params.dataset_config[key]]
+    }
 }
+
 //input_datasets.dump(tag: 'debug')
 
 process PlinkAssoc {

@@ -101,7 +101,7 @@ process lift_genome_build {
     file original from input_files_lift
  
     output:
-    file "${original[1].baseName}_lift.{bed,bim,fam}" into to_normalize_variants, to_plink_flip_bedfam
+    file "${original[1].baseName}_lift.{bed,bim,fam}" into to_fix_par
 
     shell:
 
@@ -127,6 +127,30 @@ else
     ln -s "!{original[1].baseName}.fam" "$TARGETNAME.fam"
 fi
 '''
+}
+
+process fix_par {
+    time 8.h
+    tag "${params.ds_name}/${params.batch_name}"
+
+    input:
+    file source from to_fix_par
+
+    output:
+    file "*fixed.{bim,bed,fam}" into to_normalize_variants, to_plink_flip_bedfam
+
+    shell:
+    '''
+module load Plink/1.9
+
+plink --bfile "!{source[1].baseName}" --merge-x no-fail --make-bed --out merged-with-missing
+plink --bfile merged-with-missing --split-x hg19 no-fail --make-bed --out split
+plink --bfile split --set-hh-missing --make-bed --out fixed
+
+# remove intermediates, keep logs for parsing
+rm -f merged-with-missing.{bed,bim,fam} merged-no-hh.{bed,bim,fam}
+
+    '''
 }
 
 process normalize_variant_names {
@@ -282,6 +306,7 @@ unlink("$scratch_dir/annotation.sqlite");
  */
 process plink_flip {
 //    echo true
+    memory 20000
 
     tag "${params.ds_name}/${params.batch_name}"
     input:
@@ -306,7 +331,7 @@ echo Found $(wc -l <duplicates) duplicates.
 plink --bed "!{bedfam[0].baseName}.bed" --bim "!{bim}" --fam "!{bedfam[0].baseName}.fam" --exclude duplicates --make-bed --out dedup
 
 echo Flipping strands for "!{bim.baseName}"
-plink --bfile dedup --flip "!{flip}" --threads 1 --memory 6144 --make-bed --out "!{bedfam[0].baseName}_flipped" --allow-no-sex
+plink --bfile dedup --flip "!{flip}" --threads 1 --memory 18000 --make-bed --out "!{bedfam[0].baseName}_flipped" --allow-no-sex
 '''
 }
 

@@ -238,7 +238,7 @@ fi
  */
 
 process hwe_fdr_filter {
-
+    time { 1.d * task.attempt }
   tag "${params.collection_name}"
 publishDir params.snpqci_dir ?: '.', mode: 'copy'
     input:

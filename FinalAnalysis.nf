@@ -63,12 +63,10 @@ for_twstats_final_pruned_ann = Channel.create()
 for_sex_check = Channel.create()
 for_det_monomorphics_final = Channel.create()
 for_plot_maf = Channel.create()
-for_prepare_imputation = Channel.create()
-for_prepare_imputation_split = Channel.create()
-for_prepare_imputation_split_noatcg = Channel.create()
+for_prepare_split = Channel.create()
 
 Channel.from([[params.bed, params.bim, params.fam, params.individuals_annotation, params.evec ].collect { fileExists(file(it)) }])
-       .separate(for_snprelate_prune, for_draw_final_pca_histograms_ds, for_sex_check, for_det_monomorphics_final,for_plot_maf,for_prepare_imputation_split_noatcg,for_prepare_imputation_split) {a -> [a,a,a,a,a,a,a] }
+       .separate(for_snprelate_prune, for_draw_final_pca_histograms_ds, for_sex_check, for_det_monomorphics_final,for_plot_maf,for_prepare_split) {a -> [a,a,a,a,a,a,a] }
 
 Channel.from(fileExists(file(params.individuals_annotation)))
        .separate(for_snprelate_ann, for_snprelate_ann_atcg, for_final_pca_1kg_frauke_ann, for_twstats_final_pruned_ann) {a -> [a,a,a,a] }
@@ -526,188 +524,93 @@ module load Plink/1.9
 '''
 }
 
-
-/*
-process prepare_sanger_imputation {
-    publishDir params.qc_dir ?: '.', mode: 'copy'
+process prepare_split {
     tag "${params.collection_name}"
     time {8.h * task.attempt}
-
+    publishDir params.qc_dir ?:'.', mode:'copy'
     input:
-    file ds_staged from for_prepare_imputation
+    file ds_staged from for_prepare_split
 
     output:
-    file("${ds.bim.baseName}.vcf.refchecked.gz") optional
-    file("${ds.bim.baseName}.vcf.refchecked.gz.tbi") optional
-
-    shell:
+    tuple file("final.bed"), file("final.bim"), file("final.fam") into split_vcf
+    tuple file("final_noatcg.bed"), file("final_noatcg.bim"), file("final_noatcg.fam") into split_vcf_noatcg
+shell:
     ds = mapFileList(ds_staged)
 
-    '''
-module load IKMB
+'''
 module load Plink/1.9
 
-ANNOTATION=/work_ifs/sukmb388/human_g1k_v37.fasta.gz
+plink --bfile "!{ds.bim.baseName}" --merge-x no-fail --make-bed --out merged
 
-# temporarily disabled
-exit 0
+grep D merged.bim | mawk '{print $2}' >indels
+mawk 'BEGIN{c["A"]="T";c["C"]="G";c["G"]="C";c["T"]="A"} { if($5==c[$6]) print $2 }' merged.bim >atcg
 
-grep D !{ds.bim} | awk '{ print $2 }' >!{ds.bim}.indels.txt
-plink --allow-no-sex --bfile !{ds.bim.baseName} --chr 1-22 --exclude !{ds.bim}.indels.txt --make-bed --out final_noindels
-plink --allow-no-sex --bfile final_noindels --recode vcf --out !{ds.bim.baseName}_tmp1
-bgzip !{ds.bim.baseName}_tmp1.vcf || true
 
-echo "Check the REF allele ...";
-bcftools norm --check-ref w -f $ANNOTATION !{ds.bim.baseName}_tmp1.vcf.gz >/dev/null || true
-echo "Fix the REF allele ...";
-bcftools norm --check-ref s -f $ANNOTATION !{ds.bim.baseName}_tmp1.vcf.gz >!{ds.bim.baseName}.vcf.refchecked || true
-bgzip !{ds.bim.baseName}.vcf.refchecked || true
+# determine monomorphic variants
+plink --bfile merged --freq --out "merged_freq" --allow-no-sex
+python -c 'from SNPQC_helpers import *; frq =  Frq(frq_file="merged_freq.frq", write_monomorphic_file="monomorphic"); frq.write_monomorphic_variants_file(); del frq'
 
-echo "Tabix ...";
-tabix -p vcf !{ds.bim.baseName}.vcf.refchecked.gz
+cat monomorphic >>indels
 
-    '''
+cat indels atcg | sort | uniq >indels-atcg
+plink --bfile merged --exclude indels --make-bed --out final
+plink --bfile merged --exclude indels-atcg --make-bed --out final_noatcg
+'''
 }
-*/
 
-process prepare_sanger_imputation_split {
+
+process split_vcf {
     publishDir params.qc_dir ?: '.', mode: 'copy'
-    tag "${params.collection_name}"
+    tag "${params.collection_name}.$chrom$infix"
     time {8.h * task.attempt}
     validExitStatus 0,1
 
     input:
-    file ds_staged from for_prepare_imputation_split
-
+    tuple file(bed), file(bim), file(fam) from split_vcf
+    tuple file(bed_noatcg), file(bim_noatcg), file(fam_noatcg) from split_vcf_noatcg
+    each chrom from Channel.of(1..24)
+    each infix from Channel.of('', '.noATCG')
 
     output:
-    file(  "*.refchecked.gz" )
-    file(  "*.refchecked.gz.tbi" )
+    file "*.vcf.gz"
+    file "*.vcf.gz.tbi"
 
     shell:
-    ds = mapFileList(ds_staged)
 
     '''
 module load IKMB
 module load Plink/1.9
 
-ANNOTATION=/work_ifs/sukmb388/human_g1k_v37.fasta.gz
+ANNOTATION=/work_ifs/sukmb388/human_g1k_v37.fasta
 
-grep D !{ds.bim} | awk '{ print $2 }' >!{ds.bim}.indels.txt
-plink --allow-no-sex --bfile !{ds.bim.baseName} --chr 1-25 --exclude !{ds.bim}.indels.txt --make-bed --out final_noindels
+TARGET="!{chrom}!{infix}"
 
-for chr in {1..24}
-do
-    THENAME="${chr}"
-    /opt/plink2 --bfile final_noindels --chr $chr --recode vcf-4.2 bgz --out $THENAME || true
-    if [ ! -e ${THENAME}.vcf.gz ]; then
-        continue
-    fi
-    echo "$chr Check the REF allele ...";
-    bcftools norm --check-ref w -f $ANNOTATION $THENAME.vcf.gz >/dev/null || true
-    echo "$chr Fix the REF allele ...";
-    if [ "$chr" -eq 23 ]; then
-        bcftools norm --check-ref s -f $ANNOTATION $THENAME.vcf.gz | sed 's/ID=X/ID=23/' | sed 's/^X/23/' | bgzip >$THENAME.vcf.refchecked.gz || true
-    elif [ "$chr" -eq 24 ]; then
-        bcftools norm --check-ref s -f $ANNOTATION $THENAME.vcf.gz | sed 's/ID=Y/ID=24/' | sed 's/^X/24/' | bgzip >$THENAME.vcf.refchecked.gz || true
-    else
-        bcftools norm --check-ref s -f $ANNOTATION $THENAME.vcf.gz | bgzip >$THENAME.vcf.refchecked.gz || true
-    fi
-    echo "$chr Tabix ...";
-    tabix -p vcf $THENAME.vcf.refchecked.gz
-done
-
-/opt/plink2 --bfile final_noindels --chr 25 --recode vcf-4.2 --out 25 || true
-if [ -e 25.vcf ]; then
-	sed -i 's/ID=XY/ID=X/' 25.vcf
-	sed -i 's/^XY/X/' 25.vcf
-	bcftools norm --check-ref w -f $ANNOTATION 25.vcf >/dev/null
-	bcftools norm --check-ref s -f $ANNOTATION 25.vcf | sed 's/ID=X/ID=23/' | sed 's/^X/23/'| bgzip >25.vcf.refchecked.gz
-	tabix -p vcf 25.vcf.refchecked.gz
-	bcftools filter -r 23:10001-2781479 25.vcf.refchecked.gz | bgzip >23_PAR1.vcf.refchecked.gz
-	bcftools filter -r 23:155701383-156030895 25.vcf.refchecked.gz | bgzip >23_PAR2.vcf.refchecked.gz
-	bcftools filter -r 23:0-10000,23:2781480-155701382,23:156030895- 23.vcf.refchecked.gz | bgzip >23_noPAR.vcf.refchecked.gz
-	tabix 23_PAR1.vcf.refchecked.gz
-	tabix 23_PAR2.vcf.refchecked.gz
-	tabix 23_noPAR.vcf.refchecked.gz
+# Force output in VCF-4.2 with 23 and 24 encoded as X and Y, as defined in the hg19 reference
+if [ "!{infix}" = ".noATCG" ]; then
+    /opt/plink2 --bed !{bed_noatcg} --bim !{bim_noatcg} --fam !{fam_noatcg} --chr !{chrom} --export vcf-4.2 bgz --out $TARGET.tmp || true
+else
+    /opt/plink2 --bed !{bed} --bim !{bim} --fam !{fam} --chr !{chrom} --export vcf-4.2 bgz  --out $TARGET.tmp || true
 fi
 
+if [ ! -e ${TARGET}.tmp.vcf.gz ]; then
+    touch NA_!{chrom}.vcf.gz
+    touch NA_!{chrom}.vcf.gz.tbi
+else
+
+    case "!{chrom}" in
+        23) bcftools norm --check-ref s -f $ANNOTATION $TARGET.tmp.vcf.gz | sed 's/ID=X/ID=23/' | sed 's/^X/23/' | bgzip >$TARGET.vcf.gz ;;
+        24) bcftools norm --check-ref s -f $ANNOTATION $TARGET.tmp.vcf.gz | sed 's/ID=Y/ID=23/' | sed 's/^Y/24/' | bgzip >$TARGET.vcf.gz ;;
+        *)  bcftools norm --check-ref s -f $ANNOTATION $TARGET.tmp.vcf.gz | bgzip >$TARGET.vcf.gz ;;
+    esac
+
+    tabix -p vcf $TARGET.vcf.gz
+fi
+
+cp *.vcf.gz !{params.qc_dir}/
+cp *.tbi !{params.qc_dir}/
+
+rm -f $TARGET.tmp*
 '''
 }
 
-process prepare_sanger_imputation_split_noatcg {
-    publishDir params.qc_dir ?: '.', mode: 'copy'
-    tag "${params.collection_name}"
-    time {8.h * task.attempt}
-    validExitStatus 0,1
-
-    input:
-    file ds_staged from for_prepare_imputation_split_noatcg
-
-
-    output:
-    file(  "*.refchecked.gz" )
-    file(  "*.refchecked.gz.tbi" )
-    file ("${params.collection_name}_QCed_noATCG.*")
-
-    shell:
-    ds = mapFileList(ds_staged)
-
-    '''
-module load IKMB
-module load Plink/1.9
-
-ANNOTATION=/work_ifs/sukmb388/human_g1k_v37.fasta.gz
-
-# collect A:T and C:G SNPs
-gawk 'BEGIN{c["A"]="T";c["C"]="G";c["G"]="C";c["T"]="A"} { if($5==c[$6]) print $2 }' !{ds.bim} >at-cg-variants.txt
-
-grep D !{ds.bim} | awk '{ print $2 }' >!{ds.bim}.indels.txt
-cat !{ds.bim}.indels.txt at-cg-variants.txt | sort | uniq >at-cg-indels
-
-plink --allow-no-sex --bfile !{ds.bim.baseName} --chr 1-25 --exclude at-cg-indels --make-bed --out final_noindels
-
-for chr in {1..24}
-do
-    THENAME="${chr}.noATCG"
-    /opt/plink2 --bfile final_noindels --chr $chr --recode vcf-4.2 bgz --out $THENAME || true
-    if [ ! -e ${THENAME}.vcf.gz ]; then
-        continue
-    fi
-    echo "$chr Check the REF allele ...";
-    bcftools norm --check-ref w -f $ANNOTATION $THENAME.vcf.gz >/dev/null || true
-    echo "$chr Fix the REF allele ...";
-    if [ "$chr" -eq 23 ]; then
-        bcftools norm --check-ref s -f $ANNOTATION $THENAME.vcf.gz | sed 's/ID=X/ID=23/' | sed 's/^X/23/' | bgzip >$THENAME.vcf.refchecked.gz || true
-    elif [ "$chr" -eq 24 ]; then
-        bcftools norm --check-ref s -f $ANNOTATION $THENAME.vcf.gz | sed 's/ID=Y/ID=24/' | sed 's/^X/24/' | bgzip >$THENAME.vcf.refchecked.gz || true
-    else
-        bcftools norm --check-ref s -f $ANNOTATION $THENAME.vcf.gz | bgzip >$THENAME.vcf.refchecked.gz || true
-    fi
-    echo "$chr Tabix ...";
-    tabix -p vcf $THENAME.vcf.refchecked.gz
-done
-
-/opt/plink2 --bfile final_noindels --chr 25 --recode vcf-4.2 --out 25 || true
-if [ -e 25.vcf ]; then
-	sed -i 's/ID=XY/ID=X/' 25.vcf
-	sed -i 's/^XY/X/' 25.vcf
-	bcftools norm --check-ref w -f $ANNOTATION 25.vcf >/dev/null
-	bcftools norm --check-ref s -f $ANNOTATION 25.vcf | sed 's/ID=X/ID=23/' | sed 's/^X/23/'| bgzip >25.noATCG.vcf.refchecked.gz
-	tabix -p vcf 25.noATCG.vcf.refchecked.gz
-	bcftools filter -r 23:10001-2781479 25.noATCG.vcf.refchecked.gz | bgzip >23_PAR1.noATCG.vcf.refchecked.gz
-	bcftools filter -r 23:155701383-156030895 25.noATCG.vcf.refchecked.gz | bgzip >23_PAR2.noATCG.vcf.refchecked.gz
-	bcftools filter -r 23:0-10000,23:2781480-155701382,23:156030895- 23.vcf.refchecked.gz | bgzip >23_noPAR.noATCG.vcf.refchecked.gz
-	tabix 23_PAR1.noATCG.vcf.refchecked.gz
-	tabix 23_PAR2.noATCG.vcf.refchecked.gz
-	tabix 23_noPAR.noATCG.vcf.refchecked.gz
-fi
-
-for ext in bim bed fam log
-do
-    ln -fs final_noindels.$ext !{params.collection_name}_QCed_noATCG.$ext
-done
-
-'''
-}
 

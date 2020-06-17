@@ -68,19 +68,32 @@ ds_input = ["${params.input}.bed",
          "${params.input}.fam",
          ].collect { fileExists(file(it)) }
 
+/*
+params.more_covars = "dummy"
+params.more_covars_cols = ""
+
+more_covars = Channel.of( [file(params.more_covars), params.more_covars_cols] )
+*/
 // From Imputation server (1.vcf.gz, 2.vcf.gz, ...)
 ds_imp_input = Channel.fromPath("${params.input_imp}/{[1-9],[1-2][0-9]}.vcf?gz", checkIfExists: true)
 
 params.debug = 0
-params.min_info_score = 0.3
+// HRC and 1kG:
+// params.min_info_score = 0.0
+// topmed: (already pre-filtered)
+params.min_info_score = 0
+
+params.doubleid = 0
+
 params.first_chr = 1
-params.last_chr = 23
+params.last_chr = 22
 params.disease_data_set_prefix_release_statistics = "${params.collection_name}_Release"
 
 process preprocess_infofilter_dosage {
     tag "${params.collection_name}.${chrom}"
     cpus 2
     errorStrategy { task.exitStatus == 128 ? 'retry' : 'terminate' }
+    time { 48.h * task.attempt }
 
     input:
     file vcfgz from ds_imp_input
@@ -121,27 +134,31 @@ mkfifo vcfgz_fifo
 
 # 3.
 # vcf.gz -> INFO.vcf.gz, uncompressed INFO.vcf.gz
-bgzip -c -d !{vcfgz} | tee vcfgz_fifo \
-    | $AWK '
-    $0~/^#/ { 
-        print $0
-        next
-    }
-    {
-        split($8, fields, /;|=/)
-        for(i=1; i in fields; i++) {
-            if(fields[i]=="INFO" || fields[i]=="R2") {
-                val=fields[i+1]
-                break
-            }
+if [ "!{params.min_info_score}" = "0" ]; then
+    ln -s !{vcfgz} !{chrom}.INFO!{params.min_info_score}.vcf.gz
+    bgzip -c -d !{vcfgz} >vcfgz_fifo
+else
+    bgzip -c -d !{vcfgz} | tee vcfgz_fifo | $AWK '
+            $0~/^#/ { 
+            print $0
+            next
         }
-        
-        if(val >= !{params.min_info_score})
-            {print $0}
-        }' \
-    | bgzip >!{chrom}.INFO!{params.min_info_score}.vcf.gz 
+        {
+            split($8, fields, /;|=/)
+            for(i=1; i in fields; i++) {
+                if(fields[i]=="INFO" || fields[i]=="R2") {
+                    val=fields[i+1]
+                    break
+                }
+            }
+           if(val >= !{params.min_info_score})
+                {print $0}
+            }' \
+        | bgzip >!{chrom}.INFO!{params.min_info_score}.vcf.gz 
+fi
 
 wait
+
 
 tabix -p vcf !{chrom}.INFO!{params.min_info_score}.vcf.gz &
 
@@ -247,6 +264,7 @@ wait
 process preprocess_hrc_vcf_map {
 publishDir params.output ?: '.', mode: 'copy', overwrite: true
     tag "${params.collection_name}"
+    time { 24.h * task.attempt }
     input:
     file(mapfiles) from vcfmaps_preproc.collect()
     file(infomapfiles) from infomaps_preproc.collect()
@@ -275,16 +293,19 @@ process extract_genotyped_variants {
 	cpus 4
     tag "${params.collection_name}"
     errorStrategy { task.exitStatus == 128 ? 'retry' : 'terminate' }
+    time { 24.h * task.attempt }
 
 	input:
 //	file ds_stats_staged from Channel.from(ds_stats_input).collect()
 	file ds_staged from Channel.from(ds_input).collect()
+ //   tuple file(more_covars), val(covar_cols) from more_covars
 
 	output:
 	file "${target}_fid_iid.fam" into for_plink_dosage_logistic_fam, for_cleanup_dataset_fam, for_merge_dosages_fam, for_clumping_fam
 	file "${target}.{bim,bed,fam,log,dat.pca.evec}" into for_plink_dosage_logistic_ds, for_qq_manhattan_ds, for_convert_dosages_stats, for_merge_dosages_stats, for_cleanup_dataset_stats, for_clumping_ds
 	file "${target}.fam.double-id.pheno" into for_merge_dosages_pheno
 	file "${target}.fam.double-id.gender" into for_merge_dosages_gender
+   // tuple file("${target}.more-covars"), val(covar_cols) into for_plink_dosage_logistic_more_covars
 
     shell:
 //    ds_stats = mapFileList(ds_stats_staged)
@@ -306,12 +327,28 @@ plink --bfile "!{ds.bim.baseName}" \
 #	--remove "${ds.relatives}" \
 #	  --keep-fam "${ds_stats.fam}"
 
-$AWK '{ print $1\"_\"$2, $1\"_\"$2, $6 }' "!{target}.fam" >"!{target}.fam.double-id.pheno"
-$AWK '{ print $1\"_\"$2, $1\"_\"$2, $5 }' "!{target}.fam" >"!{target}.fam.double-id.gender"
-$AWK '{ print $1\"_\"$2, $1\"_\"$2, $3, $4, $5, $6 }' "!{target}.fam" | TMPDIR="." sponge "!{target}_fid_iid.fam"
+# Convert pheno and gender files to VCF double-id
+if [ "!{params.doubleid}" = "0" ]; then
+    $AWK '{print $2, $2, $2, $6}' >"!{target}.fam.double-id.pheno"
+    $AWK '{print $2, $2, $5}' >"!{target}.fam.double-id.gender"
+    $AWK '{ print $2, $2, $3, $4, $5, $6 }' "!{target}.fam" | TMPDIR="." sponge "!{target}_fid_iid.fam"
+else
+    $AWK '{ print $1\"_\"$2, $1\"_\"$2, $6 }' "!{target}.fam" >"!{target}.fam.double-id.pheno"
+    $AWK '{ print $1\"_\"$2, $1\"_\"$2, $5 }' "!{target}.fam" >"!{target}.fam.double-id.gender"
+    $AWK '{ print $1\"_\"$2, $1\"_\"$2, $3, $4, $5, $6 }' "!{target}.fam" | TMPDIR="." sponge "!{target}_fid_iid.fam"
+fi
 
+# generate PCA covers for those that are listed in the fam file
 cp !{params.covar} covar
-$AWK 'FILENAME~/fam$/{samples[$2]=1}(FILENAME~/covar$/ && FNR==1) {print $0} (FILENAME~/covar$/ && ($2 in samples || FNR!=1)){$1=$1"_"$2;$2=$1;print $0}' !{target}.fam covar >"!{target}.dat.pca.evec"
+if [ "!{params.doubleid}" = "1" ]; then
+    $AWK 'FILENAME~/fam$/{samples[$2]=1}(FILENAME~/covar$/ && FNR==1) {print $0} (FILENAME~/covar$/ && ($2 in samples || FNR!=1)){$1=$1"_"$2;$2=$1;print $0}' !{target}.fam covar >"!{target}.dat.pca.evec"
+else
+    $AWK 'FILENAME~/fam$/{samples[$2]=1}(FILENAME~/covar$/ && FNR==1) {print $0} (FILENAME~/covar$/ && ($2 in samples || FNR!=1)){$1=$2; print $0}' !{target}.fam covar >"!{target}.dat.pca.evec"
+fi
+
+# generate additional covars for those that are listed in the fam file
+
+
 '''
 }
 
@@ -321,6 +358,7 @@ process plink_dosage_logistic {
     validExitStatus 0,128
     cpus 4
     tag "${params.collection_name}.$chromosome"
+    time {  48.h * task.attempt }
 
     input:
     set val(chromosome), file(vcfgz), file(vcfmap), file(dosage_gz), file(dosage_map) from plinkdosage_gz_map
@@ -329,6 +367,7 @@ process plink_dosage_logistic {
 //	file ds_imp_staged from Channel.from(ds_imp_input).collect()
 	file ds_release_staged from Channel.from(ds_input).collect()
 //	file ds_stats_orig_staged from Channel.from(ds_stats_input).collect()
+//    tuple file(more_covars), val(covar_cols) from plink_dosage_logistic_more_covars
 
     output:
 //    file "${target}_chr${chromosome}.assoc.dosage" into merge_log_dos_results_dosage
@@ -406,6 +445,7 @@ process merge_log_dos_results {
 publishDir params.output ?: '.', mode: 'copy', overwrite: true
     validExitStatus 0,128
     tag "${params.collection_name}"
+    time {24.h * task.attempt}
     input:
     file dosage_files from merge_log_dos_results_dosage.collect()
     file log_files from merge_log_dos_results_logistic.collect()
@@ -439,6 +479,7 @@ done
 
 process extract_rsq_variants {
     tag "${params.collection_name}"
+    time {24.h * task.attempt}
     input:
     file dosage from for_extract_rsq_variants_dos
     file logistic from for_extract_rsq_variants_log
@@ -463,6 +504,7 @@ python -c 'from Stats_helpers import *; extract_Rsq_variants(\
 
 process addL95_U95 {
     tag "${params.collection_name}"
+    time {24.h * task.attempt}
 input:
     file rsq03    from for_l95u95_rsq3
     file rsq03_lz from for_l95u95_rsq3lz
@@ -501,6 +543,7 @@ process qq_manhattan {
 tag "${params.collection_name}"
 publishDir params.output ?: '.', mode: 'copy', overwrite: true
 validExitStatus 0,1
+time {24.h * task.attempt}
 cpus 2
 
 input:
@@ -530,7 +573,8 @@ rsq08_null = "${rsq08}_null"
 rsq03_noxMHC = "${rsq03}_noxMHC"
 rsq08_noxMHC = "${rsq08}_noxMHC"
 null_variants = ANNOTATION_DIR + "/QQplots/" + params.QQplot_null_variants
-snpexclude = BATCH_DIR + "/" + params.QQplot_SNPexcludeList
+//snpexclude = BATCH_DIR + "/" + params.QQplot_SNPexcludeList
+snpexclude = "/dev/null"
 
 if(!file(null_variants).exists()) {
     null_variants=file("/dev/null")
@@ -595,7 +639,7 @@ manhattan_plot "!{rsq08}_excludeRegions"
 process convert_dosages {
 validExitStatus 0,128
 tag "${params.collection_name}.$chromosome"
-
+time {24.h * task.attempt}
 input:
 //each chromosome from Channel.from(params.first_chr .. params.last_chr)
 set val(chromosome), file(vcfgz), file(vcfmap), file(dosage_gz), file(dosage_map) from for_dosage_convert_gz_map
@@ -629,9 +673,9 @@ plink --vcf "!{vcfgz}" --double-id --make-bed --out "!{target}_with_multiallelic
 
 ### Find multi-position rs ids
 cut -f2 "!{target}_with_multiallelics.bim" | sort | uniq -d >multi-position.rs
-awk 'NR==FNR{rsids[$0];next} {if($2 in rsids){$2=$1":"$4} print}' multi-position.rs "!{target}_with_multiallelics.bim" >new.bim
-cp new.bim "!{target}_with_multiallelics.bim"
-rm new.bim
+awk 'NR==FNR{rsids[$0];next} {if($2 in rsids){$2=$1":"$4} print}' multi-position.rs "!{target}_with_multiallelics.bim" >multi-position
+#cp new.bim "!{target}_with_multiallelics.bim"
+#rm new.bim
 
 ### Convert Rs to chr:pos so we can identify different Rs IDs on the same position, i.e. multiallelics
 LC_NUMERIC=POSIX gawk -f "!{rs2chrpos}" -- "!{target}_with_multiallelics.bim" >"!{target}_chrpos_with_multiallelics.bim"
@@ -672,8 +716,9 @@ gawk '{if($2==".") {$2=$1 ":" $4} print $0}' <"!{target}.bim_with_dots" >"!{targ
 
 process merge_dosages {
     errorStrategy 'retry'
-    memory { 20.GB * task.attempt }
+    memory { 64.GB * task.attempt }
     tag "${params.collection_name}"
+    time {24.h * task.attempt}
     input:
     //file dosages from for_merge_dosages.collect()
     file rsq03_staged from for_merge_dosages_rsq03.collect()
@@ -710,19 +755,19 @@ done
 
 plink --bfile "!{dosage_basename}.chr!{params.first_chr}" \
     --merge-list merge-list \
-    --memory 16000\
+    --memory 60000\
     --make-bed --out "!{target}_tmp" --allow-no-sex
 
 
 plink --bfile "!{target}_tmp" \
       --pheno "!{pheno}" \
       --update-sex "!{gender}" \
-      --memory 16000 \
+      --memory 60000 \
       --make-bed --out "!{target}" --allow-no-sex 
-gawk '{ print $2 }' "!{rsq08}" | tail -n +2 >"!{dosage_basename}.rsq0.8.rs.txt"
+gawk '{ print $2":"$4":"$5 }' "!{rsq08}" | tail -n +2 >"!{dosage_basename}.rsq0.8.rs.txt"
 plink --bfile "!{target}" \
       --extract "!{dosage_basename}.rsq0.8.rs.txt" \
-      --memory 16000 \
+      --memory 60000 \
       --make-bed --out "!{rsq08_target_name}" --allow-no-sex
 
 if [ "!{params.debug}" == "0" ]; then
@@ -743,8 +788,8 @@ fi
 
 
 process cleanup_dataset {
-memory 35.GB
-time 12.h
+memory 64.GB
+time {24.h * task.attempt}
 publishDir params.output ?: '.', mode: 'copy', overwrite: true
 tag "${params.collection_name}"
     cpus 2
@@ -761,8 +806,8 @@ tag "${params.collection_name}"
     set file("${rsq3base}.bim"), file("${rsq3base}.bed"), file ("${rsq3base}.fam"), file ("${rsq3base}.log") into for_definetti_rsq03, for_gen_sumstats
     set file("${rsq8base}.bim"), file("${rsq8base}.bed"), file ("${rsq8base}.fam"), file ("${rsq8base}.log") into for_definetti_rsq08
 //    file "${rsq8base}.{bim,bed,fam,log}" into for_definetti_rsq08
-    set file("${rsq3.bim.baseName}.locuszoom.bim"),file("${rsq3.bim.baseName}.locuszoom.bed"),file("${rsq3.bim.baseName}.locuszoom.fam"),file("${rsq3.bim.baseName}.locuszoom.log") into for_clump_rsq03_ds, for_lz_rsq03
-    set file("${rsq8.bim.baseName}.locuszoom.bim"),file("${rsq8.bim.baseName}.locuszoom.bed"),file("${rsq8.bim.baseName}.locuszoom.fam"),file("${rsq8.bim.baseName}.locuszoom.log") into for_clump_rsq08_ds
+    set file("${rsq3base}.locuszoom.bim"),file("${rsq3base}.locuszoom.bed"),file("${rsq3base}.locuszoom.fam"),file("${rsq3base}.locuszoom.log") into for_clump_rsq03_ds, for_lz_rsq03
+    set file("${rsq8base}.locuszoom.bim"),file("${rsq8base}.locuszoom.bed"),file("${rsq8base}.locuszoom.fam"),file("${rsq8base}.locuszoom.log") into for_clump_rsq08_ds
     
     set file("${rsq3base}.bim"), file("${rsq3base}.bed"), file ("${rsq3base}.fam"), file ("${rsq3base}.log")
     set file("${rsq8base}.bim"), file("${rsq8base}.bed"), file ("${rsq8base}.fam"), file ("${rsq8base}.log")
@@ -772,8 +817,8 @@ tag "${params.collection_name}"
     ds_stats = mapFileList(ds_stats_staged)
     rsq3 = mapFileList(rsq03_staged)
     rsq8 = mapFileList(rsq08_staged)
-    rsq3base = rsq3.bim.baseName
-    rsq8base = rsq8.bim.baseName
+    rsq3base = rsq3.bim.baseName //rsq3.bim.baseName
+    rsq8base = rsq8.bim.baseName //rsq8.bim.baseName
     
     
 '''
@@ -790,60 +835,60 @@ mv "!{ds_stats.fam}" "!{ds_stats.fam}.single-id"
 mv doubleid.fam "!{ds_stats.fam}"
 
 # if things don't work out, remove snps with more than 2 alleles
-plink --memory 16000 --bfile "!{rsq3.bim.baseName}" --bmerge "!{ds_stats.bim.baseName}" --make-bed --out "!{rsq3.bim.baseName}_tmp" --allow-no-sex || true
-if [ -e "!{rsq3.bim.baseName}_tmp-merge.missnp" ]; then
-    plink --memory 16000 --bfile "!{rsq3.bim.baseName}" --exclude !{rsq3.bim.baseName}_tmp-merge.missnp --make-bed --allow-no-sex --out rsq3 &
-    plink --memory 16000 --bfile "!{ds_stats.bim.baseName}" --exclude !{rsq3.bim.baseName}_tmp-merge.missnp --make-bed --allow-no-sex --out ds &
-    wait
-    plink --memory 16000 --bfile "!{rsq8.bim.baseName}" --exclude !{rsq3.bim.baseName}_tmp-merge.missnp --make-bed --allow-no-sex --out rsq8
-    plink --memory 16000 --bfile rsq3 --bmerge ds --make-bed --out "!{rsq3.bim.baseName}_tmp" --allow-no-sex &
-    plink --memory 16000 --bfile rsq8 --bmerge ds --make-bed --out "!{rsq8.bim.baseName}_tmp" --allow-no-sex &
-    wait
+plink --memory 60000 --bfile "!{rsq3base}" --bmerge "!{ds_stats.bim.baseName}" --make-bed --out "!{rsq3base}_tmp" --allow-no-sex || true
+if [ -e "!{rsq3base}_tmp-merge.missnp" ]; then
+    plink --memory 60000 --bfile "!{rsq3base}" --exclude !{rsq3base}_tmp-merge.missnp --make-bed --allow-no-sex --out rsq3 
+    plink --memory 60000 --bfile "!{ds_stats.bim.baseName}" --exclude !{rsq3base}_tmp-merge.missnp --make-bed --allow-no-sex --out ds 
+    
+    plink --memory 60000 --bfile "!{rsq8base}" --exclude !{rsq3base}_tmp-merge.missnp --make-bed --allow-no-sex --out rsq8
+    plink --memory 60000 --bfile rsq3 --bmerge ds --make-bed --out "!{rsq3base}_tmp" --allow-no-sex
+    plink --memory 60000 --bfile rsq8 --bmerge ds --make-bed --out "!{rsq8base}_tmp" --allow-no-sex 
+
 else
-    plink --memory 16000 --bfile "!{rsq8.bim.baseName}" --bmerge "!{ds_stats.bim.baseName}" --make-bed --out "!{rsq8.bim.baseName}_tmp" --allow-no-sex
+    plink --memory 60000 --bfile "!{rsq8base}" --bmerge "!{ds_stats.bim.baseName}" --make-bed --out "!{rsq8base}_tmp" --allow-no-sex
 fi
 
-### datasets: rsq3, ds, !{rsq8.bim.baseName}_tmp, !{rsq3.bim.baseName}_tmp
+### datasets: rsq3, ds, !{rsq8base}_tmp, !{rsq3base}_tmp
 
 # determine the duplicate SNPs from genotyping (rs numbers) and imputation (chr.:...)
 # tmp version without duplicate genotyped and imputed SNPs - exclude imputed SNPs which are already genotyped
-gawk '{ print $1":"$4 }' "!{rsq3.bim.baseName}_tmp.bim" | sort | uniq -d > "!{rsq3.bim.baseName}.excluded.duplicates.imputed"
-plink --memory 16000 --bfile "!{rsq3.bim.baseName}_tmp" --exclude "!{rsq3.bim.baseName}.excluded.duplicates.imputed" --make-bed --out "!{rsq3.bim.baseName}_tmp2" --allow-no-sex &
-plink --memory 16000 --bfile "!{rsq8.bim.baseName}_tmp" --exclude "!{rsq3.bim.baseName}.excluded.duplicates.imputed" --make-bed --out "!{rsq8.bim.baseName}_tmp2" --allow-no-sex &
+gawk '{ print $1":"$4 }' "!{rsq3base}_tmp.bim" | sort | uniq -d > "!{rsq3base}.excluded.duplicates.imputed"
+plink --memory 60000 --bfile "!{rsq3base}_tmp" --exclude "!{rsq3base}.excluded.duplicates.imputed" --make-bed --out "!{rsq3base}_tmp2" --allow-no-sex 
+plink --memory 60000 --bfile "!{rsq8base}_tmp" --exclude "!{rsq3base}.excluded.duplicates.imputed" --make-bed --out "!{rsq8base}_tmp2" --allow-no-sex 
 wait
 
 # determine monomorphic SNPs
-plink --memory 16000 --bfile "!{rsq3.bim.baseName}_tmp2" --freq --out "!{rsq3.bim.baseName}_tmp2_freq" --allow-no-sex --threads 16
-gawk '{ if ($5 == 0) print $2 }' "!{rsq3.bim.baseName}_tmp2_freq.frq" > "!{rsq3.bim.baseName}.excluded.monomorphic"
+plink --memory 60000 --bfile "!{rsq3base}_tmp2" --freq --out "!{rsq3base}_tmp2_freq" --allow-no-sex --threads 16
+gawk '{ if ($5 == 0) print $2 }' "!{rsq3base}_tmp2_freq.frq" > "!{rsq3base}.excluded.monomorphic"
 
 # final version without duplicate genotyped and imputed SNPs - exclude imputed SNPs which are already genotyped
-plink --memory 16000 --bfile "!{rsq3.bim.baseName}_tmp2" --exclude "!{rsq3.bim.baseName}.excluded.monomorphic" --make-bed --out "!{rsq3.bim.baseName}_tmp3" &
-plink --memory 16000 --bfile "!{rsq8.bim.baseName}_tmp2" --exclude "!{rsq3.bim.baseName}.excluded.monomorphic" --make-bed --out "!{rsq8.bim.baseName}_tmp3" &
+plink --memory 60000 --bfile "!{rsq3base}_tmp2" --exclude "!{rsq3base}.excluded.monomorphic" --make-bed --out "!{rsq3base}_tmp3" 
+plink --memory 60000 --bfile "!{rsq8base}_tmp2" --exclude "!{rsq3base}.excluded.monomorphic" --make-bed --out "!{rsq8base}_tmp3" 
 wait
-plink --memory 16000 --bfile "!{rsq3.bim.baseName}_tmp3" --not-chr 0 --make-bed --out "!{rsq3.bim.baseName}" --allow-no-sex &
-plink --memory 16000 --bfile "!{rsq8.bim.baseName}_tmp3" --not-chr 0 --make-bed --out "!{rsq8.bim.baseName}" --allow-no-sex &
+plink --memory 60000 --bfile "!{rsq3base}_tmp3" --not-chr 0 --make-bed --out "!{rsq3base}" --allow-no-sex 
+plink --memory 60000 --bfile "!{rsq8base}_tmp3" --not-chr 0 --make-bed --out "!{rsq8base}" --allow-no-sex 
 wait
 
 # another final version without duplicate genotyped and imputed SNPs -
 # exclude imputed SNPs which are already genotyped - but here chr:pos as SNPids for Locuszoom
 awk '{ print $1":"$4 }' "!{rsq3.bim}" | sort | uniq -d > "!{rsq3.bim}.duplicates"
 awk '{ print $1":"$4 }' "!{rsq8.bim}" | sort | uniq -d > "!{rsq8.bim}.duplicates"
-plink --memory 16000 --bfile "!{rsq3.bim.baseName}" --make-bed --out "!{rsq3.bim.baseName}.locuszoom.tmp" --allow-no-sex &
-plink --memory 16000 --bfile "!{rsq8.bim.baseName}" --make-bed --out "!{rsq8.bim.baseName}.locuszoom.tmp" --allow-no-sex &
+plink --memory 60000 --bfile "!{rsq3base}" --make-bed --out "!{rsq3base}.locuszoom.tmp" --allow-no-sex 
+plink --memory 60000 --bfile "!{rsq8base}" --make-bed --out "!{rsq8base}.locuszoom.tmp" --allow-no-sex 
 wait
 
-awk '{ print $1"\t"$1":"$4"\t"$3"\t"$4"\t"$5"\t"$6 }' "!{rsq3.bim}"> "!{rsq3.bim.baseName}.locuszoom.tmp.bim"
-awk '{ print $1"\t"$1":"$4"\t"$3"\t"$4"\t"$5"\t"$6 }' "!{rsq8.bim}"> "!{rsq8.bim.baseName}.locuszoom.tmp.bim"
-plink --memory 16000 --bfile "!{rsq3.bim.baseName}.locuszoom.tmp" --exclude "!{rsq3.bim}.duplicates" --make-bed --out "!{rsq3.bim.baseName}.locuszoom" &
-plink --memory 16000 --bfile "!{rsq8.bim.baseName}.locuszoom.tmp" --exclude "!{rsq8.bim}.duplicates" --make-bed --out "!{rsq8.bim.baseName}.locuszoom" &
+awk '{ print $1"\t"$1":"$4"\t"$3"\t"$4"\t"$5"\t"$6 }' "!{rsq3.bim}"> "!{rsq3base}.locuszoom.tmp.bim"
+awk '{ print $1"\t"$1":"$4"\t"$3"\t"$4"\t"$5"\t"$6 }' "!{rsq8.bim}"> "!{rsq8base}.locuszoom.tmp.bim"
+plink --memory 60000 --bfile "!{rsq3base}.locuszoom.tmp" --exclude "!{rsq3.bim}.duplicates" --make-bed --out "!{rsq3base}.locuszoom" 
+plink --memory 60000 --bfile "!{rsq8base}.locuszoom.tmp" --exclude "!{rsq8.bim}.duplicates" --make-bed --out "!{rsq8base}.locuszoom" 
 wait
 
 if [ "!{params.debug}" == "0" ]; then
     rm -f ds.* rsq3.*
-    rm -f !{rsq3.bim.baseName}_tmp*
-    rm -f !{rsq8.bim.baseName}_tmp*
-    rm -f !{rsq3.bim.baseName}.locuszoom.tmp*
-    rm -f !{rsq8.bim.baseName}.locuszoom.tmp*
+    rm -f !{rsq3base}_tmp*
+    rm -f !{rsq8base}_tmp*
+    rm -f !{rsq3base}.locuszoom.tmp*
+    rm -f !{rsq8base}.locuszoom.tmp*
 fi
 
 '''
@@ -852,6 +897,7 @@ fi
 process generate_sumstats {
 publishDir params.output ?: '.', mode: 'copy', overwrite: true
 tag "${params.collection_name}"
+time {12.h * task.attempt}
 cpus 2
     input:
     set file(bim), file(bed), file(fam), file(log) from for_gen_sumstats
@@ -902,7 +948,7 @@ R --slave --args "!{rsq08base}_hardy.hwe" "!{rsq08base}_controls_DeFinetti" "!{r
 '''
 }
 
-
+/*
 process plink_clumping {
 tag "${params.collection_name}"
 memory 24.GB
@@ -965,4 +1011,4 @@ python -c 'from Stats_helpers import *; \
 
 '''
 }
-
+*/

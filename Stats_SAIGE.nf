@@ -76,6 +76,7 @@ params.additional_covars = ""
 // As case/control status is lost during imputation, its re-added to the Plink dataset.
 process preprocess {
     tag "${params.collection_name}"
+    time {12.h * task.attempt}
 
     input:
 //    set file(bim), file(bed), file(fam)
@@ -134,6 +135,7 @@ perl -e "print join(',', map {'PC'.\\$_}(1 .. !{params.numofPCs}) )" >covar_cols
 
 process prune {
     tag "${params.collection_name}"
+    time {24.h * task.attempt}
     input:
     tuple file(bim), file(bed), file(fam) from for_prune_qced
 
@@ -151,7 +153,8 @@ plink --bfile "!{bim.baseName}" --extract prunedata.prune.in --make-bed --out qc
 
 process saige_fit_model {
     tag "${params.collection_name}"
-    container "docker://wzhou88/saige:0.36.3.2"
+    container "docker://wzhou88/saige:0.36.6"
+    time {48.h * task.attempt}
     input:
     tuple file(bim), file(bed), file(fam) from for_fit_qced_pruned
     file covar_list from for_fit_covar_list
@@ -225,7 +228,7 @@ def get_chrom(vcf) {
 
 process filter_samples {
     tag "${params.collection_name}.${chrom}"
-
+	time {12.h * task.attempt}
     input:
     tuple val(chrom), file(vcfgz) from for_filter_vcfgz.flatten().map{[ get_chrom(it), it ] }
     tuple file(bim), file(bed), file(fam) from for_filter_qced
@@ -249,6 +252,7 @@ process filter_samples {
 
 process prepare_spa_genotyped {
     tag "${params.collection_name}.$chrom"
+    time {12.h * task.attempt}
 
     input:
     tuple file(bim), file(bed), file(fam) from for_prepare_spa_genotyped
@@ -273,6 +277,7 @@ process saige_spa_imputed {
     container "docker://wzhou88/saige:0.36.3.2"
     errorStrategy 'retry'
     maxRetries 5
+    time {24.h * task.attempt}
     input:
     tuple val(chrom), file(samplefile), file(filteredvcf), file(filteredtbi) from for_saige_spa_imputed_vcf
     tuple file(model), file(varianceRatio) from for_saige_spa_imputed_model
@@ -307,6 +312,7 @@ process saige_spa_genotyped {
     container "docker://wzhou88/saige:0.36.3.2"
     errorStrategy 'retry'
     maxRetries 5
+    time {24.h * task.attempt}
     input:
     tuple val(chrom), file(samplefile), file(vcf), file(tbi) from for_saige_spa_genotyped_vcf
     tuple file(model), file(varianceRatio) from for_saige_spa_genotyped_model
@@ -340,6 +346,7 @@ step2_SPAtests.R \
 process merge_results {
     tag "${params.collection_name}"
     publishDir params.output ?: '.', mode: 'copy', overwrite: true
+    time {24.h * task.attempt}
 
     input:
     file (imp_results) from for_merge_results_imp.collect()

@@ -60,6 +60,7 @@ params.qc_dir = "."
 params.skip_snpqc = 0
 params.PCA_SNPList = ""
 params.keep_related = false
+params.disable_hftest = true
 
 // match auto-generated "no file exists" to actual not-existing files
 if (params.PCA_SNPList == "nofileexists") {
@@ -176,6 +177,14 @@ if [ ! -s diagnoses ]; then
     echo "At least $MIN_BATCH_COUNT batches per diagnosis are required for HF/ANOVA testing."
     exit 0
 fi
+
+#if [ "!{params.skip_hftest}" = "true" ]; then
+    touch chunk_0
+    touch HF_PCA.R
+    echo "HF Test disabled"
+    exit 0
+#fi
+
 cp "!{workflow.projectDir}/bin/HF_PCA.R" .
 cut -f2 "!{dataset.bim}" | split -l !{hf_test_chunk_size} -a 4 -d - chunk_
 '''
@@ -542,12 +551,19 @@ process final_cleaning {
     module load "IKMB"
     module load "Plink/1.9"
 
+INDIVIDUALS="!{individuals}"
+VARIANTS="!{variants}"
+
 # Remove sample and SNP outliers
-if [ !{params.skip_snpqc} -eq 0]; then
-    plink --bfile "!{dataset.bed.baseName}" --remove "!{individuals}" --exclude "!{variants}" --make-bed --out "!{prefix}" --allow-no-sex
-else
-    plink --bfile "!{dataset.bed.baseName}" --remove "!{individuals}" --make-bed --out "!{prefix}" --allow-no-sex
+if [ "!{params.skip_snpqc}" = "1" ]; then
+    VARIANTS=/dev/null
 fi
+
+if [ "!{params.skip_sampleqc}" = "1" ]; then
+    INDIVIDUALS=/dev/null
+fi
+
+plink --bfile "!{dataset.bed.baseName}" --remove "$INDIVIDUALS" --exclude "$VARIANTS" --make-bed --out "!{prefix}" --allow-no-sex
 
 touch !{params.collection_name}_SNPQCII_final_flag.relatives.txt
 

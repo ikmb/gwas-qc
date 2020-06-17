@@ -11,6 +11,7 @@ if(params.dataset_prefixes.count({true}) == 0) {
 
 used_datasets = params.datasets?.tokenize(',')
 
+
 /* Verify dataset file list */
 def assertFileExists(f) {
     if( !f.exists() ) {
@@ -40,13 +41,16 @@ hapmap2_samples = file("/work_ifs/sukmb388/regeneron_annotations/hapmap2-annotat
 
 params.nxfdir = "."
 params.skip_snpqc = 0
+params.skip_sampleqc = 0
 params.keep_related = false
+params.batch_liftover = [:]
 
 Rs_script = file("${params.nxfdir}/Rs.nf")
 SNPQCI_script = file("${params.nxfdir}/SNPQCI.nf")
 SampleQC_script = file("${params.nxfdir}/SampleQCI.nf")
 SNPQCII_script = file("${params.nxfdir}/SNPQCII.nf")
 FinalAnalysis_script = file("${params.nxfdir}/FinalAnalysis.nf")
+Liftover_script = file("${params.nxfdir}/Liftover.nf")
 
 process PrepareFiles {
     tag "$dataset/$batch"
@@ -202,8 +206,9 @@ nextflow run !{SampleQC_script} -c !{params.qc_config} -c !{params.dataset_confi
     --collection_name="!{dataset}" \\
     --individuals_annotation="$ANNO" \\
     --skip_snpqc=!{params.skip_snpqc} \\
+    --skip_sampleqc=!{params.skip_sampleqc} \\
     --individuals_annotation_hapmap2="$(pwd)/!{dataset}_individuals_annotation_hapmap2.txt" \\
-    -with-report "!{params.output}/!{dataset}/SampleQCI/execution-report.html" \\
+    -with-report "!{params.output}/!{dataset}/SampleQCI/execution-report.html" \\\
     -resume -ansi-log false
 
 
@@ -246,6 +251,7 @@ nextflow run !{SNPQCII_script} -c !{params.qc_config} -c !{params.dataset_config
     -with-report "!{params.output}/!{dataset}/SNPQCII/execution-report.html" \\
     -resume -ansi-log false \\
     --skip_snpqc=!{params.skip_snpqc} \\
+    --skip_sampleqc=!{params.skip_sampleqc} \\
     --keep_related=!{params.keep_related}
 
 mv trace.txt SNPQCII-!{dataset}.trace.txt
@@ -269,6 +275,7 @@ input:
 output:
     file "FinalAnalysis-${dataset}.trace.txt" into FinalAnalysis_trace
     set val(dataset) into ReportData
+    set file(bed), file(bim), file(fam), val(dataset) into for_liftover
 shell:
 '''
 MYPWD=$(pwd)
@@ -295,7 +302,7 @@ ln -fs !{params.output}/!{dataset}/SNPQCII/!{dataset}_QCed.log !{params.output}/
 
 for ext in bim bed fam log
 do
-    cp !{params.collection_name}_QCed_noATCG.$ext !{params.output}/!{dataset}/QCed/
+    mv !{params.output}/!{dataset}/QCed/final_noatcg.$ext !{params.output}/!{dataset}/QCed/!{dataset}_QCed_noATCG.$ext
 done
 
 cp "FinalAnalysis-!{dataset}.trace.txt" !{params.output}/!{dataset}/QCed/
@@ -320,13 +327,38 @@ shell:
 
 RUNOPTIONS="-B /work_ifs /home/sukmb388/texlive.img"
 
-WARN_SNPQC=!{params.skip_snpqc}
-WARN_RELATED=!{params.keep_related}
-PERL5LIB=/home/sukmb388/nxf-report perl /home/sukmb388/nxf-report/report.pl $NXF_WORK /home/sukmb388/nxf-report/preamble.tex\
+WARN_SAMPLEQC=!{params.skip_sampleqc} WARN_SNPQC=!{params.skip_snpqc} WARN_RELATED=!{params.keep_related} PERL5LIB=/home/sukmb388/nxf-report perl /home/sukmb388/nxf-report/report.pl $NXF_WORK /home/sukmb388/nxf-report/preamble.tex\
     Rs-!{dataset}-*.txt SNPQCI-!{dataset}.trace.txt SampleQC-!{dataset}.trace.txt SNPQCII-!{dataset}.trace.txt FinalAnalysis-!{dataset}.trace.txt
 singularity exec $RUNOPTIONS lualatex report.tex
 singularity exec $RUNOPTIONS lualatex report.tex
 mv report.pdf "!{dataset}-report.pdf"
+
+'''
+}
+
+process Liftover {
+tag "${dataset}"
+publishDir "${params.output}/${dataset}/Final_hg38"
+
+input:
+    tuple file(bed), file(bim), file(fam), val(dataset) from for_liftover
+
+shell:
+'''
+
+MYPWD=$(pwd)
+mkdir -p !{workflow.workDir}/!{dataset}-Final_hg38
+cd !{workflow.workDir}/!{dataset}-Final_hg38
+
+nextflow run !{Liftover_script} -c !{params.qc_config} -c !{params.dataset_config[dataset]} \\
+    --collection_name="!{dataset}" \\
+    --bed="$MYPWD/!{bed}" \\
+    --bim="$MYPWD/!{bim}" \\
+    --fam="$MYPWD/!{fam}" \\
+    --nxfdir="!{params.nxfdir}" \\
+    --hg38_dir="!{params.output}/!{dataset}/Final_hg38" \\
+    -with-report "!{params.output}/!{dataset}/Final_hg38/execution-report.html" \\
+    -resume -ansi-log false
 
 '''
 }

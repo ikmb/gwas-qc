@@ -543,6 +543,11 @@ process remove_bad_samples {
     module load 'Plink/1.9'
 touch remove-samples
 
+if [ "!{params.skip_sampleqc}" = "1" ]; then
+    plink --bfile !{pruned[0].baseName} --remove /dev/null --make-bed --out !{target_basename} --allow-no-sex
+    exit 0
+fi
+
 # pre-calculated remove list for individuals
 if [ -e !{remove_manually} ]; then
     cut -f 1,2 !{remove_manually} | tr -s ' \t' ' '>>remove-samples
@@ -552,7 +557,7 @@ fi
 cat !{het_outliers} | tr -s ' \t' ' '>>remove-samples
 
 # too high missingness
-if [ !{params.skip_snpqc} -eq 0 ]; then
+if [ "!{params.skip_snpqc}" = "0" ]; then
     cat !{miss_outliers} | tr -s ' \t' ' '>>remove-samples
 fi
 
@@ -566,6 +571,10 @@ cat !{eigenstrat_outliers} | tr -s ' \t' ' '>>remove-samples
 cat !{flashpca_outliers} | tr -s ' \t' ' ' >>remove-samples
 
 cut -f1,2 -d' ' remove-samples | sort | uniq | TMPDIR=. sponge remove-samples
+
+if [ "!{params.skip_sampleqc}" = "1" ]; then
+    truncate -s0 remove-samples
+fi
 
 plink --bfile !{pruned[0].baseName} --remove remove-samples --make-bed --out !{target_basename} --allow-no-sex
 '''
@@ -590,11 +599,17 @@ process extract_qced_samples {
     newcountryevec = "${dataset[0].baseName}.country.evec"
 
 '''
-echo "Extract QCed samples from annotation file"
-python -c 'from SampleQCI_helpers import *; extract_QCsamples_from_pc_file("!{evec[0]}", "!{newevec}", "!{dataset[2]}")'
-python -c 'from SampleQCI_helpers import *; extract_QCsamples_from_annotationfile("!{newevec}", "!{individuals_annotation}", "!{dataset[0].baseName}_annotation.txt")'
+if [ "!{params.skip_sampleqc}" = "1" ]; then
+    cp !{individuals_annotation} "!{dataset[0].baseName}_annotation.txt"
+    cp !{evec[0]} "!{dataset[0].baseName}.evec"
+    cp !{evec[1]} "!{dataset[0].baseName}.country.evec"
+else
+    echo "Extract QCed samples from annotation file"
+    python -c 'from SampleQCI_helpers import *; extract_QCsamples_from_pc_file("!{evec[0]}", "!{newevec}", "!{dataset[2]}")'
+    python -c 'from SampleQCI_helpers import *; extract_QCsamples_from_annotationfile("!{newevec}", "!{individuals_annotation}", "!{dataset[0].baseName}_annotation.txt")'
 
-python -c 'from SampleQCI_helpers import *; extract_QCsamples_from_pc_file("!{evec[1]}", "!{newcountryevec}", "!{dataset[2]}")'
+    python -c 'from SampleQCI_helpers import *; extract_QCsamples_from_pc_file("!{evec[1]}", "!{newcountryevec}", "!{dataset[2]}")'
+fi
 '''
 }
 
@@ -748,10 +763,19 @@ process remove_relatives {
 '''
     module load "IKMB"
     module load "Plink/1.9"
+
+if [ "!{params.skip_sampleqc}" = "1" ]; then
+    # generate log files that the report parser needs
+    plink --bfile "!{dataset[0].baseName}" --remove /dev/null --make-bed --out "!{dataset[0].baseName}_withoutRelatives"
+    cp !{evec[0]} "!{dataset[0].baseName}_withoutRelatives.pca.evec"
+    cp !{individuals_annotation} "!{dataset[0].baseName}_withoutRelatives.annotation.txt"
+else
 plink --bfile "!{dataset[0].baseName}" --remove !{relatives} --make-bed --out "!{dataset[0].baseName}_withoutRelatives"
+
 
 python -c 'from SampleQCI_helpers import *; extract_QCsamples_from_pc_file("!{evec[0]}", "!{dataset[0].baseName}_withoutRelatives.pca.evec", "!{dataset[2]}")'
 python -c 'from SampleQCI_helpers import *; extract_QCsamples_from_annotationfile("!{dataset[0].baseName}_withoutRelatives.pca.evec", "!{individuals_annotation}", "!{dataset[0].baseName}_withoutRelatives.annotation.txt")'
+fi
 '''
 
 }
