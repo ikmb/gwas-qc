@@ -1,7 +1,7 @@
 // -*- mode:groovy -*-
 
 // If you need to add a new chip definition, take a look into the ChipDefinitions.groovy file
-def ChipDefinitions = this.class.classLoader.parseClass(new File(params.chip_defs))
+//def ChipDefinitions = this.class.classLoader.parseClass(new File(params.chip_defs))
 
 // Set default output directory, overwritten by --output=<dir>
 params.output = "."
@@ -85,7 +85,7 @@ process check_chip_type {
     shell:
 
 '''
-$NXF_DIR/bin/chipmatch --verbose --output !{original[1].baseName}.chip_detect.log --threads 2 !{original[1].baseName}.bim /work_ifs/sukmb388/wayne_strands/Source
+chipmatch --verbose --output !{original[1].baseName}.chip_detect.log --threads 2 !{original[1].baseName}.bim !{params.wrayner_strands}
 <!{original[1].baseName}.bim awk '{if(($5=="A" && $6=="T")||($5=="T" && $6=="A")) { printf("%s %s%s\\n", $2, $5, $6); }}' >!{original[1].baseName}.flag_atcg
 <!{original[1].baseName}.bim awk '{if(($5=="C" && $6=="G")||($5=="G" && $6=="C")) { printf("%s %s%s\\n", $2, $5, $6); }}' >>!{original[1].baseName}.flag_atcg
 '''
@@ -94,8 +94,6 @@ $NXF_DIR/bin/chipmatch --verbose --output !{original[1].baseName}.chip_detect.lo
 process lift_genome_build {
 
     tag "${params.ds_name}/${params.batch_name}"
-    memory {32.GB * task.attempt}
-    time { 2.h * task.attempt }
     input:
 
     file original from input_files_lift
@@ -106,20 +104,15 @@ process lift_genome_build {
     shell:
 
 '''
-module load Plink/1.02
 TARGETNAME="!{original[1].baseName}_lift"
 BASENAME="!{original[1].baseName}"
 STRAND_FILE="!{params.liftover}"
 
-# plink --bfile "!{original[1].baseName}" --make-bed --out converted
-
-
-module unload Plink/1.02
 module load Plink/1.9
 
 if [ -e "$STRAND_FILE" ]; then
-    $NXF_DIR/bin/update_build_PLINK1.9.sh  "!{original[1].baseName}" "$STRAND_FILE" "$TARGETNAME"
-#    $NXF_DIR/bin/update_build_PLINK1.9.sh converted "$STRAND_FILE" "$TARGETNAME"
+# TODO: Add memory requirements, maybe integrate script
+    !{SCRIPT_DIR}/update_build_PLINK1.9.sh  "!{original[1].baseName}" "$STRAND_FILE" "$TARGETNAME"
 else
     echo "No strand file specified for lifting."
     ln -s "!{original[1].baseName}.bed" "$TARGETNAME.bed"
@@ -347,7 +340,7 @@ process find_duplicates_nn {
     file 'exclude' into to_plink_exclude_list
 
     shell:
-    source = ANNOTATION_DIR+'/'+params.switch_to_chip_build+'/'+ChipDefinitions.Producer(params.chip_producer)+'/'+ChipDefinitions.RsExclude(params.chip_version)
+//    source = ANNOTATION_DIR+'/'+params.switch_to_chip_build+'/'+ChipDefinitions.Producer(params.chip_producer)+'/'+ChipDefinitions.RsExclude(params.chip_version)
 '''
 #!/bin/bash
 cut -f 2 "!{bim}" | sort | uniq -d >duplicates
@@ -356,13 +349,7 @@ echo Found $(wc -l < duplicates) duplicate variants
 grep -P "\\tN\\tN" "!{bim}" | cut -f2 >nns
 echo Found $(wc -l < nns) N/N variants
 
-if [ -e "!{source}" ]; then
-  echo Found $(wc -l < "!{source}") variants in chip exclude list "!{source}"
-  cat duplicates nns "!{source}" >exclude
-else
-  echo Chip exclude list "${source}" not accessible - skipping
   cat duplicates nns >exclude
-fi
 
 '''
 }

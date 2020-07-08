@@ -2,7 +2,7 @@
 
 /* Verify config parameter*/
 params.dataset_prefixes = [:]
-// params.datasets = "" // used to only process a subset of specified datasets
+params.datasets = null // used to only process a subset of specified datasets
 
 if(params.dataset_prefixes.count({true}) == 0) {
     System.err.println("You didn't specify a configuration or the configuration does not contain dataset definitions!")
@@ -21,9 +21,29 @@ def assertFileExists(f) {
     return true
 }
 
+def getScriptPath(s) {
+    file(workflow.scriptFile.getParent().toString() + "/" + s) 
+}
+
+def parseQCConfig(filename) {
+    qc_config = new java.util.Properties()
+    qc_config.load(new java.io.FileReader(params.qc_config))
+
+    bind_dir = qc_config.getProperty("env.BIND_DIR")
+    qc_config.each { entry ->
+        new_s = entry.value.replaceAll("env.BIND_DIR\\s*\\+*\\s*", bind_dir)
+        new_s = new_s.replaceAll("\"", "")
+        qc_config.setProperty(entry.key, new_s)
+    }
+    qc_config.setProperty("env.BIND_DIR", bind_dir)
+
+    return qc_config
+}
+
 input_datasets = Channel.create()
 params.dataset_prefixes.each { key, value ->
     if(!used_datasets || used_datasets.contains(key)) {
+        System.out.println("Adding dataset '" + key + "'...")
         value.each { b -> 
             assertFileExists(file(b + ".bim")) 
             assertFileExists(file(b + ".bed")) 
@@ -36,21 +56,26 @@ params.dataset_prefixes.each { key, value ->
 
 input_datasets.close()
 
-/* Additional external files */
-hapmap2_samples = file("/work_ifs/sukmb388/regeneron_annotations/hapmap2-annotations.txt")
+/* Additional external files (TODO) */
+//hapmap2_samples = file("/work_ifs/sukmb388/regeneron_annotations/hapmap2-annotations.txt")
 
-params.nxfdir = "."
+qc_config = parseQCConfig(params.qc_config)
+
 params.skip_snpqc = 0
 params.skip_sampleqc = 0
 params.keep_related = false
 params.batch_liftover = [:]
 
-Rs_script = file("${params.nxfdir}/Rs.nf")
-SNPQCI_script = file("${params.nxfdir}/SNPQCI.nf")
-SampleQC_script = file("${params.nxfdir}/SampleQCI.nf")
-SNPQCII_script = file("${params.nxfdir}/SNPQCII.nf")
-FinalAnalysis_script = file("${params.nxfdir}/FinalAnalysis.nf")
-Liftover_script = file("${params.nxfdir}/Liftover.nf")
+Rs_script = getScriptPath("Rs.nf") //file("${workflow.scriptFile}/Rs.nf")
+SNPQCI_script = getScriptPath("SNPQCI.nf") //file("${params.nxfdir}/SNPQCI.nf")
+SampleQC_script = getScriptPath("SampleQCI.nf") //file("${params.nxfdir}/SampleQCI.nf")
+SNPQCII_script = getScriptPath("SNPQCII.nf") //file("${params.nxfdir}/SNPQCII.nf")
+FinalAnalysis_script = getScriptPath("FinalAnalysis.nf") // file("${params.nxfdir}/FinalAnalysis.nf")
+Liftover_script = getScriptPath("Liftover.nf") //file("${params.nxfdir}/Liftover.nf")
+
+nxf_dir = getScriptPath("")
+
+
 
 process PrepareFiles {
     tag "$dataset/$batch"
@@ -82,12 +107,13 @@ shell:
     liftover = params.batch_liftover[batch]
 '''
 
-
+export NXF_WORK=!{workflow.workDir}
 MYPWD=$(pwd)
 mkdir -p !{workflow.workDir}/!{dataset}-!{batch}-Rs
 cd !{workflow.workDir}/!{dataset}-!{batch}-Rs
 
-NXF_PARAMS="!{Rs_script} -c !{params.qc_config} \\
+NXF_PARAMS="!{Rs_script} \\
+    -c !{params.qc_config} \\
     -c !{dsconfig} \\
     --filebase=!{filebase} \\
     --batch_name=!{batch} \\
@@ -123,7 +149,10 @@ output:
 shell:
     individuals_annotation = file(filebase[0]).getParent().toString() + "/" + dataset + "_individuals_annotation.txt"
     prefix = "${dataset}_QCI"
+    dsconfig = params.dataset_config[dataset]
 '''
+
+export NXF_WORK=!{workflow.workDir}
 echo Checking !{dataset}:
 echo BEDs: "!{bed}"
 echo BIMs: "!{bim}"
@@ -154,7 +183,9 @@ done
 
 cp !{dataset}_individuals_annotation.txt !{params.output}/!{dataset}/SNPQCI/
 
-nextflow run !{SNPQCI_script} -c !{params.qc_config} \\
+nextflow run !{SNPQCI_script} \\
+    -c !{params.qc_config} \\
+    -c !{dsconfig} \\
     --rs_dir="$MYPWD" \\
     --snpqci_dir="!{params.output}/!{dataset}/SNPQCI" \\
     --collection_name="!{dataset}" \\
@@ -189,16 +220,15 @@ output:
     set val(dataset), val(filebase), file("${prefix}.bed"), file("${prefix}.bim"), file("${prefix}.fam") into SNPQCII_ds
     file("${prefix}.pca.evec") into FinalAnalysis_evec
     file "SampleQC-${dataset}.trace.txt" into SampleQC_trace
-//    file '*-qc.txt'
 shell:
-//    individuals_annotation = file(filebase[0]).getParent().toString() + "/" + dataset + "_individuals_annotation.txt"
     prefix = "${dataset}_SampleQCI_final_withoutRelatives"
 '''
 MYPWD=$(pwd)
+export NXF_WORK=!{workflow.workDir}
 mkdir -p !{workflow.workDir}/!{dataset}-SampleQC
 cd !{workflow.workDir}/!{dataset}-SampleQC
 ANNO=!{params.output}/!{dataset}/SNPQCI/!{dataset}_individuals_annotation.txt
-cat $ANNO !{hapmap2_samples} >!{dataset}_individuals_annotation_hapmap2.txt
+cat $ANNO !{qc_config.getProperty("params.hapmap2_annotations")} >!{dataset}_individuals_annotation_hapmap2.txt
 
 nextflow run !{SampleQC_script} -c !{params.qc_config} -c !{params.dataset_config[dataset]}\\
     --snpqci_dir="!{params.output}/!{dataset}/SNPQCI" \\
@@ -207,6 +237,7 @@ nextflow run !{SampleQC_script} -c !{params.qc_config} -c !{params.dataset_confi
     --individuals_annotation="$ANNO" \\
     --skip_snpqc=!{params.skip_snpqc} \\
     --skip_sampleqc=!{params.skip_sampleqc} \\
+    --nxf_dir=!{nxf_dir} \\
     --individuals_annotation_hapmap2="$(pwd)/!{dataset}_individuals_annotation_hapmap2.txt" \\
     -with-report "!{params.output}/!{dataset}/SampleQCI/execution-report.html" \\\
     -resume -ansi-log false
@@ -239,6 +270,7 @@ shell:
 //    individuals_annotation = file(filebase[0]).getParent().toString() + "/" + dataset + "_individuals_annotation.txt"
 '''
 MYPWD=$(pwd)
+export NXF_WORK=!{workflow.workDir}
 mkdir -p !{workflow.workDir}/!{dataset}-SNPQCII
 cd !{workflow.workDir}/!{dataset}-SNPQCII
 ANNO=!{params.output}/!{dataset}/SNPQCI/!{dataset}_individuals_annotation.txt
@@ -274,11 +306,12 @@ input:
     file(evec) from FinalAnalysis_evec
 output:
     file "FinalAnalysis-${dataset}.trace.txt" into FinalAnalysis_trace
-    set val(dataset) into ReportData
+    val(dataset) into ReportData
     set file(bed), file(bim), file(fam), val(dataset) into for_liftover
 shell:
 '''
 MYPWD=$(pwd)
+export NXF_WORK=!{workflow.workDir}
 mkdir -p !{workflow.workDir}/!{dataset}-FinalAnalysis
 cd !{workflow.workDir}/!{dataset}-FinalAnalysis
 
@@ -323,29 +356,35 @@ input:
 output:
     file "${dataset}-report.pdf"
 shell:
+    report_dir = qc_config.getProperty("env.REPORT_DIR")
 '''
 
-RUNOPTIONS="-B /work_ifs /home/sukmb388/texlive.img"
+export NXF_WORK=!{workflow.workDir}
+export WARN_SNPQC=!{params.skip_snpqc}
+export WARN_SAMPLEQC=!{params.skip_sampleqc}
+export WARN_RELATED=!{params.keep_related}
+export PERL5LIB=!{report_dir}
 
-WARN_SAMPLEQC=!{params.skip_sampleqc} WARN_SNPQC=!{params.skip_snpqc} WARN_RELATED=!{params.keep_related} PERL5LIB=/home/sukmb388/nxf-report perl /home/sukmb388/nxf-report/report.pl $NXF_WORK /home/sukmb388/nxf-report/preamble.tex\
+perl !{report_dir}/report.pl !{workflow.workDir} !{report_dir}/preamble.tex \\
     Rs-!{dataset}-*.txt SNPQCI-!{dataset}.trace.txt SampleQC-!{dataset}.trace.txt SNPQCII-!{dataset}.trace.txt FinalAnalysis-!{dataset}.trace.txt
-singularity exec $RUNOPTIONS lualatex report.tex
-singularity exec $RUNOPTIONS lualatex report.tex
+
+latexmk -lualatex report
 mv report.pdf "!{dataset}-report.pdf"
 
 '''
 }
 
+/*
 process Liftover {
 tag "${dataset}"
 publishDir "${params.output}/${dataset}/Final_hg38"
-
 input:
     tuple file(bed), file(bim), file(fam), val(dataset) from for_liftover
 
 shell:
 '''
 
+export NXF_DIR=!{workflow.workDir}
 MYPWD=$(pwd)
 mkdir -p !{workflow.workDir}/!{dataset}-Final_hg38
 cd !{workflow.workDir}/!{dataset}-Final_hg38
@@ -355,10 +394,11 @@ nextflow run !{Liftover_script} -c !{params.qc_config} -c !{params.dataset_confi
     --bed="$MYPWD/!{bed}" \\
     --bim="$MYPWD/!{bim}" \\
     --fam="$MYPWD/!{fam}" \\
-    --nxfdir="!{params.nxfdir}" \\
+    --nxfdir="!{nxf_dir}" \\
     --hg38_dir="!{params.output}/!{dataset}/Final_hg38" \\
     -with-report "!{params.output}/!{dataset}/Final_hg38/execution-report.html" \\
     -resume -ansi-log false
 
 '''
 }
+*/

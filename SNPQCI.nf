@@ -17,7 +17,7 @@ hwe_script = file("${workflow.projectDir}/bin/hwe.R")
 // Lots of indirection layers require lots of backslash escaping
 individuals_annotation = file(params.individuals_annotation)
 definetti_r = file(SCRIPT_DIR + "/DeFinetti_hardy.r")
-autosomes = file(ANNOTATION_DIR + "/" + params.chip_build + "/" + ChipDefinitions.Producer(params.chip_producer) + "/" + ChipDefinitions.RsAutosomes(params.chip_version))
+//autosomes = file(ANNOTATION_DIR + "/" + params.chip_build + "/" + ChipDefinitions.Producer(params.chip_producer) + "/" + ChipDefinitions.RsAutosomes(params.chip_version))
 draw_fdr = file("${workflow.projectDir}/bin/SNP_QCI_draw_FDR.r")
 draw_fdr_allbatches = file("${workflow.projectDir}/bin/SNP_QCI_draw_FDR_Fail_allbatches.r")
 
@@ -27,7 +27,6 @@ to_calc_hwe = Channel.create()
 
 process merge_batches {
     tag "${params.collection_name}"
-    memory 32.GB
 
     output:
     file "${params.collection_name}_Rs.bim" into merged_bim, to_split_bim, to_hwe_bim, to_verify_bim, to_exclude_bim, to_miss_bim, to_miss_batch_bim
@@ -43,6 +42,8 @@ process merge_batches {
 
 module load IKMB
 module load Plink/1.9
+
+MEM=!{task.memory.toMega()-1000}
 
 set -x
 
@@ -67,14 +68,14 @@ for idx in ${!BIMS[@]}; do
 done
 
 if [ "${#BIMS[*]}" -gt 1 ]; then
-    plink --memory 30000 --bed !{params.rs_dir}/${BEDS[0]} --bim !{params.rs_dir}/${BIMS[0]} --fam !{params.rs_dir}/${FAMS[0]} --merge-list merge-list --make-bed --out !{params.collection_name}_Rs --allow-no-sex
+    plink --memory $MEM --bed !{params.rs_dir}/${BEDS[0]} --bim !{params.rs_dir}/${BIMS[0]} --fam !{params.rs_dir}/${FAMS[0]} --merge-list merge-list --make-bed --out !{params.collection_name}_Rs --allow-no-sex
     if [ -s "!{params.collection_name}_Rs-merge.missnp" ]; then
         echo "Removing $(wc -l !{params.collection_name}_Rs.missnp) variants that would have 3 or more alleles after merge."
 
         # Remove from every entry in the merge list
         rm -f merge-list
         for idx in ${!BIMS[@]}; do
-            plink --memory 30000 --bed !{params.rs_dir}/${BEDS[$idx]} --bim !{params.rs_dir}/${BIMS[$idx]} --fam !{params.rs_dir}/${FAMS[$idx]} --exclude !{params.collection_name}_Rs-merge.missnp --allow-no-sex --make-bed --out ds-$idx
+            plink --memory $MEM --bed !{params.rs_dir}/${BEDS[$idx]} --bim !{params.rs_dir}/${BIMS[$idx]} --fam !{params.rs_dir}/${FAMS[$idx]} --exclude !{params.collection_name}_Rs-merge.missnp --allow-no-sex --make-bed --out ds-$idx
 
             # All values except the first go into the merge list
             if [ "$idx" -gt 0 ]; then
@@ -82,7 +83,7 @@ if [ "${#BIMS[*]}" -gt 1 ]; then
             fi
         done
 
-        plink --memory 30000 --bfile ds-0 --merge-list merge-list --make-bed --out !{params.collection_name}_Rs --allow-no-sex
+        plink --memory $MEM --bfile ds-0 --merge-list merge-list --make-bed --out !{params.collection_name}_Rs --allow-no-sex
     fi
 else
     echo "No merge necessary, only one batch found." | tee !{params.collection_name}_Rs.log
@@ -100,13 +101,9 @@ ln -s !{params.rs_dir}/${INDELS[0]} !{params.collection_name}.indels
  */
 process hwe_definetti_preqc {
   tag "${params.collection_name}"
-  memory {8192.MB*task.attempt}
-  cpus 1
   publishDir params.snpqci_dir ?: '.', mode: 'copy', overwrite: true
 
   input:
-    //file plink from to_hwe_diagram
-//    file autosomes
     file definetti_r
     file merged_bim
     file merged_bed
@@ -166,9 +163,6 @@ process calculate_hwe {
   // Should have been zero, but killall -q returns 1 if it didn't find anything
   validExitStatus 0,128
   errorStrategy 'retry'
-//  memory {8.GB * task.attempt }
-  memory '30 GB'
-  time {7.h * task.attempt }
   tag "${params.collection_name}/${chunk}"
 
   input:
@@ -188,6 +182,8 @@ shell:
     module load IKMB
     module load Plink/1.9
 
+MEM=!{task.memory.toMega()-1000}
+
 # Filter annotations to include only controls
 <!{individuals_annotation} awk ' { if($9 == "Control" || $9 == "diagnosis") print $1,$2,$3,$4,$5,$6,$7,$8,$9,$10 }' >individuals_annotation
 
@@ -197,11 +193,11 @@ ANNOT_LINES=$(wc -l <individuals_annotation)
 if [ "$ANNOT_LINES" -gt 1 ]; then
 
     # Filter dataset
-    plink --bfile "!{new File(input_bim.toString()).getBaseName()}" --filter-controls --extract !{chunk} --make-bed --out !{chunk}-controls.all
+    plink --memory $MEM --bfile "!{new File(input_bim.toString()).getBaseName()}" --filter-controls --extract !{chunk} --make-bed --out !{chunk}-controls.all
 
     # It might be, that this chunk lies entirely in chr23, so the next one will fail and
     # we don't need to merge later on.
-    plink --bfile !{chunk}-controls.all --chr 1-22,25 --make-bed --out 1-22and25 || true
+    plink --memory $MEM --bfile !{chunk}-controls.all --chr 1-22,25 --make-bed --out 1-22and25 || true
     HAS_OTHERS=1
     if [ ! -e 1-22and25.bim ]; then
         HAS_OTHERS=0
@@ -211,10 +207,10 @@ if [ "$ANNOT_LINES" -gt 1 ]; then
     HAS_X=$(cut -f1 !{chunk}-controls.all.bim | grep -c 23)
     if [ $HAS_X -ne 0 ]; then
         if [ $HAS_OTHERS -eq 1 ]; then
-            plink --allow-no-sex --bfile !{chunk}-controls.all --filter-females --chr 23 --make-bed --out 23
-            plink --allow-no-sex --bfile 1-22and25 --bmerge 23 --make-bed --out !{chunk}-controls
+            plink --memory $MEM --allow-no-sex --bfile !{chunk}-controls.all --filter-females --chr 23 --make-bed --out 23
+            plink --memory $MEM --allow-no-sex --bfile 1-22and25 --bmerge 23 --make-bed --out !{chunk}-controls
         else
-            plink --allow-no-sex --bfile !{chunk}-controls.all --filter-females --chr 23 --make-bed --out !{chunk}-controls
+            plink --memory $MEM --allow-no-sex --bfile !{chunk}-controls.all --filter-females --chr 23 --make-bed --out !{chunk}-controls
         fi
 
     else
@@ -315,8 +311,6 @@ R --slave --args \
 process determine_missingness_entire {
     publishDir params.snpqci_dir ?: '.', mode: 'copy'
     errorStrategy 'retry'
-    memory { 16.GB * task.attempt }
-    time { 4.h * task.attempt }
     tag "${params.collection_name}"
 
     input:
@@ -328,22 +322,20 @@ process determine_missingness_entire {
     file 'missingness-excludes-entire' into excludes_miss_entire
 
 
-
-"""
+shell:
+'''
 module load IKMB
 module load Plink/1.9
-
-plink  --bfile "${new File(input_bim.toString()).getBaseName()}" --missing --out missingness_entire --allow-no-sex
-SNPQCI_extract_missingness_entire.py missingness_entire.lmiss ${params.geno_entire_collection} missingness-excludes-entire
-"""
+MEM=!{task.memory.toMega()-1000}
+plink --memory $MEM --bfile "!{new File(input_bim.toString()).getBaseName()}" --missing --out missingness_entire --allow-no-sex
+SNPQCI_extract_missingness_entire.py missingness_entire.lmiss !{params.geno_entire_collection} missingness-excludes-entire
+'''
 }
 
 
 process determine_missingness_per_batch {
     publishDir params.snpqci_dir ?: '.', mode: 'copy'
     errorStrategy 'retry'
-    memory { 16.GB * task.attempt }
-    time { 8.h * task.attempt }
     tag "${params.collection_name}"
 
     input:
@@ -356,23 +348,25 @@ process determine_missingness_per_batch {
     file 'missingness-excludes-perbatch' into excludes_miss_perbatch
 
 
-
-"""
+shell:
+'''
     module load IKMB
     module load Plink/1.9
-awk '{print \$1, \$2, \$7 }' "${individuals_annotation}" | grep -v "familyID" >cluster_file
-plink --bfile "${new File(input_bim.toString()).getBaseName()}" --missing \
+
+MEM=!{task.memory.toMega()-1000}
+
+mawk '{print $1, $2, $7 }' "!{individuals_annotation}" | grep -v "familyID" >cluster_file
+plink --memory $MEM --bfile "!{new File(input_bim.toString()).getBaseName()}" --missing \
     --out missingness_perbatch \
     --allow-no-sex \
     --within cluster_file
-SNPQCI_extract_missingness_perbatch.py missingness_perbatch.lmiss ${params.geno_batch} "$individuals_annotation" missingness-excludes-perbatch
-"""
+SNPQCI_extract_missingness_perbatch.py missingness_perbatch.lmiss !{params.geno_batch} "!{individuals_annotation}" missingness-excludes-perbatch
+'''
 }
 
 process exclude_bad_variants {
     publishDir params.snpqci_dir ?: '.', mode: 'copy'
     errorStrategy 'retry'
-    memory { 8.GB * task.attempt }
     tag "${params.collection_name}"
 
     input:
@@ -396,6 +390,8 @@ process exclude_bad_variants {
     module load IKMB
     module load Plink/1.9
 
+MEM=${task.memory.toMega()-1000}
+
 TMPDIR=.
 NUM_CTRL_BATCHES=\$(tr -s '\\t ' ' ' <${individuals_annotation} | cut -f7,9 -d" " | grep Control | uniq | wc -l)
 
@@ -409,7 +405,7 @@ else
 fi
 
 if [ ${params.skip_snpqc} -eq 0 ]; then
-    plink --memory 15000 --bfile "${new File(input_bim.toString()).getBaseName()}" --exclude variant-excludes --make-bed --out ${params.collection_name}_QCI
+    plink --memory \$MEM --bfile "${new File(input_bim.toString()).getBaseName()}" --exclude variant-excludes --make-bed --out ${params.collection_name}_QCI
 else
     BASE="${new File(input_bim.toString()).getBaseName()}"
     NEWBASE="${params.collection_name}_QCI"
@@ -428,7 +424,6 @@ process hwe_definetti_qci {
     def prefix = "${params.collection_name}_QCI_hardy"
 
     input:
-    file autosomes
     file new_plink from draw_definetti_after
     file definetti_r
     file indels from postqc_hwe_indels

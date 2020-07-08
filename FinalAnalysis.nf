@@ -75,7 +75,6 @@ Channel.from(fileExists(file(params.individuals_annotation)))
 process prune_final {
     validExitStatus 0,128
     publishDir params.qc_dir ?: '.', mode: 'copy', overwrite: true, pattern: '*.prune.{in,out,out.unknown_variants}'
-    time {4.h * task.attempt}
     tag "${params.collection_name}"
     input:
     file ds_staged from for_snprelate_prune
@@ -124,8 +123,6 @@ plink --bfile after-correlated-remove --extract include-variants-with-atcg --mak
 
 process final_pca_con_projection {
     publishDir params.qc_dir ?: '.', mode: 'copy', overwrite: true
-    memory {25.GB * task.attempt}
-    time {12.h * task.attempt}
     errorStrategy 'retry'
     tag "${params.collection_name}"
 
@@ -180,8 +177,6 @@ R --slave --args "!{prefix}.country" "!{params.preQCIMDS_1kG_sample}" <"!{draw_e
 
 process final_pca_con_projection_atcg {
     publishDir params.qc_dir ?: '.', mode: 'copy', overwrite: true
-    memory {12.GB*task.attempt}
-    time {12.h * task.attempt}
     tag "${params.collection_name}"
 
     input:
@@ -321,8 +316,6 @@ done
 
 process pca_plot_1kg_frauke_final {
     publishDir params.qc_dir ?: '.', mode: 'copy', overwrite: true
-    memory {25.GB * task.attempt}
-    time { 8.h * task.attempt }
     tag "${params.collection_name}"
 
     input:
@@ -336,10 +329,9 @@ process pca_plot_1kg_frauke_final {
     dataset = mapFileList(dataset_staged)
     dataset_orig = mapFileList(ds_original)
 
-    pcaplot_1KG = NXF_DIR + "/bin/pcaplot_1KG.R"
+    pcaplot_1KG = SCRIPT_DIR + "/pcaplot_1KG.R"
     prefix = dataset.bed.baseName
 '''
-# Rscript $NXF_DIR/bin/pcaplot_1KG.R "!{dataset.bim.baseName}" "!{params.numof_pc}" "!{params.preQCIMDS_1kG_sample}"
 
 # Run PCA
 
@@ -423,38 +415,6 @@ fi
 }
 
 
-process sex_check {
-    publishDir params.qc_dir ?: '.', mode: 'copy'
-    tag "${params.collection_name}"
-
-    input:
-    file ds_staged from for_sex_check
-
-    output:
-    file("*.pdf") optional true
-    file("sex-check-not-possible.txt") optional true
-
-    shell:
-    ds = mapFileList(ds_staged)
-'''
-module load IKMB
-module load Plink/1.9
-
-# Check if we have data on both X and Y chromosomes
-#plink --allow-no-sex --bfile "!{ds.bim.baseName}" --missing --out !{ds.bim.baseName}
-#plink --allow-no-sex --bfile "!{ds.bim.baseName}" --het --out !{ds.bim.baseName}
-#plink --allow-no-sex --bfile "!{ds.bim.baseName}" --chr X --recode --out !{ds.bim.baseName}_sex.X || true
-#plink --allow-no-sex --bfile "!{ds.bim.baseName}" --chr Y --recode --out !{ds.bim.baseName}_sex.Y || true
-
-#if [ -e "!{ds.bim.baseName}"_sex.X.ped -a -e "!{ds.bim.baseName}"_sex.Y.ped ]; then
-#    Rscript $NXF_DIR/bin/indivplot.R "!{ds.bed.baseName}" "!{ds.bim.baseName}"_sex.X.ped "!{ds.bim.baseName}"_sex.Y.ped !{ds.bim.baseName}.imiss !{ds.bim.baseName}.het
-#else
-    echo "Sex check requires X and Y chromosomes to be present in the dataset" | tee sex-check-not-possible.txt
-#fi
-#rm -f "!{ds.bim.baseName}.log"
-
-'''
-}
 
 process det_monomorphics_final {
 publishDir params.qc_dir ?: '.', mode: 'copy', overwrite: true
@@ -526,7 +486,6 @@ module load Plink/1.9
 
 process prepare_split {
     tag "${params.collection_name}"
-    time {8.h * task.attempt}
     publishDir params.qc_dir ?:'.', mode:'copy'
     input:
     file ds_staged from for_prepare_split

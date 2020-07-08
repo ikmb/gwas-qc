@@ -36,7 +36,6 @@ params.skip_snpqc = 0
 individuals_annotation = file(params.individuals_annotation)
 
 script_dir = file(SCRIPT_DIR)
-// batch_dir = file(BATCH_DIR)
 
 input_ch = Channel.create()
 Channel.fromFilePairs("${params.snpqci_dir}/${params.collection_name}_QCI.{bed,bim,fam}", size: 3, flat: true) { file -> file.baseName } \
@@ -52,6 +51,7 @@ Channel.fromFilePairs("${params.snpqci_dir}/${params.collection_name}_QCI.{bed,b
 
 sampleqci_helpers = file("${workflow.projectDir}/bin/SampleQCI_helpers.py")
 
+approx_sample_count = file("${params.snpqci_dir}/${params.collection_name}_QCI.fam").countLines()
 
 prefix = params.collection_name + "_SampleQCI_"
 
@@ -60,7 +60,6 @@ process apply_precalc_remove_list {
     tag "${params.collection_name}"
     input:
     file plink from input_ch
-//    file precalculated_remove_list
 
     output:
     file "manually-removed.{bed,bim,fam}" into for_det_miss_het, for_calc_pi_hat
@@ -85,8 +84,6 @@ fi
 
 process determine_miss_het {
     tag "${params.collection_name}"
-	memory { 24.GB * task.attempt }
-	time { 4.h * task.attempt }
 	errorStrategy 'retry'
 
     input:
@@ -104,24 +101,26 @@ shell:
 '''
     module load "IKMB"
     module load "Plink/1.9"
-    
+
+MEM=!{task.memory.toMega()-1000}
+
 # generates  miss.{hh,imiss,lmiss,log,nosex}
-plink --memory 10000 --bfile "!{new File(dataset[0].toString()).getBaseName()}" --out !{prefix}miss --missing&
+plink --memory $MEM --bfile "!{new File(dataset[0].toString()).getBaseName()}" --out !{prefix}miss --missing
 # generates het.{het,hh,log,nosex}
-plink --memory 10000 --bfile "!{new File(dataset[0].toString()).getBaseName()}" --chr 1-22 --out !{prefix}het --het&
-wait
+plink --memory $MEM --bfile "!{new File(dataset[0].toString()).getBaseName()}" --chr 1-22 --out !{prefix}het --het
 
-R --slave --args !{prefix}het.het !{prefix}miss.imiss < "!{script_dir + "/heterozygosity_logimiss_withoutthresh.r"}"& # generates het.het.logscale.1.png
-R --slave --args !{prefix}het.het !{prefix}miss.imiss < "!{script_dir + "/heterozygosity_imiss_withoutthresh.r"}"&    # generates het.het.1.png
-R --slave --args !{prefix}miss.lmiss < "!{script_dir + "/lmiss_withoutthresh.r"}"&    # generates miss.lmiss.1.png
-R --slave --args !{prefix}miss.lmiss < "!{script_dir + "/loglmiss_withoutthresh.r"}"& # generates miss.lmiss.logscale.1.png
-wait
+# might run in parallel with enough memory at hand:
+R --slave --args !{prefix}het.het !{prefix}miss.imiss < "!{script_dir + "/heterozygosity_logimiss_withoutthresh.r"}"
+R --slave --args !{prefix}het.het !{prefix}miss.imiss < "!{script_dir + "/heterozygosity_imiss_withoutthresh.r"}"
+R --slave --args !{prefix}miss.lmiss < "!{script_dir + "/lmiss_withoutthresh.r"}"
+R --slave --args !{prefix}miss.lmiss < "!{script_dir + "/loglmiss_withoutthresh.r"}"
 
-R --slave --args !{prefix}het.het !{prefix}miss.imiss !{params.mind} < "!{script_dir + "/heterozygosity_logimiss.r"}"& # generates het.het.logscale.2.png
-R --slave --args !{prefix}het.het !{prefix}miss.imiss !{params.mind} < "!{script_dir + "/heterozygosity_imiss.r"}"&    # generates het.het.2.png
-R --slave --args !{prefix}miss.lmiss !{params.geno_batch} < "!{script_dir + "/lmiss.r"}"&    # generates miss.lmiss.2.png
-R --slave --args !{prefix}miss.lmiss !{params.geno_batch} < "!{script_dir + "/loglmiss.r"}"& # generates miss.lmiss.logscale.2.png
-wait
+# also might run in parallel
+R --slave --args !{prefix}het.het !{prefix}miss.imiss !{params.mind} < "!{script_dir + "/heterozygosity_logimiss.r"}"
+R --slave --args !{prefix}het.het !{prefix}miss.imiss !{params.mind} < "!{script_dir + "/heterozygosity_imiss.r"}"
+R --slave --args !{prefix}miss.lmiss !{params.geno_batch} < "!{script_dir + "/lmiss.r"}"
+R --slave --args !{prefix}miss.lmiss !{params.geno_batch} < "!{script_dir + "/loglmiss.r"}"
+
 
 R --slave --args !{prefix}het.het < "!{script_dir + "/heterozygosity.r"}" # generates het.het.outlier.txt
 
@@ -133,7 +132,6 @@ perl -ne 'chomp;next if $.==1; @s=split /\\s+/;print "$s[1]\\t$s[2]\\n" if $s[6]
 process prune {
     tag "${params.collection_name}"
     publishDir params.sampleqci_dir ?: '.', mode: 'copy'
-    time 3.h
 
     input:
     file dataset from for_calc_pi_hat
@@ -181,8 +179,6 @@ plink --noweb --bfile intermediate --extract include_variants --make-bed --out "
 
 process calc_imiss {
     tag "${params.collection_name}"
-    memory {24.GB * task.attempt }
-    time {8.h * task.attempt }
     input:
     file dataset from for_calc_imiss
 
@@ -190,21 +186,22 @@ process calc_imiss {
     file(prefix+"miss.imiss") into for_detect_duplicates_miss
     file (prefix+"miss.lmiss")
 
-    script:
-        base = dataset[0].baseName
-"""
+    shell: 
+    base = dataset[0].baseName
+'''
     module load "IKMB"
     module load "Plink/1.9"
-plink --memory 10000 --bfile "${base}" --missing --out ${prefix}miss
-"""
+
+MEM=!{task.memory.getMega() - 1000}
+plink --memory $MEM --bfile "!{base}" --missing --out !{prefix}miss
+'''
 }
 
-final calc_imiss_job_count = 20// 80 should work for ~200k samples
+
+final calc_imiss_job_count = (approx_sample_count < 2000) ? 2 : (approx_sample_count / 1000)
 
 calc_imiss_job_ids = Channel.from(1..calc_imiss_job_count) // plink expects 1-based job indices
 process calc_imiss_IBS {
-    memory '64 GB'
-    time { 8.h * task.attempt }
     input:
     tag "${params.collection_name}/$job"
     file dataset from for_calc_imiss_ibs
@@ -226,7 +223,7 @@ if [ "${job}" -eq 1 ]; then
 fi
 
 # filter by relatives thresholds, so we don't produce huge files here
-awk '{if(\$10 >= ${params.max_ibd_threshold_relatives}) print}' ${dataset[0].baseName}.part.genome.${job} >>part
+mawk '{if(\$10 >= ${params.max_ibd_threshold_relatives}) print}' ${dataset[0].baseName}.part.genome.${job} >>part
 
 rm ${dataset[0].baseName}.part.genome.${job}
 mv part ${dataset[0].baseName}.part.genome.${job}
@@ -238,7 +235,7 @@ process ibs_merge_and_verify {
     publishDir params.sampleqci_dir ?: '.', mode: 'copy'  
     tag "${params.collection_name}"
     maxRetries 5
-    memory { 30.GB * task.attempt }
+    memory { 18.GB * task.attempt }
     time { 8.h * task.attempt }
 
     errorStrategy { task.exitStatus == 143 ? 'retry' : 'terminate' }
@@ -253,7 +250,8 @@ process ibs_merge_and_verify {
 
 
     shell:
-    ibdplot = NXF_DIR + "/bin/ibd-plot-genomefile.r"
+    ibdplot = SCRIPT_DIR + "/bin/ibd-plot-genomefile.r"
+
 '''
     module load "IKMB"
     module load "Plink/1.9"
@@ -269,14 +267,12 @@ done
 tail -n +2 $OUTFILE >tmp
 rm $OUTFILE
 mv tmp $OUTFILE
-$NXF_DIR/bin/genericplotter $OUTFILE $OUTFILE.png
+genericplotter $OUTFILE $OUTFILE.png
 '''
 }
 
 process pca_with_hapmap {
     tag "${params.collection_name}"
-    memory { 50.GB * task.attempt }
-    time { 24.h * task.attempt }
     input:
     file pruned from for_merge_hapmap
 
@@ -299,19 +295,22 @@ process pca_with_hapmap {
     sigma_threshold = 100.0
     draw_eigenstrat = SCRIPT_DIR + "/draw_evec_EIGENSTRAT.r"
     draw_without = SCRIPT_DIR + "/draw_evec_withoutProjection.r"
-    projection_on_populations_hapmap = ANNOTATION_DIR + "/" + params.projection_on_populations_hapmap
+    //projection_on_populations_hapmap = ANNOTATION_DIR + "/" + params.projection_on_populations_hapmap
+    projection_on_populations_hapmap = params.projection_on_populations_hapmap
 '''
 module load IKMB
 module load Plink/1.9
 module load Eigensoft/4.2
 #module load Eigensoft/6.1.4
 
+MEM=!{task.memory.toMega()-1000}
+
 if [ -e "!{exclude}" ]; then
-    plink --bfile "!{base_pruned}" --extract "!{hapmap}.bim" --exclude "!{exclude}" --make-bed --out pruned_tmp --allow-no-sex --memory !{task.memory.toMega()} 
-    plink --bfile "!{hapmap}" --extract "!{bim_pruned}" --exclude "!{exclude}" --make-bed --out hapmap_tmp --allow-no-sex --memory !{task.memory.toMega()} 
+    plink --bfile "!{base_pruned}" --extract "!{hapmap}.bim" --exclude "!{exclude}" --make-bed --out pruned_tmp --allow-no-sex --memory $MEM 
+    plink --bfile "!{hapmap}" --extract "!{bim_pruned}" --exclude "!{exclude}" --make-bed --out hapmap_tmp --allow-no-sex --memory $MEM
 else
-    plink --bfile "!{base_pruned}" --extract "!{hapmap}.bim" --make-bed --out pruned_tmp --allow-no-sex --memory !{task.memory.toMega()}
-    plink --bfile "!{hapmap}" --extract "!{bim_pruned}" --make-bed --out hapmap_tmp --allow-no-sex --memory !{task.memory.toMega()} 
+    plink --bfile "!{base_pruned}" --extract "!{hapmap}.bim" --make-bed --out pruned_tmp --allow-no-sex --memory $MEM
+    plink --bfile "!{hapmap}" --extract "!{bim_pruned}" --make-bed --out hapmap_tmp --allow-no-sex --memory $MEM
 fi
 
 DONE=0
@@ -319,7 +318,7 @@ MERGE_INPUT=pruned_tmp
 
 while [ $DONE -lt 1 ]
 do
-    plink --bfile $MERGE_INPUT --bmerge hapmap_tmp --out !{prefix}pruned_hapmap --allow-no-sex --memory !{task.memory.toMega()} || true
+    plink --bfile $MERGE_INPUT --bmerge hapmap_tmp --out !{prefix}pruned_hapmap --allow-no-sex --memory $MEM || true
     
     if [ -e "!{prefix}pruned_hapmap.missnp" ]; then
         rm -f removelist
@@ -330,7 +329,7 @@ do
             grep -E "^$CHR\\\\s.*$POS" ${MERGE_INPUT}.bim | cut -f2 -d$'\\t' >>removelist
             echo "$f" >>removelist
         done <"!{prefix}pruned_hapmap.missnp"
-        plink --bfile $MERGE_INPUT --exclude removelist --make-bed --out ${MERGE_INPUT}-clean
+        plink --memory $MEM --bfile $MERGE_INPUT --exclude removelist --make-bed --out ${MERGE_INPUT}-clean
         MERGE_INPUT=${MERGE_INPUT}-clean
         rm "!{prefix}pruned_hapmap.missnp"
     else
@@ -350,30 +349,6 @@ export TEMPDIR="$(pwd)"
 export TEMP="$(pwd)"
 python -c 'from SampleQCI_helpers import *; pca_run("!{prefix}pruned_hapmap", !{sigma_threshold}, "!{projection_on_populations_hapmap}", !{params.numof_pc}, 1, "!{draw_eigenstrat}", "!{draw_without}")'
 '''
-}
-
-process second_pca_eigenstrat {
-    publishDir params.sampleqci_dir ?: '.', mode: 'copy' 
-    tag "${params.collection_name}"
-
-
-    input:
-    file pruned from for_second_pca_eigen
-
-    output:
-    file "${pruned[0].baseName}_${params.numof_pc}PC.outlier.txt" into for_remove_bad_samples_eigenstrat
-
-    script:
-    sigma_threshold = 6.0
-    projection_on_populations_controls = ANNOTATION_DIR + "/${params.projection_on_populations_controls}"
-"""
-if [ "${params.program_for_second_PCA}" == "EIGENSTRAT" ]; then
-  python -c 'from SampleQCI_helpers import *;  pca_run("${pruned}", ${sigma_threshold}, "${projection_on_populations_controls}", ${params.numof_pc})'
-  python -c 'from SampleQCI_helpers import *;  determine_pca_outlier(log="${pruned[0].baseName}_${params.numof_pc}PC.log", outlier_EIGENSTRAT_file="${pruned[0].baseName}_${params.numof_pc}PC.outlier.txt")'
-else
-  touch ${pruned[0].baseName}_${params.numof_pc}PC.outlier.txt
-fi
-"""
 }
 
 process flashpca2_pruned {
@@ -507,7 +482,7 @@ process detect_duplicates_related {
     file "${params.collection_name}_SampleQCI_final_duplicates.txt" into for_remove_bad_samples_duplicates
 
     shell:
-    plot_script = NXF_DIR + "/bin/ibd-plot-genomefile.r"
+    plot_script = SCRIPT_DIR + "/ibd-plot-genomefile.r"
     threshold_duplicates = params.max_ibd_threshold_duplicates
     threshold_relatives = params.max_ibd_threshold_relatives
 
@@ -525,7 +500,6 @@ process remove_bad_samples {
     file het_outliers from for_remove_bad_samples_het
     file miss_outliers from for_remove_bad_samples_miss
     file duplicates from for_remove_bad_samples_duplicates
-    file eigenstrat_outliers from for_remove_bad_samples_eigenstrat
     file flashpca_outliers from for_remove_bad_samples_flashpca
 
     output:
@@ -563,9 +537,6 @@ fi
 
 # duplicates
 cut -d" " -f 1,2 !{duplicates} | tr -s ' \t' ' ' >>remove-samples
-
-# eigenstrat outliers (empty if flashpca has been used)
-cat !{eigenstrat_outliers} | tr -s ' \t' ' '>>remove-samples
 
 # flashpca outliers (empty if eigenstrat has been used)
 cat !{flashpca_outliers} | tr -s ' \t' ' ' >>remove-samples
@@ -826,8 +797,6 @@ plink --noweb --bfile intermediate --extract include_variants --make-bed --out "
 
 calc_imiss_job_ids_wr = Channel.from(1..calc_imiss_job_count) // plink expects 1-based job indices
 process calc_imiss_IBS_wr {
-    memory '20 GB'
-    time '8 h'
     validExitStatus 0,128
     tag "${params.collection_name}/$job"
     input:
@@ -862,7 +831,6 @@ mv part ${dataset[0].baseName}.part.genome.${job}
 }
 
 process calc_imiss_withoutRelatives {
-    memory '20 GB'
     tag "${params.collection_name}"
     input:
         file dataset from for_calc_imiss_wr
@@ -881,8 +849,6 @@ plink --memory 18000 --bfile "${dataset[0].baseName}" --missing --out ${dataset[
 process ibs_merge_and_verify_withoutRelatives {
     publishDir params.sampleqci_dir ?: '.', mode: 'copy'
     tag "${params.collection_name}"
-    memory '20 GB'
-    time {8.h * task.attempt}
     input:
     file chunks from for_ibs_merge_and_verify_wr.collect()
     file dataset from for_ibs_merge_and_verify_wr_ds
@@ -892,7 +858,6 @@ process ibs_merge_and_verify_withoutRelatives {
 
 
     shell:
-    ibdplot = NXF_DIR + "/bin/ibd-plot-genomefile.r"
 '''
 
     module load "IKMB"
@@ -909,7 +874,7 @@ done
 tail -n +2 $OUTFILE >tmp
 rm $OUTFILE
 mv tmp $OUTFILE
-$NXF_DIR/bin/genericplotter $OUTFILE $OUTFILE.png
+genericplotter $OUTFILE $OUTFILE.png
 '''
 }
 
