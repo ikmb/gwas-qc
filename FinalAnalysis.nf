@@ -123,6 +123,8 @@ plink --bfile after-correlated-remove --extract include-variants-with-atcg --mak
 
 process final_pca_con_projection {
     publishDir params.qc_dir ?: '.', mode: 'copy', overwrite: true
+    label 'big_mem'
+    label 'long_running'
     errorStrategy 'retry'
     tag "${params.collection_name}"
 
@@ -178,6 +180,8 @@ R --slave --args "!{prefix}.country" "!{params.preQCIMDS_1kG_sample}" <"!{draw_e
 process final_pca_con_projection_atcg {
     publishDir params.qc_dir ?: '.', mode: 'copy', overwrite: true
     tag "${params.collection_name}"
+    label 'big_mem'
+    label 'long_running'
 
     input:
     file ds_pruned_staged from for_snprelate_atcg
@@ -261,8 +265,8 @@ fi
 
 process final_merge_pruned_with_1kg {
     tag "${params.collection_name}"
-    memory { 8.GB * task.attempt }
-    time { 4.h * task.attempt }
+    label 'long_running'
+    label 'big_mem'
     input:
 
     file dataset_pruned_staged from for_merge_1kg_pruned_final
@@ -317,6 +321,8 @@ done
 process pca_plot_1kg_frauke_final {
     publishDir params.qc_dir ?: '.', mode: 'copy', overwrite: true
     tag "${params.collection_name}"
+    label 'big_mem'
+    label 'long_running'
 
     input:
     file dataset_staged from for_pca_plot_1KG_frauke_final
@@ -487,6 +493,8 @@ module load Plink/1.9
 process prepare_split {
     tag "${params.collection_name}"
     publishDir params.qc_dir ?:'.', mode:'copy'
+    label 'big_mem'
+    label 'long_running'
     input:
     file ds_staged from for_prepare_split
 
@@ -498,22 +506,23 @@ shell:
 
 '''
 module load Plink/1.9
+MEM=!{task.memory.toMega()-1000}
 
-plink --bfile "!{ds.bim.baseName}" --merge-x no-fail --make-bed --out merged
+plink --memory $MEM --bfile "!{ds.bim.baseName}" --merge-x no-fail --make-bed --out merged
 
 grep D merged.bim | mawk '{print $2}' >indels
 mawk 'BEGIN{c["A"]="T";c["C"]="G";c["G"]="C";c["T"]="A"} { if($5==c[$6]) print $2 }' merged.bim >atcg
 
 
 # determine monomorphic variants
-plink --bfile merged --freq --out "merged_freq" --allow-no-sex
+plink --memory $MEM --bfile merged --freq --out "merged_freq" --allow-no-sex
 python -c 'from SNPQC_helpers import *; frq =  Frq(frq_file="merged_freq.frq", write_monomorphic_file="monomorphic"); frq.write_monomorphic_variants_file(); del frq'
 
 cat monomorphic >>indels
 
 cat indels atcg | sort | uniq >indels-atcg
-plink --bfile merged --exclude indels --make-bed --out final
-plink --bfile merged --exclude indels-atcg --make-bed --out final_noatcg
+plink --memory $MEM --bfile merged --exclude indels --make-bed --out final
+plink --memory $MEM --bfile merged --exclude indels-atcg --make-bed --out final_noatcg
 '''
 }
 
@@ -521,7 +530,7 @@ plink --bfile merged --exclude indels-atcg --make-bed --out final_noatcg
 process split_vcf {
     publishDir params.qc_dir ?: '.', mode: 'copy'
     tag "${params.collection_name}.$chrom$infix"
-    time {8.h * task.attempt}
+    label 'long_running'
     validExitStatus 0,1
 
     input:

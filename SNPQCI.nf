@@ -5,7 +5,6 @@
  Author: Jan Kässens <j.kaessens@ikmb.uni-kiel.de>
 */
 
-def ChipDefinitions = this.class.classLoader.parseClass(new File(params.chip_defs))
 
 // initialize configuration
 params.snpqci_dir = "."
@@ -26,6 +25,7 @@ to_calc_hwe_script = Channel.create()
 to_calc_hwe = Channel.create()
 
 process merge_batches {
+    label 'big_mem'
     tag "${params.collection_name}"
 
     output:
@@ -119,9 +119,10 @@ process hwe_definetti_preqc {
 """
     module load IKMB
     module load Plink/1.9
+MEM=${task.memory.toMega()-1000}
 
-plink --bfile ${merged_bim.baseName} --exclude ${indels} --make-bed --out no-indels
-plink --bfile no-indels --hardy --out ${params.collection_name}_hardy --hwe 0.0 --chr 1-22 --allow-no-sex
+plink --memory \$MEM --bfile ${merged_bim.baseName} --exclude ${indels} --make-bed --out no-indels
+plink --memory \$MEM --bfile no-indels --hardy --out ${params.collection_name}_hardy --hwe 0.0 --chr 1-22 --allow-no-sex
 R --slave --args ${params.collection_name}_hardy.hwe ${params.collection_name}_controls_DeFinetti ${params.collection_name}_cases_DeFinetti ${params.collection_name}_cases_controls_DeFinetti <$definetti_r
 """
 }
@@ -131,6 +132,8 @@ R --slave --args ${params.collection_name}_hardy.hwe ${params.collection_name}_c
  */
 
 process split_dataset {
+  label 'small_mem'
+  label 'short_running'
 
   tag "${params.collection_name}"
 input:
@@ -160,6 +163,8 @@ shell:
  */
 
 process calculate_hwe {
+  label 'long_running'
+  label 'small_mem'
   // Should have been zero, but killall -q returns 1 if it didn't find anything
   validExitStatus 0,128
   errorStrategy 'retry'
@@ -185,7 +190,7 @@ shell:
 MEM=!{task.memory.toMega()-1000}
 
 # Filter annotations to include only controls
-<!{individuals_annotation} awk ' { if($9 == "Control" || $9 == "diagnosis") print $1,$2,$3,$4,$5,$6,$7,$8,$9,$10 }' >individuals_annotation
+<!{individuals_annotation} mawk ' { if($9 == "Control" || $9 == "diagnosis") print $1,$2,$3,$4,$5,$6,$7,$8,$9,$10 }' >individuals_annotation
 
 ANNOT_LINES=$(wc -l <individuals_annotation)
 
@@ -234,7 +239,7 @@ fi
  */
 
 process hwe_fdr_filter {
-    time { 1.d * task.attempt }
+    label 'long_running'
   tag "${params.collection_name}"
 publishDir params.snpqci_dir ?: '.', mode: 'copy'
     input:
@@ -312,6 +317,7 @@ process determine_missingness_entire {
     publishDir params.snpqci_dir ?: '.', mode: 'copy'
     errorStrategy 'retry'
     tag "${params.collection_name}"
+    label 'big_mem'
 
     input:
     file input_bim from to_miss_bim
@@ -337,6 +343,7 @@ process determine_missingness_per_batch {
     publishDir params.snpqci_dir ?: '.', mode: 'copy'
     errorStrategy 'retry'
     tag "${params.collection_name}"
+    label 'big_mem'
 
     input:
     file individuals_annotation
@@ -433,13 +440,13 @@ process hwe_definetti_qci {
     file prefix+"_{cases,controls,cases_controls}_DeFinetti.jpg"
     file prefix+".log"
 
-
-
 """
     module load IKMB
     module load Plink/1.9
-plink --bfile "${new File(new_plink[0].toString()).getBaseName()}" --exclude ${indels} --make-bed --out no-indels
-plink --bfile no-indels --hardy --out ${prefix} --hwe 0.0 --chr 1-22 --allow-no-sex
+
+MEM=${task.memory.toMega()-1000}
+plink --bfile "${new File(new_plink[0].toString()).getBaseName()}" --exclude ${indels} --make-bed --out no-indels --memory \$MEM
+plink --bfile no-indels --hardy --out ${prefix} --hwe 0.0 --chr 1-22 --allow-no-sex --memory \$MEM
 mv no-indels.log ${prefix}.log
 R --slave --args ${prefix}.hwe ${prefix}_controls_DeFinetti ${prefix}_cases_DeFinetti ${prefix}_cases_controls_DeFinetti <"$definetti_r"
 """

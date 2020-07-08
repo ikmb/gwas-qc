@@ -105,7 +105,6 @@ for_final_sample_cleaning = Channel.create()
 hf_test_chunk_size = 1000
 
 process hf_test_prepare {
-    memory { 4.GB * task.attempt }
     errorStrategy 'retry'
     tag "${params.collection_name}"
     validExitStatus 0,1
@@ -402,8 +401,7 @@ plink --bfile "!{dataset.bed.baseName}" --test-missing --out !{prefix}_test_miss
 process det_monomorphics {
 publishDir params.qc_dir ?: '.', mode: 'copy', overwrite: true
     tag "${params.collection_name}"
-    time {8.h * task.attempt }
-    memory {8.GB * task.attempt }
+    label 'long_running'
 
     input:
     file dataset_staged from for_det_monomorphics // SNPQCII_final
@@ -530,8 +528,8 @@ process compile_variants_exclusion {
 process final_cleaning {
     publishDir params.qc_dir ?: '.', mode: 'copy', overwrite: true
     tag "${params.collection_name}"
-    time { 12.h * task.attempt }
-    memory { 16.GB * task.attempt }
+    label 'long_running'
+    label 'big_mem'
     input:
 
     // from diff_missingness/det_monomorphics/det_diagnoses to prune/1kg.

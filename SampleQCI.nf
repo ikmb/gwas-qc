@@ -84,6 +84,7 @@ fi
 
 process determine_miss_het {
     tag "${params.collection_name}"
+    label 'big_mem'
 	errorStrategy 'retry'
 
     input:
@@ -179,6 +180,9 @@ plink --noweb --bfile intermediate --extract include_variants --make-bed --out "
 
 process calc_imiss {
     tag "${params.collection_name}"
+    label 'big_mem'
+    label 'long_running'
+
     input:
     file dataset from for_calc_imiss
 
@@ -202,6 +206,8 @@ final calc_imiss_job_count = (approx_sample_count < 2000) ? 2 : (approx_sample_c
 
 calc_imiss_job_ids = Channel.from(1..calc_imiss_job_count) // plink expects 1-based job indices
 process calc_imiss_IBS {
+    label 'big_mem'
+    label 'long_running'
     input:
     tag "${params.collection_name}/$job"
     file dataset from for_calc_imiss_ibs
@@ -214,7 +220,9 @@ process calc_imiss_IBS {
 module load "IKMB"
 module load "Plink/1.9"
 
-plink --memory 60000 --bfile ${dataset[0].baseName} --genome\
+MEM=${task.memory.toMega()-1000}
+
+plink --memory \$MEM --bfile ${dataset[0].baseName} --genome\
     --parallel ${job} ${calc_imiss_job_count} --threads 1 \
     --out ${dataset[0].baseName}.part
 
@@ -234,9 +242,6 @@ process ibs_merge_and_verify {
 
     publishDir params.sampleqci_dir ?: '.', mode: 'copy'  
     tag "${params.collection_name}"
-    maxRetries 5
-    memory { 18.GB * task.attempt }
-    time { 8.h * task.attempt }
 
     errorStrategy { task.exitStatus == 143 ? 'retry' : 'terminate' }
     input:
@@ -273,6 +278,8 @@ genericplotter $OUTFILE $OUTFILE.png
 
 process pca_with_hapmap {
     tag "${params.collection_name}"
+    label 'long_running'
+    label 'big_mem'
     input:
     file pruned from for_merge_hapmap
 
@@ -352,9 +359,11 @@ python -c 'from SampleQCI_helpers import *; pca_run("!{prefix}pruned_hapmap", !{
 }
 
 process flashpca2_pruned {
-     publishDir params.sampleqci_dir ?: '.', mode: 'copy'   
+    publishDir params.sampleqci_dir ?: '.', mode: 'copy'   
     tag "${params.collection_name}"
-    time { 24.h * task.attempt }
+    label 'long_running'
+    label 'big_mem'
+    cpus 2
 
     input:
     file pruned from for_second_pca_flashpca
@@ -390,10 +399,11 @@ process flashpca2_pruned {
 } 
 
 process flashpca2_pruned_1kG {
-        publishDir params.sampleqci_dir ?: '.', mode: 'copy'
+    publishDir params.sampleqci_dir ?: '.', mode: 'copy'
     tag "${params.collection_name}"
-    time 8.h
-    memory 110.GB
+    label 'big_mem'
+    label 'long_running'
+    cpus 8
 
     input:
     file pruned from for_second_pca_flashpca_1kg
@@ -468,9 +478,9 @@ R --slave --args "${plink_pca_1kG}.country" "${params.preQCIMDS_1kG_sample}" <"$
 
 process detect_duplicates_related {
         publishDir params.sampleqci_dir ?: '.', mode: 'copy'
-        memory {12.GB * task.attempt}
-        time {8.h * task.attempt}
-        errorStrategy 'retry'
+    label 'big_mem'
+    label 'long_running'
+    errorStrategy 'retry'
     tag "${params.collection_name}"
     input:
     file pruned from for_detect_duplicates
@@ -662,7 +672,9 @@ fi
 process pca_without_projection {
     publishDir params.sampleqci_dir ?: '.', mode: 'copy'
     tag "${params.collection_name}"
-    time 12.h
+    label 'long_running'
+    label 'big_mem'
+    cpus 8
 
     input:
     file pruned_1kg from for_pca_without_projection
@@ -681,11 +693,15 @@ process pca_without_projection {
     module load 'IKMB'
     module load 'Plink/1.9'
     module load 'FlashPCA'
+
+MEM=!{task.memory.toMega()-1000}
+
 plink --bfile "!{pruned_1kg[0].baseName}" \
       --remove "!{remove_list}" \
       --make-bed \
       --out "!{kg_out}" \
-      --allow-no-sex
+      --allow-no-sex \
+      --memory $MEM
 
 flashpca2 -d !{params.numof_pc} \
          --bfile !{kg_out} \
@@ -754,8 +770,9 @@ fi
 process prune_withoutRelatives {
 
     tag "${params.collection_name}"
-    time {12.h * task.attempt}
-    maxRetries 5
+    label 'long_running'
+    label 'big_mem'
+    
     input:
     file dataset from for_prune_wr
     file miss_outliers from for_prune_wr_miss
@@ -797,6 +814,8 @@ plink --noweb --bfile intermediate --extract include_variants --make-bed --out "
 
 calc_imiss_job_ids_wr = Channel.from(1..calc_imiss_job_count) // plink expects 1-based job indices
 process calc_imiss_IBS_wr {
+    label 'big_mem'
+    label 'long_running'
     validExitStatus 0,128
     tag "${params.collection_name}/$job"
     input:
@@ -812,9 +831,11 @@ process calc_imiss_IBS_wr {
 module load "IKMB"
 module load "Plink/1.9"
 
+MEM=${task.memory.toMega()-1000}
+
 plink --bfile ${dataset[0].baseName} --genome\
     --parallel ${job} ${calc_imiss_job_count} --threads 1 \
-    --memory ${task.memory.toMega()} \
+    --memory \$MEM \
     --out ${dataset[0].baseName}.part
 
 if [ "${job}" -eq 1 ]; then
@@ -822,7 +843,7 @@ if [ "${job}" -eq 1 ]; then
 fi
 
 # filter by relatives thresholds, so we don't produce huge files here
-awk '{if(\$10 >= ${params.max_ibd_threshold_relatives}) print}' ${dataset[0].baseName}.part.genome.${job} >>part
+mawk '{if(\$10 >= ${params.max_ibd_threshold_relatives}) print}' ${dataset[0].baseName}.part.genome.${job} >>part
 
 rm ${dataset[0].baseName}.part.genome.${job}
 mv part ${dataset[0].baseName}.part.genome.${job}
@@ -832,6 +853,8 @@ mv part ${dataset[0].baseName}.part.genome.${job}
 
 process calc_imiss_withoutRelatives {
     tag "${params.collection_name}"
+    label 'big_mem'
+    label 'long_running'
     input:
         file dataset from for_calc_imiss_wr
 
@@ -842,13 +865,16 @@ process calc_imiss_withoutRelatives {
 """
     module load "IKMB"
     module load "Plink/1.9"
-plink --memory 18000 --bfile "${dataset[0].baseName}" --missing --out ${dataset[0].baseName}_miss
+
+MEM=${task.memory.toMega()-1000}
+plink --memory \$MEM --bfile "${dataset[0].baseName}" --missing --out ${dataset[0].baseName}_miss
 """
 }
 
 process ibs_merge_and_verify_withoutRelatives {
     publishDir params.sampleqci_dir ?: '.', mode: 'copy'
     tag "${params.collection_name}"
+
     input:
     file chunks from for_ibs_merge_and_verify_wr.collect()
     file dataset from for_ibs_merge_and_verify_wr_ds

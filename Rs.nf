@@ -70,7 +70,6 @@ close $ofh;
 
 process check_chip_type {
     tag "${params.ds_name}/${params.batch_name}"
-    memory 4.GB
     cpus 2
     publishDir params.rs_dir ?: '.', mode: 'copy'
 
@@ -92,7 +91,7 @@ chipmatch --verbose --output !{original[1].baseName}.chip_detect.log --threads 2
 }
 
 process lift_genome_build {
-
+    label 'big_mem'
     tag "${params.ds_name}/${params.batch_name}"
     input:
 
@@ -123,7 +122,7 @@ fi
 }
 
 process fix_par {
-    time 8.h
+    label 'long_running'
     tag "${params.ds_name}/${params.batch_name}"
 
     input:
@@ -147,7 +146,7 @@ rm -f merged-with-missing.{bed,bim,fam} merged-no-hh.{bed,bim,fam}
 }
 
 process normalize_variant_names {
-	time 24.h
+	label 'long_running'
     tag "${params.ds_name}/${params.batch_name}"
     publishDir params.rs_dir ?: '.', mode: 'copy'
 
@@ -298,8 +297,7 @@ unlink("$scratch_dir/annotation.sqlite");
  Call Plink to actually flip alleles based on strand information
  */
 process plink_flip {
-//    echo true
-    memory 20000
+    label 'big_mem'
 
     tag "${params.ds_name}/${params.batch_name}"
     input:
@@ -317,14 +315,16 @@ shell:
 module load IKMB
 module load Plink/1.9
 
+MEM=!{task.memory.toMega()-1000}
+
 echo Deduplicating "!{bim.baseName}"
 cut -f2 "!{bim}" | sort -T . | uniq -d >duplicates
 echo Found $(wc -l <duplicates) duplicates.
 
-plink --bed "!{bedfam[0].baseName}.bed" --bim "!{bim}" --fam "!{bedfam[0].baseName}.fam" --exclude duplicates --make-bed --out dedup
+plink --bed "!{bedfam[0].baseName}.bed" --bim "!{bim}" --memory $MEM --fam "!{bedfam[0].baseName}.fam" --exclude duplicates --make-bed --out dedup
 
 echo Flipping strands for "!{bim.baseName}"
-plink --bfile dedup --flip "!{flip}" --threads 1 --memory 18000 --make-bed --out "!{bedfam[0].baseName}_flipped" --allow-no-sex
+plink --bfile dedup --flip "!{flip}" --threads 1 --memory $MEM --make-bed --out "!{bedfam[0].baseName}_flipped" --allow-no-sex
 '''
 }
 
@@ -332,6 +332,8 @@ plink --bfile dedup --flip "!{flip}" --threads 1 --memory 18000 --make-bed --out
  Create a list of duplicate SNPs now that all SNPs have standardized Rs names
  */
 process find_duplicates_nn {
+    label 'short_running'
+    label 'small_mem'
     tag "${params.ds_name}/${params.batch_name}"
     input:
     file bim from to_find_duplicates_nn
