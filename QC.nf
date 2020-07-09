@@ -357,6 +357,7 @@ output:
     file "${dataset}-report.pdf"
 shell:
     report_dir = qc_config.getProperty("env.REPORT_DIR")
+    container_img = qc_config.getProperty("env.CONTAINER")
 '''
 
 export NXF_WORK=!{workflow.workDir}
@@ -365,6 +366,7 @@ export WARN_SAMPLEQC=!{params.skip_sampleqc}
 export WARN_RELATED=!{params.keep_related}
 export PERL5LIB=!{report_dir}
 
+singularity exec !{container_img} \\
 perl !{report_dir}/report.pl !{workflow.workDir} !{report_dir}/preamble.tex \\
     Rs-!{dataset}-*.txt SNPQCI-!{dataset}.trace.txt SampleQC-!{dataset}.trace.txt SNPQCII-!{dataset}.trace.txt FinalAnalysis-!{dataset}.trace.txt
 
