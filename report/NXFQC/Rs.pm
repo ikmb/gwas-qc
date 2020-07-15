@@ -73,7 +73,6 @@ sub check_chip_type {
 
     }
 
-    #    my $basename = read_file("$dir/input.1");
     my $dat = {};
 
     # Parse AT/CG file
@@ -116,6 +115,14 @@ sub check_chip_type {
 
     $dat->{'tag'} = $basename;
     $dat->{'build'} = $build;
+
+    # Parse sourcedata
+    $dat->{'source'} = {};
+    open my $sourcedata, '<', "$dir/sourcedata.txt" or die("$!: $dir/sourcedata.txt");
+    while(<$sourcedata>) {
+        my @fields = split /;/, $_;
+        $dat->{'source'}->{$fields[0]} = $fields[1];
+    }
 
     $dat
 }
@@ -248,7 +255,14 @@ sub build_report_chunk {
 
     my $chip = $self->check_chip_type();
 
-    my $s = "\\section{Annotation Check for " . sanitize($chip->{'tag'}) . "}\n";
+    my $s = "\\section{Annotation Check for " . sanitize($chip->{'tag'}) . "}";
+    $s .= '\subsection{Input Files}';
+    $s .= '\begin{tabular}{l@{\hskip 1cm}l}';
+    $s .= '\textbf{Filename} & \textbf{Last modified}\toprule' . "\\\\\n";
+    foreach my $f (keys $chip->{'source'}) {
+        $s .= sanitize($f) . ' & ' . sanitize($chip->{'source'}->{$f}) . "\\\\\n";
+    }
+    $s .= '\end{tabular}';
     ############################## Batch Overview Report ###################################
     $s .= '\subsection{Annotation Overview}';
     my $stats = $self->batch_statistics();

@@ -366,9 +366,45 @@ export WARN_SAMPLEQC=!{params.skip_sampleqc}
 export WARN_RELATED=!{params.keep_related}
 export PERL5LIB=!{report_dir}
 
+# Collect version information
+echo "System Nextflow;$(nextflow -v)" >system.txt
+echo "Container Nextflow;$(singularity exec !{container_img} nextflow -v)" >>system.txt
+echo "Script version;!{workflow.revision} / !{workflow.commitId}" >>system.txt
+echo "Resumed run?;!{workflow.resume}" >>system.txt
+echo "Execution instance;!{workflow.runName}" >>system.txt
+
+if [ -e /assets/annotations ]; then
+    EXTERNAL_ASSETS=false
+else
+    EXTERNAL_ASSETS=true
+fi
+
+echo "Using external assets?;$EXTERNAL_ASSETS" >>system.txt
+echo "Plink 1.9;$(singularity exec !{container_img} plink --version)" >>system.txt
+echo "Plink 2;$(singularity exec !{container_img} plink2 --version)" >>system.txt
+echo "FlashPCA;$(singularity exec !{container_img} flashpca2 --version 2>&1 | head -n2 | tail -n1)" >>system.txt
+echo "bcftools;$(singularity exec !{container_img} bcftools version | head -n1)" >>system.txt
+echo "Eigensoft;6.1.4" >>system.txt
+echo "R;$(singularity exec !{container_img} R --version | head -n1)" >>system.txt
+echo "perl;$(singularity exec !{container_img} perl --version | head -n2 | tail -n1)" >>system.txt
+echo "python;$(singularity exec !{container_img} python --version | head -n1)" >>system.txt
+echo "Singularity;$(singularity version)" >>system.txt
+echo "Java;$(java -version | head -n1)" >>system.txt
+echo "Command line;!{workflow.commandLine}" >>system.txt
+
+# Collect input dataset information
+
+
+
 singularity exec !{container_img} \\
-perl !{report_dir}/report.pl !{workflow.workDir} !{report_dir}/preamble.tex \\
-    Rs-!{dataset}-*.txt SNPQCI-!{dataset}.trace.txt SampleQC-!{dataset}.trace.txt SNPQCII-!{dataset}.trace.txt FinalAnalysis-!{dataset}.trace.txt
+perl !{report_dir}/report.pl \\
+    !{workflow.workDir} \\
+    !{report_dir}/preamble.tex \\
+    Rs-!{dataset}-*.txt \\
+    SNPQCI-!{dataset}.trace.txt \\
+    SampleQC-!{dataset}.trace.txt \\
+    SNPQCII-!{dataset}.trace.txt \\
+    FinalAnalysis-!{dataset}.trace.txt
 
 latexmk -lualatex report
 mv report.pdf "!{dataset}-report.pdf"

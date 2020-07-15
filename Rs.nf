@@ -13,7 +13,6 @@ to_flipfile = Channel.create()
 
 input_files_lift = Channel.create()
 
-
 Channel.fromFilePairs(params.filebase + ".{bim,bed,fam}", size:3, flat: true).into {input_files_check; input_files_lift}
 
 annotations = file(params.filebase + "_individuals_annotation.txt")
@@ -80,13 +79,19 @@ process check_chip_type {
     output:
     file "${original[1].baseName}.flag_atcg"
     file "${original[1].baseName}.chip_detect.log"
-
+    file "${params.batch_name}.sourcedata.txt"
     shell:
-
+    basename= "${original[1].baseName}"
 '''
+
+echo "!{basename}.bim;$(stat -L -c %y !{basename}.bim)" >>sourcedata.txt
+echo "!{basename}.bed;$(stat -L -c %y !{basename}.bed)" >>sourcedata.txt
+echo "!{basename}.fam;$(stat -L -c %y !{basename}.fam)" >>sourcedata.txt
+cp sourcedata.txt !{params.batch_name}.sourcedata.txt
+
 chipmatch --verbose --output !{original[1].baseName}.chip_detect.log --threads 2 !{original[1].baseName}.bim !{params.wrayner_strands}
-<!{original[1].baseName}.bim awk '{if(($5=="A" && $6=="T")||($5=="T" && $6=="A")) { printf("%s %s%s\\n", $2, $5, $6); }}' >!{original[1].baseName}.flag_atcg
-<!{original[1].baseName}.bim awk '{if(($5=="C" && $6=="G")||($5=="G" && $6=="C")) { printf("%s %s%s\\n", $2, $5, $6); }}' >>!{original[1].baseName}.flag_atcg
+<!{original[1].baseName}.bim mawk '{if(($5=="A" && $6=="T")||($5=="T" && $6=="A")) { printf("%s %s%s\\n", $2, $5, $6); }}' >!{original[1].baseName}.flag_atcg
+<!{original[1].baseName}.bim mawk '{if(($5=="C" && $6=="G")||($5=="G" && $6=="C")) { printf("%s %s%s\\n", $2, $5, $6); }}' >>!{original[1].baseName}.flag_atcg
 '''
 }
 
