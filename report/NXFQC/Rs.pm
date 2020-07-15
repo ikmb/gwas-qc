@@ -6,6 +6,7 @@ use warnings;
 
 use NXFQC::Process;
 use NXFQC::PlinkLog;
+use NXFQC::PlinkInfo;
 
 # From the Perl core distribution
 use Data::Dumper;
@@ -95,6 +96,7 @@ sub check_chip_type {
     my $build = 0;
 
     while(<$chipdetect>) {
+        chomp;
         my @fields = split /\s+/, $_;
         if (@{$dat->{'chips'}} == 0 or ($dat->{'name_match_rate'} eq $fields[1])) {
             $dat->{'name_match_rate'} = $fields[1];
@@ -120,9 +122,13 @@ sub check_chip_type {
     $dat->{'source'} = {};
     open my $sourcedata, '<', "$dir/sourcedata.txt" or die("$!: $dir/sourcedata.txt");
     while(<$sourcedata>) {
+        chomp;
         my @fields = split /;/, $_;
         $dat->{'source'}->{$fields[0]} = $fields[1];
     }
+
+    $dat->{'info'} = plink_table("$dir/info.txt");
+
 
     $dat
 }
@@ -250,19 +256,30 @@ sub compile_stats {
     return join(', ', @findings);
 }
 
+sub plink_exclude {
+
+    my $self = shift;
+    my $dir = $self->{'trace'}{'plink_exclude'};
+    return plink_table("$dir/info.txt");
+
+}
+
 sub build_report_chunk {
     my $self = shift;
 
     my $chip = $self->check_chip_type();
 
-    my $s = "\\section{Annotation Check for " . sanitize($chip->{'tag'}) . "}";
-    $s .= '\subsection{Input Files}';
-    $s .= '\begin{tabular}{l@{\hskip 1cm}l}';
-    $s .= '\textbf{Filename} & \textbf{Last modified}\toprule' . "\\\\\n";
+    my $s = "\\section{Annotation Check for " . sanitize($chip->{'tag'}) . "}\n";
+    $s .= '\subsection{Input Files}' . "\n";
+    $s .= '\begin{tabular}{l@{\hskip 1cm}l}\textbf{Filename} & \textbf{Last modified}\\\\\toprule{}' . "%\n";
     foreach my $f (keys $chip->{'source'}) {
         $s .= sanitize($f) . ' & ' . sanitize($chip->{'source'}->{$f}) . "\\\\\n";
     }
     $s .= '\end{tabular}';
+
+    $s .= '\subsection{Input Overview}';
+    $s .= $chip->{'info'};
+
     ############################## Batch Overview Report ###################################
     $s .= '\subsection{Annotation Overview}';
     my $stats = $self->batch_statistics();
@@ -287,7 +304,7 @@ sub build_report_chunk {
     if(@{$chip->{chips}} > 0) {
         $s .= ". The genome build ist most likely GRCh$chip->{build}. ";
         $s .= "Test characteristics for chip type and genome build detection:\\\\[1em]\n";
-        $s .= '\begin{tabular}{lr}\\toprule{}';
+        $s .= '\begin{tabular}{lr}\toprule{}';
         $s .= 'Variants matched by name: & ' . sprintf("%.2f\\,\\%%\\\\", $chip->{'name_match_rate'} * 100.0);
         $s .= 'Variants matched by name and position: & ' . sprintf("%.2f\\,\\%%\\\\", $chip->{'pos_match_rate'} * 100.0);
         $s .= '\midrule{}Variants matched on the original annotation (without AT/CG): & ' . sprintf("%.2f\\,\\%%\\\\", $chip->{'original_match_rate'} * 100.0);
@@ -320,7 +337,7 @@ sub build_report_chunk {
 
     ############################## Genome Build Conversion (lift-over) ##############################
 
-    $s .= '\subsection{Genome Build Conversion}';
+    $s .= '\subsection{Genome Build Conversion}' . "\n";
     my $lift = $self->lift_genome_build();
 
     if($lift->{'strand-file-name'} eq '') {
@@ -345,48 +362,50 @@ sub build_report_chunk {
         }
     }
 
-    $s .= '\subsection{Chromosome X/Y PAR Check}';
+    $s .= '\subsection{Chromosome X/Y PAR Check}' . "\n";
     my $par = $self->fix_par();
     if($par->{'merged'} == 0 && $par->{'fixed'} == 0) {
-        $s .= 'No PAR regions are available in the input dataset.';
+        $s .= 'No pseudo-autosomal regions are available in the input dataset. ';
     } elsif($par->{'merged'} == $par->{'fixed'}) {
-        $s .= "Found $par->{merged} variants in PAR regions.";
+        $s .= "Found $par->{merged} variants in pseudo-autosomal regions. ";
     } elsif($par->{'merged'} == 0 && $par->{'fixed'} != 0) {
-        $s .= "No PAR regions were defined in the input dataset but $par->{fixed} variants were found that would have belonged in PAR1 or PAR2. They have been moved to their respective regions.";
+        $s .= "$par->{fixed} variants were assigned to the pseudo-autosomal regions. In hg19/GRCH37, these regions are defined as 60,001--2,699,520 for PAR1 and 154,931,044--155,260,560 for PAR2. ";
     } else {
-        $s .= '\begin{warning}Inconsistencies were found in the PAR region contents. '.$par->{'merged'}.' variants were previously defined in PAR regions but '.$par->{'fixed'}.' variants actually belonged there. This is fixed now.\end{warning}';
+        $s .= '\begin{warning}Inconsistencies were found in the pseudo-autosomal regions. '.$par->{'merged'}.' variants were previously assigned to PAR regions but '.$par->{'fixed'}.' variants fit the PAR definitions. In hg19/GRCH37, these regions are defined as 60,001--2,699,520 for PAR1 and 154,931,044--155,260,560 for PAR2.\end{warning}';
     }
     if($par->{'hh'} != 0) {
-        $s .= '\begin{warning}'.$par->{'hh'}.' heterozygous haploid genotype calls were found. These will be erased.\end{warning}';
+        $s .= '\begin{warning}'.$par->{'hh'}.' heterozygous haploid genotype calls were found for male individuals in non-pseudoautosomal regions on chromosome X or Y. These will be set to missing.\end{warning}';
     } else {
-        $s .= 'No heterozygous haploid calls were found.';
+        $s .= 'No heterozygous haploid calls for males in non-pseudo-autosomal regions were found on chromosome X or Y.';
     }
     ############################## Flipping and Dedup ##############################
 
-    $s .= '\subsection{Variant ID and Strand Correction}';
+    $s .= '\subsection{Variant ID and Strand Alignment}' . "\n";
     my $flip = $self->plink_flip();
     my $norm = $self->normalize_variant_names();
 
-    $s .= 'The variant names have been normalized from chip-specific IDs to the NCBI dbSNP IDs using a database compiled from the HRC1.1 reference panel, the UK10k panel, the UK10k + 1000G Phase 3 merge and the dbSNP150 database, in that order and priority.\\\\[1em]';
-    $s .= '\begin{tabular}{lr}\toprule{}';
-    $s .= 'Variants with correct names: & ' . $norm->{'matches'} . '\\\\';
-    $s .= 'Variants having their name replaced: & ' . $norm->{'new-ids'} . '\\\\';
-    $s .= 'Known variants with ambiguous naming: & ' . $norm->{'no-id'} . '\\\\\midrule{}';
-    $s .= 'Variants with correct names, rev strand: & ' . $norm->{'flip-matches'} . '\\\\';
-    $s .= 'Variants having their name replaced, rev strand: & ' . $norm->{'flip-new-ids'} . '\\\\';
-    $s .= 'Known variants with ambiguous naming, rev strand: & ' . $norm->{'flip-no-id'} . '\\\\\midrule{}';
-    $s .= 'Variants not found in database: & ' . $norm->{'unknown'} . '\\\\';
-    $s .= '\ldots{} of which are indels and non-ATCG variants: & ' . $norm->{'indels'} . '\\\\\bottomrule{}';
-    $s .= '\end{tabular}\\\\[1em]';
+    $s .= 'The variant names have been mapped from chip-specific IDs to the NCBI dbSNP IDs using a database compiled from the HRC1.1 reference panel, the UK10k panel, the UK10k + 1000G Phase 3 merge and the dbSNP150 database, in that order and priority.\\\\[1em]' . "\n";
+    $s .= '\begin{tabular}{lrrr}\toprule{}' . "\n";
+    $s .= 'Strand & \textbf{Unchanged} & \textbf{Flipped} & \textbf{Unknown}\\\\\midrule{}' . "%\n";
+    $s .= 'Variant IDs with unchanged names: & ' . $norm->{'matches'} . '&' . $norm->{'flip-matches'} . '&' . '\\\\' . "\n";
+    $s .= 'Variant IDs with replaced names: & ' . $norm->{'new-ids'} . '&' . $norm->{'flip-new-ids'} . '&\\\\' . "\n";
+    $s .= 'Variant IDs changed to chr:pos: & ' . $norm->{'no-id'} . '&' . $norm->{'flip-no-id'} . '&\\\\\midrule{}' . "%\n";
+    $s .= 'Variants not found in database: & & & ' . ($norm->{'unknown'}-$norm->{'indels'}) . '\\\\' . "\n";
+    $s .= 'Variants with indels or non-ATCG alleles: & & &' . $norm->{'indels'} . '\\\\\midrule{}' . "\n";
+    $s .= '\textit{Summary:} & ' . ($norm->{'matches'} + $norm->{'new-ids'} + $norm->{'no-id'}) . ' & ' . ($norm->{'flip-matches'} + $norm->{'flip-new-ids'} + $norm->{'flip-no-id'});
+    $s .=   ' & ' . $norm->{'unknown'} . '\\\\\bottomrule{}' . "\n";
+    $s .= '\end{tabular}\\\\[1em]' . "\n";
 
-    $s .= 'After name normalization, ' . ($flip->{'dedup'}->{'loaded-variants'} - $flip->{'dedup'}->{'variants-after-exclude'}) . ' duplicate variants were removed. ';
-    $s .= $flip->{'flip'}->{'snps-flipped'} . ' variants were flipped to the plus strand. ';
+    $s .= 'After variant ID replacement, ' . ($flip->{'dedup'}->{'loaded-variants'} - $flip->{'dedup'}->{'variants-after-exclude'}) . ' variants had duplicate IDs and were removed.';
     $flip = $flip->{'flip'};
 
-    $s .= 'The batch dataset now consists of '
-       . $flip->{'loaded-variants'} . ' variants and '
-       . ($flip->{'loaded-phenotypes'}) .' samples ('
-       . $flip->{'final-cases'} . ' cases, ' . $flip->{'final-controls'} . ' controls, ' . ($flip->{'loaded-phenotypes'} - ($flip->{'final-cases'} + $flip->{'final-controls'})) . ' unknown). ';
+    $s .= '\subsection{Phase Summary}';
+    my $e = $self->plink_exclude();
+    $s .= $e;
+    #    $s .= 'The batch dataset now consists of '
+    #   . $flip->{'loaded-variants'} . ' variants and '
+    #   . ($flip->{'loaded-phenotypes'}) .' samples ('
+    #   . $flip->{'final-cases'} . ' cases, ' . $flip->{'final-controls'} . ' controls, ' . ($flip->{'loaded-phenotypes'} - ($flip->{'final-cases'} + $flip->{'final-controls'})) . ' unknown). ';
 
 
     $s

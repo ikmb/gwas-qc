@@ -89,6 +89,8 @@ echo "!{basename}.bed;$(stat -L -c %y !{basename}.bed)" >>sourcedata.txt
 echo "!{basename}.fam;$(stat -L -c %y !{basename}.fam)" >>sourcedata.txt
 cp sourcedata.txt !{params.batch_name}.sourcedata.txt
 
+plinkinfo.pl !{basename}.bim !{basename}.fam >info.txt
+
 chipmatch --verbose --output !{original[1].baseName}.chip_detect.log --threads 2 !{original[1].baseName}.bim !{params.wrayner_strands}
 <!{original[1].baseName}.bim mawk '{if(($5=="A" && $6=="T")||($5=="T" && $6=="A")) { printf("%s %s%s\\n", $2, $5, $6); }}' >!{original[1].baseName}.flag_atcg
 <!{original[1].baseName}.bim mawk '{if(($5=="C" && $6=="G")||($5=="G" && $6=="C")) { printf("%s %s%s\\n", $2, $5, $6); }}' >>!{original[1].baseName}.flag_atcg
@@ -382,6 +384,9 @@ module load 'IKMB'
 module load 'Plink/1.9'
 echo Excluding SNP list ${exclude} from ${plink} ${bim}
 plink  --bed ${plink[0]} --bim $bim --fam ${plink[1]} --exclude $exclude --make-bed --out ${params.batch_name}_Rs --allow-no-sex
+
+
+plinkinfo.pl ${params.batch_name}_Rs.bim ${params.batch_name}_Rs.fam >info.txt
 """
 }
 
