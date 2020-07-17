@@ -558,6 +558,8 @@ if [ "!{params.skip_sampleqc}" = "1" ]; then
 fi
 
 plink --bfile !{pruned[0].baseName} --remove remove-samples --make-bed --out !{target_basename} --allow-no-sex
+
+plinkinfo.pl !{target_basename}.bim !{target_basename}.fam >info.txt
 '''
 }
 
@@ -763,6 +765,8 @@ plink --bfile "!{dataset[0].baseName}" --remove !{relatives} --make-bed --out "!
 python -c 'from SampleQCI_helpers import *; extract_QCsamples_from_pc_file("!{evec[0]}", "!{dataset[0].baseName}_withoutRelatives.pca.evec", "!{dataset[2]}")'
 python -c 'from SampleQCI_helpers import *; extract_QCsamples_from_annotationfile("!{dataset[0].baseName}_withoutRelatives.pca.evec", "!{individuals_annotation}", "!{dataset[0].baseName}_withoutRelatives.annotation.txt")'
 fi
+
+plinkinfo.pl "!{dataset[0].baseName}_withoutRelatives.bim" "!{dataset[0].baseName}_withoutRelatives.fam" >info.txt
 '''
 
 }

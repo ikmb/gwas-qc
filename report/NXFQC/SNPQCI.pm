@@ -5,6 +5,7 @@ our $VERSION = "1.00";
 
 use NXFQC::Process;
 use NXFQC::PlinkLog;
+use NXFQC::PlinkInfo;
 
 # From the Perl core distribution
 use Data::Dumper;
@@ -38,6 +39,42 @@ sub countlines {
   my $count = 0;
   $count += tr/\n/\n/ while sysread($fh, $_, 2**16);
   $count;
+}
+
+sub merge_datasets {
+    my $self = shift;
+    my $dir = $self->{'trace'}->{'merge_batches'};
+    my $dat = {};
+    $dat->{'multiallelic'} = 0;
+
+    # Collect multi-allelic (>2) count
+    open my $logfh, '<', "$dir/.command.log" or die($!);
+    while(<$logfh>) {
+        if(/Removing (\d+) variants/) {
+            $dat->{'multiallelic'} = $1;
+            last;
+        }
+    }
+    close $logfh;
+
+    open my $shfh, '<', "$dir/.command.sh" or die($!);
+    while(<$shfh>) {
+        chomp;
+        if(/^BIMS=\((.*)\)/) {
+            my @bims = split /\s+/, $1;
+            print "### bims: @bims\n";
+            my @ds = map { s/_Rs\.bim//g; $_ } @bims;
+            print "### datasets: @ds\n";
+            $dat->{'datasets'} = \@ds;
+            last;
+        }
+    }
+    close $shfh;
+
+    # Collect post-merge info
+    $dat->{'info'} = plink_table("$dir/info.txt");
+    return $dat;
+
 }
 
 sub definetti_preqc {
@@ -147,6 +184,7 @@ sub exclude_bad_variants {
   }
 
   $dat = parse_plink("$dir/$logfile");
+  $dat->{'info'} = plink_table("$dir/info.txt");
 
   $dat;
 }
@@ -171,7 +209,24 @@ sub build_report_chunk {
     my $miss = $self->exclude_missingness();
     my $hwe = $self->hwe_fdr_filter();
     my $bad = $self->exclude_bad_variants();
-    print Dumper($bad);
+
+    my $merge = $self->merge_datasets();
+
+    print Dumper($merge);
+    $s .= '\subsection{Dataset Merge}' . "%\n";
+    my @ds = $merge->{'datasets'};
+    if(@ds > 1) {
+        $s .= 'The following datasets were merged: ' . sanitize(join(', ', @{$merge->{'datasets'}})) . '. ';
+
+        if($merge->{'multiallelic'} > 0) {
+            $s .= $merge->{'multiallelics'} . " variants were removed that would present 3 or more alleles after the dataset merge. ";
+        }
+    } else {
+        $s .= 'Only one input dataset is specified, dataset merge has been skipped. ';
+    }
+    $s .= '\\\\';
+    $s .= $merge->{'info'};
+
 
     $s .= '\subsection{Missingness}';
     $s .= 'Variants have been checked for too high missingness with respect to the call rate. The first missingness test has been performed with a threshold of ' . $miss->{'whole-thres'} . ' on the whole batch collection. ';
@@ -215,7 +270,8 @@ sub build_report_chunk {
     $s .= '\begin{minipage}{0.5\textwidth}\includegraphics[width=\textwidth]{' . sanitize_img($def_pre->{'cases/controls'}) . '}\end{minipage}';
     $s .= '\begin{minipage}{0.5\textwidth}\includegraphics[width=\textwidth]{' . sanitize_img($def_post->{'cases/controls'}) . '}\end{minipage}\\\\';
 
-
+    $s .= '\subsection{Phase Summary}';
+    $s .= $bad->{'info'};
     $s
 }
 

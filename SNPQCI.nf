@@ -92,6 +92,7 @@ else
     ln -s !{params.rs_dir}/${FAMS[0]} !{params.collection_name}_Rs.fam
 fi
 ln -s !{params.rs_dir}/${INDELS[0]} !{params.collection_name}.indels
+plinkinfo.pl !{params.collection_name}_Rs.bim !{params.collection_name}_Rs.fam >info.txt
 
 '''
 }
@@ -421,6 +422,9 @@ else
     ln -s "\$BASE".fam "\$NEWBASE".fam
     touch "\$NEWBASE".log
 fi
+
+plinkinfo.pl "${params.collection_name}_QCI.bim" "${params.collection_name}_QCI.fam" >info.txt
+
 """
 }
 

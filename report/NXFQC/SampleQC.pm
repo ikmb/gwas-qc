@@ -4,6 +4,7 @@ our $VERSION = "1.00";
 
 use NXFQC::Process;
 use NXFQC::PlinkLog;
+use NXFQC::PlinkInfo;
 
 # From the Perl core distribution
 use Data::Dumper;
@@ -246,7 +247,9 @@ sub remove_bad_samples {
         }
     }
     $dat->{'unique'} = countlines("$dir/remove-samples");
-    print "PLINK: " . Dumper($dat->{'plink'});
+
+    $dat->{'info'} = plink_table("$dir/info.txt");
+
     $dat;
 }
 
@@ -328,6 +331,8 @@ sub remove_relatives {
 
     open $fh, '<', "$dir_rem/.command.sh" or die($!);
     $dat->{'plink'} = parse_plink((map { /^plink .*--out "(\S+)"/ ? "$dir_rem/$1.log" : ()  } <$fh>)[0]);
+
+    $dat->{'info'} = plink_table("$dir_rem/info.txt");
     $dat;
 }
 
@@ -393,19 +398,14 @@ sub build_report_chunk {
     $s .= add_images(@{$hist->{'country'}}[6..7]);
     $s .= add_images(@{$hist->{'country'}}[8..9]);
     my $bad = $self->remove_bad_samples();
-print "HALLO!\n";
 
     my $ibs = $self->detect_duplicates_related();
-print "HALLO!\n";
     my $relatives = $self->remove_relatives();
-print "HALLO!\n";
     $s .= '\subsection{IBS Relatives Detection}';
     $s .= add_images(($relatives->{'ibs_img'}));
     $s .= ($ibs->{'dup'}) . " samples were identified as duplicates or identical twins (\$\\hat\\pi\\geq\$" . $ibs->{'thres_dup'} . "). ";
     $s .= "Additionally, " . $ibs->{'rel'} . " samples are closely related or inbred but not identical (\$\\hat\\pi\\geq\$ " . $ibs->{'thres_rel'} . "). ";
-print "HALLO!\n";
 
-print "BAD: " . Dumper($bad);
     $s .= '\subsection{Summary: Sample Removal}';
     $s .= '\begin{tabular}{lr}\toprule{}';
     $s .= "Samples before QC:&".$bad->{'plink'}->{'loaded-phenotypes'}." total\\\\";
@@ -423,7 +423,14 @@ print "BAD: " . Dumper($bad);
     $s .= "\\end{tabular}\\\\";
     my $removed = $bad->{'unique'} + $ibs->{'rel'};
     $s .= "Of initially " . $bad->{'plink'}->{'loaded-phenotypes'} . " samples, $removed were removed (" . sprintf("%.2f\\,\\%%). ", 100.0*($removed/$bad->{'plink'}->{'loaded-phenotypes'})) . "\\\\";
-    $s .= add_images(($relatives->{'ibs_img_wr'}));
+    $s .= '\subsection{Phase Summary}';
+    $s .= '\begin{minipage}{0.5\textwidth}%' . "\n";
+    $s .= '\centering\textbf{With Related Individuals}\\\\';
+    $s .= $bad->{'info'};
+    $s .= '\end{minipage}\begin{minipage}{0.5\textwidth}%' . "\n";
+    $s .= '\centering\textbf{Without Related Individuals}\\\\';
+    $s .= $relatives->{'info'};
+    $s .= '\end{minipage}';
     $s
 
 }
