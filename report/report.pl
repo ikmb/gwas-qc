@@ -6,6 +6,7 @@ use NXFQC::SNPQCI;
 use NXFQC::SampleQC;
 use NXFQC::SNPQCII;
 use NXFQC::FinalAnalysis;
+use NXFQC::Summary;
 
 use Data::Dumper;
 # use File::Slurp::Tiny qw(read_file);
@@ -16,13 +17,13 @@ use warnings;
 # Command-line Args
 
 sub Usage {
-    print STDERR "Usage: $0 <NXF-BASEDIR> <preamble.tex> <Rs-trace0> [<Rs-trace1> [<Rs-trace2> ...]] <SNPQCI-trace> <SampleQC-trace> <SNPQCII-trace> <Final-trace>\n";
+    print STDERR "Usage: $0 <NXF-BASEDIR> <preamble.tex> <Rs-trace0> [<Rs-trace1> [<Rs-trace2> ...]] <SNPQCI-trace> <SampleQC-trace> <SNPQCII-trace> <Final-trace> <summary.txt>\n";
     print STDERR "Example: $0 \$NXF_WORK preamble.tex Rs-BATCH1.txt Rs-BATCH2.txt SNPQCI.txt SampleQC.txt SNPQCII.txt Final.txt\n";
     print STDERR "\tPrints a LaTeX Report to STDOUT.\n";
     exit 1;
 }
 
-Usage if @ARGV < 6;
+Usage if @ARGV < 7;
 
 sub read_file {
     my $filename = shift;
@@ -69,6 +70,7 @@ sub parse_trace {
 
 my $nxf_work_basedir = shift @ARGV;
 my $preamble = shift @ARGV;
+my $summary_file = pop @ARGV;
 my $final_trace_file = pop @ARGV;
 my $snpqcii_trace_file = pop @ARGV;
 my $sampleqc_trace_file = pop @ARGV;
@@ -93,6 +95,8 @@ my $snpqcii = new NXFQC::SNPQCII(parse_trace($nxf_work_basedir, $snpqcii_trace_f
 #print Dumper($snpqcii);
 print "Processing 'FinalAnalysis' trace $final_trace_file\n";
 my $final = new NXFQC::FinalAnalysis(parse_trace($nxf_work_basedir, $final_trace_file));
+print "Processing summary $summary_file\n";
+my $summary = new NXFQC::Summary($summary_file);
 
 open my $texfh, '>report.tex' or die($!);
 print $texfh read_file($preamble);
@@ -111,7 +115,7 @@ print $texfh $sampleqci->build_report_chunk();
 print $texfh $snpqcii->build_report_chunk();
 # print Dumper($snpqcii->build_report_chunk());
 print $texfh $final->build_report_chunk();
-
+print $texfh $summary->build_report_chunk();
 print $texfh "\\end{document}";
 close $texfh;
 

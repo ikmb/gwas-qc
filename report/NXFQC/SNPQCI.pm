@@ -228,17 +228,17 @@ sub build_report_chunk {
     $s .= $merge->{'info'};
 
 
-    $s .= '\subsection{Missingness}';
-    $s .= 'Variants have been checked for too high missingness with respect to the call rate. The first missingness test has been performed with a threshold of ' . $miss->{'whole-thres'} . ' on the whole batch collection. ';
-    $s .= $miss->{'whole-count'} . ' variants with missingness rates exceeding the threshold were found. The second test has been performed on the same dataset with the worst-performing batch excluded. The threshold was ' . $miss->{'perbatch-thres'} . ' and ' . $miss->{'perbatch-count'} . ' variants were found to exceed the threshold.\\\\';
+    #    $s .= '\subsection{Missingness}';
+    #    $s .= 'Variants have been checked for too high missingness with respect to the call rate. The first missingness test has been performed with a threshold of ' . $miss->{'whole-thres'} . ' on the whole batch collection. ';
+    #    $s .= $miss->{'whole-count'} . ' variants with missingness rates exceeding the threshold were found. The second test has been performed on the same dataset with the worst-performing batch excluded. The threshold was ' . $miss->{'perbatch-thres'} . ' and ' . $miss->{'perbatch-count'} . ' variants were found to exceed the threshold.\\\\';
     $s .= '\subsection{Hardy-Weinberg}';
+    my $fdr_thres = '10$^{\text{-' . ($hwe->{'threshold'} + 1) . '}}$';
 
     if($bad->{'final-controls'} == 0) {
         $s .= 'Hardy-Weinberg tests were skipped because no control samples are available.';
     } else {
-        my $fdr_thres = '10$^{\text{-' . ($hwe->{'threshold'} + 1) . '}}$';
-        $s .= 'Variants were tested for Hardy-Weinberg-Equilibrium, corrected for false discovery rates with a threshold of ' . $fdr_thres . ' (Benjamini and Hochberg, 1995). ';
-        $s .= $hwe->{'all-count'} . ' variants where rejected from the whole collection, and ' . $hwe->{'worstbatch-count'} . ' variants when the worst-performing batch is was removed.\\\\[1em]';
+        #        my $fdr_thres =        #$s .= 'Variants were tested for Hardy-Weinberg-Equilibrium, corrected for false discovery rates with a threshold of ' . $fdr_thres . ' (Benjamini and Hochberg, 1995). ';
+        # $s .= $hwe->{'all-count'} . ' variants where rejected from the whole collection, and ' . $hwe->{'worstbatch-count'} . ' variants when the worst-performing batch is was removed.\\\\[1em]';
         $s .= '\begin{minipage}{1\textwidth}\includegraphics[width=0.9\textwidth]{' . sanitize_img($hwe->{'worstbatch-img'}) . '}\end{minipage}\\\\';
         $s .= '\begin{minipage}{1\textwidth}\includegraphics[width=0.9\textwidth]{' . sanitize_img($hwe->{'twoplus-img'}) . '}\end{minipage}';
     }
@@ -251,11 +251,11 @@ sub build_report_chunk {
     }
     $s .= 'Due to failing missingness and/or HWE tests, ' . ($bad->{'loaded-variants'} - $bad->{'variants-after-exclude'}) . " variants have been removed ($percentage\\,\\%):\\\\[1em]";
     $s .= '\begin{tabular}{lr}\toprule{}';
-    $s .= 'Variants in whole collection failing missingness test: & ' . $miss->{'whole-count'} . '\\\\';
-    $s .= 'Variants failing missingness test with worst batch removed: & ' . $miss->{'perbatch-count'} . '\\\\';
-    $s .= 'Variants in whole collection failing HWE test: & ' . $hwe->{'all-count'} . '\\\\';
-    $s .= 'Variants failing HWE test with worst batch removed: & ' . $hwe->{'worstbatch-count'} . '\\\\';
-    $s .= 'Variants failing HWE test in 2+ batches: & ' . $hwe->{'twoplus-count'} . '\\\\';
+    $s .= 'Variants in whole collection failing missingness test (threshold ' . $miss->{'whole-thres'} . '): & ' . $miss->{'whole-count'} . '\\\\';
+    $s .= 'Variants failing missingness test with worst batch removed (threshold ' . $miss->{'perbatch-thres'} . '): & ' . $miss->{'perbatch-count'} . '\\\\';
+    $s .= 'Variants in whole collection failing HWE test (FDR <' . $fdr_thres . '): & ' . $hwe->{'all-count'} . '\\\\';
+    $s .= 'Variants failing HWE test with worst batch removed (FDR <' . $fdr_thres . '): & ' . $hwe->{'worstbatch-count'} . '\\\\';
+    $s .= 'Variants failing HWE test in 2+ batches (FDR <' . $fdr_thres . '): & ' . $hwe->{'twoplus-count'} . '\\\\';
     $s .= '\midrule{}';
     $s .= 'Total variants to be excluded: & ' . ($miss->{'whole-count'}+$miss->{'perbatch-count'}+$hwe->{'all-count'}+$hwe->{'worstbatch-count'}+$hwe->{'twoplus-count'}) . '\\\\';
     $s .= 'Unique variants excluded: & ' . ($bad->{'loaded-variants'} - $bad->{'variants-after-exclude'}) . '\\\\\bottomrule{}\end{tabular}';
@@ -263,8 +263,8 @@ sub build_report_chunk {
     my $def_pre = $self->definetti_preqc();
     my $def_post = $self->definetti_postqc();
     $s .= '\subsection{DeFinetti Diagrams}';
-    $s .= '\begin{minipage}{0.5\textwidth}\includegraphics[width=\textwidth]{' . sanitize_img($def_pre->{'controls'}) . '}\end{minipage}';
-    $s .= '\begin{minipage}{0.5\textwidth}\includegraphics[width=\textwidth]{' . sanitize_img($def_post->{'controls'}) . '}\end{minipage}\\\\';
+    $s .= '\begin{minipage}{0.5\textwidth}{\centering \textbf{Pre-QC}\\\\}\includegraphics[width=\textwidth]{' . sanitize_img($def_pre->{'controls'}) . '}\end{minipage}';
+    $s .= '\begin{minipage}{0.5\textwidth}{\centering \textbf{Post-QC}\\\\}\includegraphics[width=\textwidth]{' . sanitize_img($def_post->{'controls'}) . '}\end{minipage}\\\\';
     $s .= '\begin{minipage}{0.5\textwidth}\includegraphics[width=\textwidth]{' . sanitize_img($def_pre->{'cases'}) . '}\end{minipage}';
     $s .= '\begin{minipage}{0.5\textwidth}\includegraphics[width=\textwidth]{' . sanitize_img($def_post->{'cases'}) . '}\end{minipage}\\\\';
     $s .= '\begin{minipage}{0.5\textwidth}\includegraphics[width=\textwidth]{' . sanitize_img($def_pre->{'cases/controls'}) . '}\end{minipage}';

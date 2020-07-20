@@ -380,17 +380,19 @@ else
 fi
 
 echo "Using external assets?;$EXTERNAL_ASSETS" >>system.txt
+echo "Command line;!{workflow.commandLine}" >>system.txt
+echo ";" >>system.txt
 echo "Plink 1.9;$(singularity exec !{container_img} plink --version)" >>system.txt
 echo "Plink 2;$(singularity exec !{container_img} plink2 --version)" >>system.txt
 echo "FlashPCA;$(singularity exec !{container_img} flashpca2 --version 2>&1 | head -n2 | tail -n1)" >>system.txt
 echo "bcftools;$(singularity exec !{container_img} bcftools version | head -n1)" >>system.txt
 echo "Eigensoft;6.1.4" >>system.txt
+echo ";" >>system.txt
 echo "R;$(singularity exec !{container_img} R --version | head -n1)" >>system.txt
-echo "perl;$(singularity exec !{container_img} perl --version | head -n2 | tail -n1)" >>system.txt
-echo "python;$(singularity exec !{container_img} python --version | head -n1)" >>system.txt
+echo "perl;$(singularity exec !{container_img} perl -e 'print $^V')" >>system.txt
+echo "python;$(singularity exec !{container_img} python -V 2>&1)" >>system.txt
 echo "Singularity;$(singularity version)" >>system.txt
-echo "Java;$(java -version | head -n1)" >>system.txt
-echo "Command line;!{workflow.commandLine}" >>system.txt
+echo "Java;$(java -version 2>&1 | head -n1)" >>system.txt
 
 # Collect input dataset information
 
@@ -404,7 +406,8 @@ perl !{report_dir}/report.pl \\
     SNPQCI-!{dataset}.trace.txt \\
     SampleQC-!{dataset}.trace.txt \\
     SNPQCII-!{dataset}.trace.txt \\
-    FinalAnalysis-!{dataset}.trace.txt
+    FinalAnalysis-!{dataset}.trace.txt \\
+    system.txt
 
 latexmk -lualatex report
 mv report.pdf "!{dataset}-report.pdf"
