@@ -138,7 +138,7 @@ sub hwe_fdr_filter {
 
     $dat->{'twoplus-count'} = countlines($twoplus);
     $dat->{'worstbatch-count'} = countlines($worstbatch);
-	$dat->{'all-count'} = countlines($all);
+    $dat->{'all-count'} = countlines($all);
     $dat;
   }
 
@@ -212,7 +212,6 @@ sub build_report_chunk {
 
     my $merge = $self->merge_datasets();
 
-    print Dumper($merge);
     $s .= '\subsection{Dataset Merge}' . "%\n";
     my @ds = $merge->{'datasets'};
     if(@ds > 1) {
@@ -228,9 +227,6 @@ sub build_report_chunk {
     $s .= $merge->{'info'};
 
 
-    #    $s .= '\subsection{Missingness}';
-    #    $s .= 'Variants have been checked for too high missingness with respect to the call rate. The first missingness test has been performed with a threshold of ' . $miss->{'whole-thres'} . ' on the whole batch collection. ';
-    #    $s .= $miss->{'whole-count'} . ' variants with missingness rates exceeding the threshold were found. The second test has been performed on the same dataset with the worst-performing batch excluded. The threshold was ' . $miss->{'perbatch-thres'} . ' and ' . $miss->{'perbatch-count'} . ' variants were found to exceed the threshold.\\\\';
     $s .= '\subsection{Hardy-Weinberg}';
     my $fdr_thres = '10$^{\text{-' . ($hwe->{'threshold'} + 1) . '}}$';
 
@@ -239,8 +235,12 @@ sub build_report_chunk {
     } else {
         #        my $fdr_thres =        #$s .= 'Variants were tested for Hardy-Weinberg-Equilibrium, corrected for false discovery rates with a threshold of ' . $fdr_thres . ' (Benjamini and Hochberg, 1995). ';
         # $s .= $hwe->{'all-count'} . ' variants where rejected from the whole collection, and ' . $hwe->{'worstbatch-count'} . ' variants when the worst-performing batch is was removed.\\\\[1em]';
-        $s .= '\begin{minipage}{1\textwidth}\includegraphics[width=0.9\textwidth]{' . sanitize_img($hwe->{'worstbatch-img'}) . '}\end{minipage}\\\\';
-        $s .= '\begin{minipage}{1\textwidth}\includegraphics[width=0.9\textwidth]{' . sanitize_img($hwe->{'twoplus-img'}) . '}\end{minipage}';
+        $s .= '\begin{minipage}{1\textwidth}\includegraphics[width=0.9\textwidth]{' . sanitize_img($hwe->{'worstbatch-img'}) . '}';
+        $s .= '\captionof{figure}{Variants failing Hardy-Weinberg tests per False Discovery Rate (FDR), with the full dataset and with the worst-performing batch removed. Dashed line indicates the currently selected FDR threshold.}';
+        $s .= '\end{minipage}\\\\' . "\n\n";
+        $s .= '\begin{minipage}{1\textwidth}\includegraphics[width=0.9\textwidth]{' . sanitize_img($hwe->{'twoplus-img'}) . '}';
+        $s .= '\captionof{figure}{Variants failing Hardy-Weinberg tests in more than two individually-tested batches. Dashed line indicates the current FDR threshold setting.}';
+        $s .= '\end{minipage}';
     }
     $s .= "\\\\\n";
 

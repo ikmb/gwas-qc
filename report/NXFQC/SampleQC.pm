@@ -353,35 +353,68 @@ sub build_report_chunk {
     my $s = '\section{Sample QC}';
     my $misshet = $self->miss_het();
 
-    $s .= '\subsection{Missingness}';
-    $s .= add_images(($misshet->{'img_miss1'}, $misshet->{'img_miss2'}));
-    $s .= add_images(($misshet->{'img_miss1log'}, $misshet->{'img_miss2log'}));
-    $s .= "In the sample missingness analysis, $misshet->{miss_outliers} individuals have been classified as outliers with respect to a threshold of $misshet->{'miss_threshold'}.";
-    $s .= '\subsection{Heterozygosity}';
-    $s .= add_images(($misshet->{'img_het1'}, $misshet->{'img_het2'}));
-    $s .= add_images(($misshet->{'img_het1log'}, $misshet->{'img_het2log'}));
-    $s .= "In the heterozygosity analysis, $misshet->{het_outliers} individuals have been classified as outliers, parting more than 5*SD from the mean.";
-
-    $s .= '\subsection{PCA with HapMap2 Projection}';
+    my $ibs = $self->detect_duplicates_related();
+    my $relatives = $self->remove_relatives();
     my $pca = $self->pca_run();
-    $s .= $pca->{'pcs'} . ' principal components have been analyzed.\\\\';
-    $s .= add_images(($pca->{'2pc'}, $pca->{'2pc_wp'}));
-    $s .= add_images(($pca->{'4pc'}, $pca->{'4pc_wp'}));
+    my $bad = $self->remove_bad_samples();
 
-    $s .= '\subsection{PCA with 1000 Genomes Projection}';
+    $s .= '\subsection{Summary: Sample Removal}';
+    $s .= '\begin{tabular}{lr}\toprule{}';
+    $s .= "Samples before QC:&".$bad->{'plink'}->{'loaded-phenotypes'}." total\\\\";
+    $s .= '\midrule{}';
+    $s .= "Missingness outliers (Sect. \\ref{sec:miss}): & $bad->{miss}\\\\";
+    $s .= "Heterozygosity outliers (Sect. \\ref{sec:het}): & $bad->{het}\\\\";
+    $s .= "PCA outliers (Sect. \\ref{sec:pca}):&" . ($bad->{'flashpca'}) . "\\\\";
+    $s .= "Duplicates (Sect. \\ref{sec:ibs}):& $ibs->{dup}\\\\";
+    $s .= "Manual removals:& $bad->{manual}\\\\\\midrule{}";
+    $s .= "Total:&" . ($bad->{'miss'} + $bad->{"het"} + $bad->{'flashpca'} + $bad->{'dup'} + $bad->{'manual'}) . "\\\\";
+    $s .= "Unique:&" . ($bad->{'unique'}) . "\\\\\\midrule{}";
+    $s .= "Samples after QC:&" . $bad->{'plink'}->{'final-cases'} . " cases, " . $bad->{'plink'}->{'final-controls'} . " controls, " . ($bad->{'plink'}->{'samples-after-remove'}) . " total\\\\";
+    $s .= "\\midrule{}Relatives (Sect. \\ref{sec:ibs}):&" . $ibs->{'rel'} . "\\\\";
+    $s .= "Samples after QC, no relatives:& " . $relatives->{'plink'}->{'final-cases'} . " cases, " . $relatives->{'plink'}->{'final-controls'} . " controls, " . ($relatives->{'plink'}->{'samples-after-remove'}) . " total\\\\\\bottomrule{}";
+    $s .= "\\end{tabular}\\\\";
+    my $removed = $bad->{'unique'} + $ibs->{'rel'};
+    $s .= "Of initially " . $bad->{'plink'}->{'loaded-phenotypes'} . " samples, $removed were removed (" . sprintf("%.2f\\,\\%%). ", 100.0*($removed/$bad->{'plink'}->{'loaded-phenotypes'})) . "\\\\";
+
+
+    $s .= '\subsection{Missingness}\label{sec:miss}';
+    $s .= add_images(($misshet->{'img_miss1'}, $misshet->{'img_miss2'})) . "\n";
+    $s .= '\captionof{figure}{SNP missingness, scaled between 0...1 (left) and to threshold ' . $misshet->{'miss_threshold'} . ' (right)}' . "\n";
+    $s .= add_images(($misshet->{'img_miss1log'}, $misshet->{'img_miss2log'})) . "\n";
+    $s .= '\captionof{figure}{SNP missingness, log-scaled scaled between 0...1 (left) and to threshold ' . $misshet->{'miss_threshold'} . ' (right)}' . "\n";
+
+    $s .= '\subsection{Heterozygosity}\label{sec:het}' . "\n";
+    $s .= add_images(($misshet->{'img_het1'}, $misshet->{'img_het2'})) . "\n";
+    $s .= '\captionof{figure}{Heterozygosity, scaled between 0...1 (left) and to 5$\times$SD (right)}' . "\n";
+    $s .= add_images(($misshet->{'img_het1log'}, $misshet->{'img_het2log'})) . "\n";
+    $s .= '\captionof{figure}{Heterozygosity, log-scaled between 0...1 (left) and to 5$\times$SD (right)}' . "\n";
+
+
+    $s .= '\subsection{PCA with 1000 Genomes Projection}\label{sec:pca}' . "\n";
     $pca = $self->flashpca1kg();
-    $s .= add_images(($pca->{'batch'}, $pca->{'country'}));
-    my $out_b = $pca->{'batch_fail'};
-    my $out_c = $pca->{'country_fail'};
-    my $out_total = $out_b + $out_c;
-    my $out_uniq = $pca->{'unique'};
-    $s .= "$out_b samples for batch-annotated data and $out_c samples for country-annotated data were classified as outliers (total: $out_total, unique total: $out_uniq).";
-    $s .= '\subsection{PCA without Projection}';
+    $s .= add_images(($pca->{'batch'}));
+    #$s .= add_images(($pca->{'batch'}, $pca->{'country'}));
+    #my $out_b = $pca->{'batch_fail'};
+    #my $out_c = $pca->{'country_fail'};
+    #my $out_total = $out_b + $out_c;
+    #my $out_uniq = $pca->{'unique'};
+    $s .= '\captionof{figure}{PCA with 1000 Genomes reference, PC1 vs. PC2}';
+
+    $s .= '\subsection{PCA without Outlier Detection}';
+
+    $s .= '\subsubsection{PCA without Projection}' . "\n";
     $pca = $self->flashpca();
-    $s .= '\subsubsection{Batch-annotated PCA}';
-    $s .= add_images(($pca->{'batch'})) . '\\\\' .  add_images(($pca->{'batch_4pc'}));
-    $s .= '\subsubsection{Country-annotated PCA}';
-    $s .= add_images(($pca->{'country'})) . '\\\\' . add_images(($pca->{'country_4pc'}));
+    $s .= add_images(($pca->{'batch'}, $pca->{'country'})) . '\captionof{figure}{Batch-annotated (l.) and country-annotated (r.) PCA without reference, PC1 vs. PC2}' ;
+    $s .= add_images(($pca->{'batch_4pc'}, $pca->{'country_4pc'})) . '\captionof{figure}{Batch-annotated (l.) and country-annoted (r.) PCA without reference, first 4 PCs}';
+
+
+    $s .= '\subsubsection{PCA with HapMap2 Projection}' . "\n";
+    my $hapmap = $self->pca_run();
+    $s .= $pca->{'pcs'} . ' principal components have been analyzed.\\\\';
+    $s .= add_images(($hapmap->{'2pc'}, $hapmap->{'4pc'}));
+    $s .= '\captionof{figure}{PCA with HapMap2 reference with 2 PCs (l.) and 4 PCs (r.)}';
+    #$s .= add_images(($hapmap->{'2pc'}, $hapmap->{'2pc_wp'}));
+    #$s .= add_images(($hapmap->{'4pc'}, $hapmap->{'4pc_wp'}));
 
     $s .= '\subsection{Principal Component Histograms}';
     my $hist = $self->draw_histograms();
@@ -397,32 +430,12 @@ sub build_report_chunk {
     $s .= add_images(@{$hist->{'country'}}[4..5]);
     $s .= add_images(@{$hist->{'country'}}[6..7]);
     $s .= add_images(@{$hist->{'country'}}[8..9]);
-    my $bad = $self->remove_bad_samples();
 
-    my $ibs = $self->detect_duplicates_related();
-    my $relatives = $self->remove_relatives();
-    $s .= '\subsection{IBS Relatives Detection}';
+    $s .= '\subsection{IBS Relatives Detection}\label{sec:ibs}';
     $s .= add_images(($relatives->{'ibs_img'}));
     $s .= ($ibs->{'dup'}) . " samples were identified as duplicates or identical twins (\$\\hat\\pi\\geq\$" . $ibs->{'thres_dup'} . "). ";
     $s .= "Additionally, " . $ibs->{'rel'} . " samples are closely related or inbred but not identical (\$\\hat\\pi\\geq\$ " . $ibs->{'thres_rel'} . "). ";
 
-    $s .= '\subsection{Summary: Sample Removal}';
-    $s .= '\begin{tabular}{lr}\toprule{}';
-    $s .= "Samples before QC:&".$bad->{'plink'}->{'loaded-phenotypes'}." total\\\\";
-    $s .= '\midrule{}';
-    $s .= "Missingness outliers:&$bad->{miss}\\\\";
-    $s .= "Heterozygosity outliers:&$bad->{het}\\\\";
-    $s .= "PCA outliers:&" . ($bad->{'flashpca'}) . "\\\\";
-    $s .= "Duplicates:&$ibs->{dup}\\\\";
-    $s .= "Manual removals:&$bad->{manual}\\\\\\midrule{}";
-    $s .= "Total:&" . ($bad->{'miss'} + $bad->{het} + $bad->{'flashpca'} + $bad->{'dup'} + $bad->{'manual'}) . "\\\\";
-    $s .= "Unique:&" . ($bad->{'unique'}) . "\\\\\\midrule{}";
-    $s .= "Samples after QC:&" . $bad->{'plink'}->{'final-cases'} . " cases, " . $bad->{'plink'}->{'final-controls'} . " controls, " . ($bad->{'plink'}->{'samples-after-remove'}) . " total\\\\";
-    $s .= "\\midrule{}Relatives:&" . $ibs->{'rel'} . "\\\\";
-    $s .= "Samples after QC, no relatives:& " . $relatives->{'plink'}->{'final-cases'} . " cases, " . $relatives->{'plink'}->{'final-controls'} . " controls, " . ($relatives->{'plink'}->{'samples-after-remove'}) . " total\\\\\\bottomrule{}";
-    $s .= "\\end{tabular}\\\\";
-    my $removed = $bad->{'unique'} + $ibs->{'rel'};
-    $s .= "Of initially " . $bad->{'plink'}->{'loaded-phenotypes'} . " samples, $removed were removed (" . sprintf("%.2f\\,\\%%). ", 100.0*($removed/$bad->{'plink'}->{'loaded-phenotypes'})) . "\\\\";
     $s .= '\subsection{Phase Summary}';
     $s .= '\begin{minipage}{0.5\textwidth}%' . "\n";
     $s .= '\centering\textbf{With Related Individuals}\\\\';
