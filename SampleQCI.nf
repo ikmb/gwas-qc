@@ -202,7 +202,7 @@ plink --memory $MEM --bfile "!{base}" --missing --out !{prefix}miss
 }
 
 
-final calc_imiss_job_count = (approx_sample_count < 2000) ? 2 : (approx_sample_count / 1000)
+final calc_imiss_job_count = floor(approx_sample_count < 2000) ? 2 : (approx_sample_count / 1000)
 
 calc_imiss_job_ids = Channel.from(1..calc_imiss_job_count) // plink expects 1-based job indices
 process calc_imiss_IBS {
