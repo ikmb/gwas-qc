@@ -399,7 +399,7 @@ echo "Java;$(java -version 2>&1 | head -n1)" >>system.txt
 
 
 
-singularity exec !{container_img} \\
+singularity exec -B /work_ifs:/work_ifs !{container_img} \\
 perl !{report_dir}/report.pl \\
     !{workflow.workDir} \\
     !{report_dir}/preamble.tex \\
@@ -410,6 +410,7 @@ perl !{report_dir}/report.pl \\
     FinalAnalysis-!{dataset}.trace.txt \\
     system.txt
 
+singularity exec -B /work_ifs:/work_ifs !{container_img} \\
 latexmk -lualatex report
 mv report.pdf "!{dataset}-report.pdf"
 
