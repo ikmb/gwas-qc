@@ -356,7 +356,8 @@ input:
 output:
     file "${dataset}-report.pdf"
 shell:
-    report_dir = qc_config.getProperty("env.REPORT_DIR")
+//    report_dir = qc_config.getProperty("env.REPORT_DIR")
+    report_dir = "${workflow.projectDir}/report"
     container_img = qc_config.getProperty("env.CONTAINER")
 '''
 
