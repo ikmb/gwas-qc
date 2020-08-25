@@ -549,7 +549,7 @@ process split_vcf {
 module load IKMB
 module load Plink/1.9
 
-ANNOTATION=/work_ifs/sukmb388/human_g1k_v37.fasta
+ANNOTATION=/assets/annotations/hg19/1000G/human_g1k_v37.fasta
 
 TARGET="!{chrom}!{infix}"
 
@@ -577,7 +577,7 @@ fi
 cp *.vcf.gz !{params.qc_dir}/
 cp *.tbi !{params.qc_dir}/
 
-rm -f $TARGET.tmp*
+rm -f $TARGET.tmp.vcf.gz
 '''
 }
 
