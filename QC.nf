@@ -27,6 +27,7 @@ def getScriptPath(s) {
 
 def parseQCConfig(filename) {
     qc_config = new java.util.Properties()
+    qc_config.load(new java.io.FileReader(workflow.scriptFile.getParent().toString() + "/nextflow.config"))
     qc_config.load(new java.io.FileReader(params.qc_config))
 
     bind_dir = qc_config.getProperty("env.BIND_DIR")
@@ -121,7 +122,7 @@ NXF_PARAMS="!{Rs_script} \\
     --ds_name=!{dataset} \\
     --chip_defs=!{workflow.projectDir}/config/ChipDefinitions.groovy \\
     --rs_dir=!{params.output}/!{dataset}/Rs \\
-    -with-report "!{params.output}/!{dataset}/Rs/!{batch}_execution-report.html" \\
+    -with-report !{params.output}/!{dataset}/Rs/!{batch}_execution-report.html \\
     -resume -ansi-log false"
 
 nextflow run $NXF_PARAMS
@@ -228,7 +229,6 @@ export NXF_WORK=!{workflow.workDir}
 mkdir -p !{workflow.workDir}/!{dataset}-SampleQC
 cd !{workflow.workDir}/!{dataset}-SampleQC
 ANNO=!{params.output}/!{dataset}/SNPQCI/!{dataset}_individuals_annotation.txt
-cat $ANNO !{qc_config.getProperty("params.hapmap2_annotations")} >!{dataset}_individuals_annotation_hapmap2.txt
 
 nextflow run !{SampleQC_script} -c !{params.qc_config} -c !{params.dataset_config[dataset]}\\
     --snpqci_dir="!{params.output}/!{dataset}/SNPQCI" \\
@@ -238,7 +238,6 @@ nextflow run !{SampleQC_script} -c !{params.qc_config} -c !{params.dataset_confi
     --skip_snpqc=!{params.skip_snpqc} \\
     --skip_sampleqc=!{params.skip_sampleqc} \\
     --nxf_dir=!{nxf_dir} \\
-    --individuals_annotation_hapmap2="$(pwd)/!{dataset}_individuals_annotation_hapmap2.txt" \\
     -with-report "!{params.output}/!{dataset}/SampleQCI/execution-report.html" \\\
     -resume -ansi-log false
 
@@ -399,7 +398,7 @@ echo "Java;$(java -version 2>&1 | head -n1)" >>system.txt
 
 
 
-singularity exec -B /work_ifs:/work_ifs !{container_img} \\
+singularity exec !{container_img} \\
 perl !{report_dir}/report.pl \\
     !{workflow.workDir} \\
     !{report_dir}/preamble.tex \\
@@ -410,7 +409,7 @@ perl !{report_dir}/report.pl \\
     FinalAnalysis-!{dataset}.trace.txt \\
     system.txt
 
-singularity exec -B /work_ifs:/work_ifs !{container_img} \\
+singularity exec !{container_img} \\
 latexmk -lualatex report
 mv report.pdf "!{dataset}-report.pdf"
 

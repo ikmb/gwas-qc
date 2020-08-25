@@ -297,7 +297,7 @@ process pca_with_hapmap {
         exclude = params.PCA_SNPexcludeList
         hapmap = params.preQCIMDS_HapMap2
 
-        annotations = params.individuals_annotation_hapmap2
+        //annotations = params.individuals_annotation_hapmap2
     /*base_pruned = pruned_hapmap[0].baseName*/
     sigma_threshold = 100.0
     draw_eigenstrat = SCRIPT_DIR + "/draw_evec_EIGENSTRAT.r"
@@ -344,10 +344,13 @@ do
     fi
 done
 
+# Include hapmap2 into individuals annotations
+cat !{params.individuals_annotation} !{params.hapmap2_annotations} >all_annotations.txt
+
 # Make parameters file for Eigenstrat (former pca_convert())
 echo "*** converting for Eigenstrat ***"
-python -c 'from SampleQCI_helpers import *; pca_convert ("!{base_pruned}", "!{prefix}eigenstrat-parameters", "!{annotations}")'
-python -c 'from SampleQCI_helpers import *; pca_convert ("!{prefix}pruned_hapmap", "!{prefix}eigenstrat-parameters-all", "!{annotations}")'
+python -c 'from SampleQCI_helpers import *; pca_convert ("!{base_pruned}", "!{prefix}eigenstrat-parameters", "all_annotations.txt")'
+python -c 'from SampleQCI_helpers import *; pca_convert ("!{prefix}pruned_hapmap", "!{prefix}eigenstrat-parameters-all", "all_annotations.txt")'
 
 echo "*** performing PCA with Eigenstrat ***"
 # Set up PCA
