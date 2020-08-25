@@ -409,7 +409,7 @@ perl !{report_dir}/report.pl \\
     FinalAnalysis-!{dataset}.trace.txt \\
     system.txt
 
-singularity exec !{container_img} \\
+singularity exec -B /work_ifs:/work_ifs !{container_img} \\
 latexmk -lualatex report
 mv report.pdf "!{dataset}-report.pdf"
 
