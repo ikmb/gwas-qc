@@ -73,7 +73,7 @@ SampleQC_script = getScriptPath("SampleQCI.nf") //file("${params.nxfdir}/SampleQ
 SNPQCII_script = getScriptPath("SNPQCII.nf") //file("${params.nxfdir}/SNPQCII.nf")
 FinalAnalysis_script = getScriptPath("FinalAnalysis.nf") // file("${params.nxfdir}/FinalAnalysis.nf")
 Liftover_script = getScriptPath("Liftover.nf") //file("${params.nxfdir}/Liftover.nf")
-
+Report_script = getScriptPath("Report.nf")
 nxf_dir = getScriptPath("")
 
 
@@ -123,7 +123,8 @@ NXF_PARAMS="!{Rs_script} \\
     --chip_defs=!{workflow.projectDir}/config/ChipDefinitions.groovy \\
     --rs_dir=!{params.output}/!{dataset}/Rs \\
     -with-report !{params.output}/!{dataset}/Rs/!{batch}_execution-report.html \\
-    -resume -ansi-log false"
+    -resume -ansi-log false \\
+    -profile !{workflow.profile}"
 
 nextflow run $NXF_PARAMS
 mv trace.txt Rs-!{dataset}-!{batch}.trace.txt
@@ -199,7 +200,7 @@ nextflow run !{SNPQCI_script} \\
     --skip_snpqc=!{params.skip_snpqc} \\
     -with-report "!{params.output}/!{dataset}/SNPQCI/execution-report.html" \\
     -ansi-log false \\
-    -resume
+    -resume -profile "!{workflow.profile}"
 
 mv trace.txt SNPQCI-!{dataset}.trace.txt
 cp SNPQCI-!{dataset}.trace.txt $MYPWD
@@ -239,7 +240,7 @@ nextflow run !{SampleQC_script} -c !{params.qc_config} -c !{params.dataset_confi
     --skip_sampleqc=!{params.skip_sampleqc} \\
     --nxf_dir=!{nxf_dir} \\
     -with-report "!{params.output}/!{dataset}/SampleQCI/execution-report.html" \\\
-    -resume -ansi-log false
+    -resume -ansi-log false -profile !{workflow.profile}
 
 
 mv trace.txt SampleQC-!{dataset}.trace.txt
@@ -283,7 +284,7 @@ nextflow run !{SNPQCII_script} -c !{params.qc_config} -c !{params.dataset_config
     -resume -ansi-log false \\
     --skip_snpqc=!{params.skip_snpqc} \\
     --skip_sampleqc=!{params.skip_sampleqc} \\
-    --keep_related=!{params.keep_related}
+    --keep_related=!{params.keep_related} -profile !{workflow.profile}
 
 mv trace.txt SNPQCII-!{dataset}.trace.txt
 cp SNPQCII-!{dataset}.trace.txt $MYPWD
@@ -323,7 +324,7 @@ nextflow run !{FinalAnalysis_script} -c !{params.qc_config} -c !{params.dataset_
     --evec="$MYPWD/!{evec}" \\
     --qc_dir="!{params.output}/!{dataset}/QCed" \\
     -with-report "!{params.output}/!{dataset}/QCed/execution-report.html" \\
-    -resume -ansi-log false
+    -resume -ansi-log false -profile !{workflow.profile}
 
 mv trace.txt FinalAnalysis-!{dataset}.trace.txt
 cp FinalAnalysis-!{dataset}.trace.txt $MYPWD
@@ -355,63 +356,39 @@ input:
 output:
     file "${dataset}-report.pdf"
 shell:
-//    report_dir = qc_config.getProperty("env.REPORT_DIR")
-    report_dir = "${workflow.projectDir}/report"
-    container_img = qc_config.getProperty("env.CONTAINER")
 '''
 
-export NXF_WORK=!{workflow.workDir}
-export WARN_SNPQC=!{params.skip_snpqc}
-export WARN_SAMPLEQC=!{params.skip_sampleqc}
-export WARN_RELATED=!{params.keep_related}
-export PERL5LIB=!{report_dir}
+rm -f traces.txt
+touch traces.txt
+
+for f in Rs-!{dataset}-*.txt; do
+    readlink -f $f >>traces.txt
+done
+
+readlink -f SNPQCI-!{dataset}.trace.txt >>traces.txt
+readlink -f SampleQC-!{dataset}.trace.txt >>traces.txt
+readlink -f SNPQCII-!{dataset}.trace.txt >>traces.txt
+readlink -f FinalAnalysis-!{dataset}.trace.txt >>traces.txt
+
 
 # Collect version information
-echo "System Nextflow;$(nextflow -v)" >system.txt
-echo "Container Nextflow;$(singularity exec !{container_img} nextflow -v)" >>system.txt
+echo "Nextflow;$(nextflow -v)" >system.txt
+echo "Java;$(java -version 2>&1 | head -n1)" >>system.txt
+echo "Singularity;$(singularity version)" >>system.txt
+
 echo "Script version;!{workflow.revision} / !{workflow.commitId}" >>system.txt
 echo "Resumed run?;!{workflow.resume}" >>system.txt
 echo "Execution instance;!{workflow.runName}" >>system.txt
-
-if [ -e /assets/annotations ]; then
-    EXTERNAL_ASSETS=false
-else
-    EXTERNAL_ASSETS=true
-fi
-
-echo "Using external assets?;$EXTERNAL_ASSETS" >>system.txt
+echo "Work directory;!{workflow.workDir}" >>system.txt
 echo "Command line;!{workflow.commandLine}" >>system.txt
 echo ";" >>system.txt
-echo "Plink 1.9;$(singularity exec !{container_img} plink --version)" >>system.txt
-echo "Plink 2;$(singularity exec !{container_img} plink2 --version)" >>system.txt
-echo "FlashPCA;$(singularity exec !{container_img} flashpca2 --version 2>&1 | head -n2 | tail -n1)" >>system.txt
-echo "bcftools;$(singularity exec !{container_img} bcftools version | head -n1)" >>system.txt
-echo "Eigensoft;6.1.4" >>system.txt
-echo ";" >>system.txt
-echo "R;$(singularity exec !{container_img} R --version | head -n1)" >>system.txt
-echo "perl;$(singularity exec !{container_img} perl -e 'print $^V')" >>system.txt
-echo "python;$(singularity exec !{container_img} python -V 2>&1)" >>system.txt
-echo "Singularity;$(singularity version)" >>system.txt
-echo "Java;$(java -version 2>&1 | head -n1)" >>system.txt
 
-# Collect input dataset information
-
-
-
-singularity exec !{container_img} \\
-perl !{report_dir}/report.pl \\
-    !{workflow.workDir} \\
-    !{report_dir}/preamble.tex \\
-    Rs-!{dataset}-*.txt \\
-    SNPQCI-!{dataset}.trace.txt \\
-    SampleQC-!{dataset}.trace.txt \\
-    SNPQCII-!{dataset}.trace.txt \\
-    FinalAnalysis-!{dataset}.trace.txt \\
-    system.txt
-
-singularity exec -B /work_ifs:/work_ifs !{container_img} \\
-latexmk -lualatex report
-mv report.pdf "!{dataset}-report.pdf"
+export NXF_WORK=!{workflow.workDir}
+nextflow run !{Report_script} -c !{params.qc_config}  -c !{params.dataset_config[dataset]} \\
+    --dataset "!{dataset}" \\
+    --traces $(readlink -f traces.txt) \\
+    --system $(readlink -f system.txt) \\
+    -resume -ansi-log false -profile !{workflow.profile}
 
 '''
 }
