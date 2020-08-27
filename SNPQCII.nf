@@ -107,7 +107,6 @@ hf_test_chunk_size = 1000
 process hf_test_prepare {
     errorStrategy 'retry'
     tag "${params.collection_name}"
-    validExitStatus 0,1
 
     input:
     file SampleQCI_final_wr_staged from Channel.from(SampleQCI_final_wr).collect()
@@ -191,8 +190,6 @@ cut -f2 "!{dataset.bim}" | split -l !{hf_test_chunk_size} -a 4 -d - chunk_
 
 
 process hf_test {
-    // Keine Ahnung, wo das Script "1" produziert. Muss irgendwo beim NA-zaehlen sein
-    validExitStatus 0
     errorStrategy 'retry'
     memory 4.GB
     tag "${params.collection_name}/${chunk}"
@@ -228,7 +225,6 @@ Rscript hf-local.r "!{params.collection_name}_SNPQCII_!{chunk}" 10 "!{anno}" "!{
 }
 
 process hf_test_merge {
-    validExitStatus 0,1
     publishDir params.qc_dir ?: '.', mode: 'copy', overwrite: true
     tag "${params.collection_name}"
 

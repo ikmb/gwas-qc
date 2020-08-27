@@ -73,7 +73,6 @@ Channel.from(fileExists(file(params.individuals_annotation)))
 
 // part 4
 process prune_final {
-    validExitStatus 0,128
     publishDir params.qc_dir ?: '.', mode: 'copy', overwrite: true, pattern: '*.prune.{in,out,out.unknown_variants}'
     tag "${params.collection_name}"
     input:
@@ -499,8 +498,10 @@ process prepare_split {
     file ds_staged from for_prepare_split
 
     output:
-    tuple file("final.bed"), file("final.bim"), file("final.fam") into split_vcf
-    tuple file("final_noatcg.bed"), file("final_noatcg.bim"), file("final_noatcg.fam") into split_vcf_noatcg
+    tuple file("${params.collection_name}_QCed_VCF.bed"), file("${params.collection_name}_QCed_VCF.bim"), file("${params.collection_name}_QCed_VCF.fam") into split_vcf
+    tuple file("${params.collection_name}_QCed_VCF_noATCG.bed"), file("${params.collection_name}_QCed_VCF_noATCG.bim"), file("${params.collection_name}_QCed_VCF_noATCG.fam") into split_vcf_noatcg
+    file "${params.collection_name}_QCed.atcg"
+    file "${params.collection_name}_QCed.indels"
 shell:
     ds = mapFileList(ds_staged)
 
@@ -521,8 +522,10 @@ python -c 'from SNPQC_helpers import *; frq =  Frq(frq_file="merged_freq.frq", w
 cat monomorphic >>indels
 
 cat indels atcg | sort | uniq >indels-atcg
-plink --memory $MEM --bfile merged --exclude indels --make-bed --out final
-plink --memory $MEM --bfile merged --exclude indels-atcg --make-bed --out final_noatcg
+plink --memory $MEM --bfile merged --exclude indels --make-bed --out !{params.collection_name}_QCed_VCF
+plink --memory $MEM --bfile merged --exclude indels-atcg --make-bed --out !{params.collection_name}_QCed_VCF_noATCG
+mv indels !{params.collection_name}_QCed.indels
+mv atcg !{params.collection_name}_QCed.atcg
 '''
 }
 
@@ -531,7 +534,6 @@ process split_vcf {
     publishDir params.qc_dir ?: '.', mode: 'copy'
     tag "${params.collection_name}.$chrom$infix"
     label 'long_running'
-    validExitStatus 0,1
 
     input:
     tuple file(bed), file(bim), file(fam) from split_vcf

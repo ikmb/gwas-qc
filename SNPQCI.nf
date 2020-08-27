@@ -167,7 +167,6 @@ process calculate_hwe {
   label 'long_running'
   label 'small_mem'
   // Should have been zero, but killall -q returns 1 if it didn't find anything
-  validExitStatus 0,128
   errorStrategy 'retry'
   tag "${params.collection_name}/${chunk}"
 

@@ -214,7 +214,6 @@ cp SNPQCI-!{dataset}.trace.txt !{params.output}/!{dataset}/SNPQCI/
 }
 
 process SampleQC {
-	validExitStatus 0,1
     tag "${dataset}"
 input:
     set val(dataset), val(filebase), file(bed), file(bim), file(fam) from SampleQC_ds
@@ -258,7 +257,6 @@ cp SampleQC-!{dataset}.trace.txt !{params.output}/!{dataset}/SampleQCI/
 
 
 process SNPQCII {
-	validExitStatus 0,1
     tag "${dataset}"
 input:
     set val(dataset), val(filebase), file(bed), file(bim), file(fam) from SNPQCII_ds
@@ -299,7 +297,6 @@ ln -fs !{params.output}/!{dataset}/SNPQCII/!{prefix}_annotation.txt
 }
 
 process FinalAnalysis {
-validExitStatus 0,1
 tag "${dataset}"
 input:
     set val(dataset), val(filebase), file(bed), file(bim), file(fam), file(anno) from FinalAnalysis_ds
@@ -332,11 +329,7 @@ ln -fs !{params.output}/!{dataset}/SNPQCII/!{dataset}_QCed.bed !{params.output}/
 ln -fs !{params.output}/!{dataset}/SNPQCII/!{dataset}_QCed.bim !{params.output}/!{dataset}/QCed/
 ln -fs !{params.output}/!{dataset}/SNPQCII/!{dataset}_QCed.fam !{params.output}/!{dataset}/QCed/
 ln -fs !{params.output}/!{dataset}/SNPQCII/!{dataset}_QCed.log !{params.output}/!{dataset}/QCed/
-
-for ext in bim bed fam log
-do
-    mv !{params.output}/!{dataset}/QCed/final_noatcg.$ext !{params.output}/!{dataset}/QCed/!{dataset}_QCed_noATCG.$ext
-done
+ln -fs !{params.output}/!{dataset}/SNPQCII/!{dataset}_QCed_annotation.txt !{params.output}/!{dataset}/QCed/
 
 cp "FinalAnalysis-!{dataset}.trace.txt" !{params.output}/!{dataset}/QCed/
 
