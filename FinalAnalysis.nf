@@ -568,9 +568,9 @@ if [ ! -e ${TARGET}.tmp.vcf.gz ]; then
 else
 
     case "!{chrom}" in
-        23) bcftools norm --check-ref s -f $ANNOTATION $TARGET.tmp.vcf.gz | sed 's/ID=X/ID=23/' | sed 's/^X/23/' | bgzip >$TARGET.vcf.gz ;;
-        24) bcftools norm --check-ref s -f $ANNOTATION $TARGET.tmp.vcf.gz | sed 's/ID=Y/ID=23/' | sed 's/^Y/24/' | bgzip >$TARGET.vcf.gz ;;
-        *)  bcftools norm --check-ref s -f $ANNOTATION $TARGET.tmp.vcf.gz | bgzip >$TARGET.vcf.gz ;;
+        23) bcftools norm -m - --check-ref s -f $ANNOTATION $TARGET.tmp.vcf.gz | sed 's/ID=X/ID=23/' | sed 's/^X/23/' | bgzip >$TARGET.vcf.gz ;;
+        24) bcftools norm -m - --check-ref s -f $ANNOTATION $TARGET.tmp.vcf.gz | sed 's/ID=Y/ID=23/' | sed 's/^Y/24/' | bgzip >$TARGET.vcf.gz ;;
+        *)  bcftools norm -m - --check-ref s -f $ANNOTATION $TARGET.tmp.vcf.gz | bgzip >$TARGET.vcf.gz ;;
     esac
 
     tabix -p vcf $TARGET.vcf.gz
