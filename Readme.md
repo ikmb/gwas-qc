@@ -10,8 +10,8 @@ Please ensure that you have 16 GB RAM installed on the computer where you intend
 
 ## Quick Start
 
-1. Get the example dataset: https://raw.githubusercontent.com/ikmb/gwas-qc/master/Example.tar.gz
-2. Unpack it in your home folder: ```tar xvaf Example.tar.gz -C $HOME; cd $HOME/Example```
+1. Get the example dataset: https://raw.githubusercontent.com/ikmb/gwas-qc/master/example.tar.gz
+2. Unpack it in your home folder: ```tar xvaf example.tar.gz -C $HOME; cd $HOME/example```
 3. Launch the pipeline: ```nextflow run -c pipeline.config ikmb/gwas-qc```
 
 The pipeline output and reports will be written to the ```output``` directory.
