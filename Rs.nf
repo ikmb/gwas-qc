@@ -142,9 +142,10 @@ process fix_par {
     '''
 module load Plink/1.9
 
-plink --bfile "!{source[1].baseName}" --merge-x no-fail --make-bed --out merged-with-missing
-plink --bfile merged-with-missing --split-x hg19 no-fail --make-bed --out split
-plink --bfile split --set-hh-missing --make-bed --out fixed
+MEM=!{task.memory.toMega()-1000}
+plink --memory $MEM --bfile "!{source[1].baseName}" --merge-x no-fail --make-bed --out merged-with-missing
+plink --memory $MEM --bfile merged-with-missing --split-x hg19 no-fail --make-bed --out split
+plink --memory $MEM --bfile split --set-hh-missing --make-bed --out fixed
 
 # remove intermediates, keep logs for parsing
 rm -f merged-with-missing.{bed,bim,fam} merged-no-hh.{bed,bim,fam}
