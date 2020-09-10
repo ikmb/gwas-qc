@@ -15,9 +15,9 @@ shell:
 '''
 module load Plink/1.9
 
-LIFTOVER=!{params.nxfdir}/liftover
+LIFTOVER=!{params.ucsc_liftover}/liftOver
 BASENAME=!{bed.getBaseName()}_b38
-CHAIN=$LIFTOVER/assets/liftover/hg19ToHg38.over.chain.gz
+CHAIN=!{params.ucsc_liftover}/hg19ToHg38.over.chain.gz
 
 ## Translate to chr:pos-pos and chr23 -> chrX
 #mawk '{print "chr"$1":"$4"-"$4}' !{bim} \\
@@ -36,7 +36,7 @@ CHAIN=$LIFTOVER/assets/liftover/hg19ToHg38.over.chain.gz
     | sed 's/^chr26/chrMT/' >prelift.bed
 
 # lift-over
-$LIFTOVER/bin/liftOver prelift.bed $CHAIN postlift.bed unmapped.bed
+$LIFTOVER prelift.bed $CHAIN postlift.bed unmapped.bed
 
 # Generate exclude list for unmapped variants
 <unmapped.bed mawk '$0~/^#/{next} {print $5}' >unmapped-variants
@@ -80,7 +80,8 @@ tag "${dataset}_${chrom}${atcg}"
 shell:
 '''
 INFIX="!{atcg}"
-ANNOTATION=/work_ifs/ikmb_repository/references/genomes/homo_sapiens/UCSC/hg38/hg38.fa
+# ANNOTATION=/work_ifs/ikmb_repository/references/genomes/homo_sapiens/UCSC/hg38/hg38.fa
+ANNOTATION=!{params.ucsc_liftover}/hg38.fa
 
 rm -f remove-vars
 if [ "$INFIX" = ".noATCG" ]; then
@@ -97,7 +98,7 @@ if [ -e "!{chrom}$INFIX.vcf" ]; then
     bgzip <!{chrom}$INFIX.vcf >!{chrom}_tmp.vcf.gz
     tabix !{chrom}_tmp.vcf.gz
 
-    bcftools norm --check-ref s -f $ANNOTATION !{chrom}_tmp.vcf.gz | bgzip >chr!{chrom}$INFIX.vcf.gz
+    bcftools norm -m - --check-ref s -f $ANNOTATION !{chrom}_tmp.vcf.gz | bgzip >chr!{chrom}$INFIX.vcf.gz
     tabix chr!{chrom}$INFIX.vcf.gz
 
 

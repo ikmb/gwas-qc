@@ -4,6 +4,8 @@
 params.dataset_prefixes = [:]
 params.datasets = null // used to only process a subset of specified datasets
 
+// params.ucsc_liftover = null
+
 if(params.dataset_prefixes.count({true}) == 0) {
     System.err.println("You didn't specify a configuration or the configuration does not contain dataset definitions!")
     return
@@ -386,15 +388,22 @@ nextflow run !{Report_script} -c !{params.qc_config}  -c !{params.dataset_config
 '''
 }
 
-/*
+
 process Liftover {
 tag "${dataset}"
 publishDir "${params.output}/${dataset}/Final_hg38"
+
+
 input:
     tuple file(bed), file(bim), file(fam), val(dataset) from for_liftover
 
 shell:
 '''
+
+if [ ! -x "!{qc_config['params.ucsc_liftover']}/liftOver" ]; then
+    echo Liftover to hg38 not performed, no liftOver executable could be found at !{params.ucsc_liftover}.
+    exit 0
+fi
 
 export NXF_DIR=!{workflow.workDir}
 MYPWD=$(pwd)
@@ -406,11 +415,10 @@ nextflow run !{Liftover_script} -c !{params.qc_config} -c !{params.dataset_confi
     --bed="$MYPWD/!{bed}" \\
     --bim="$MYPWD/!{bim}" \\
     --fam="$MYPWD/!{fam}" \\
-    --nxfdir="!{nxf_dir}" \\
     --hg38_dir="!{params.output}/!{dataset}/Final_hg38" \\
     -with-report "!{params.output}/!{dataset}/Final_hg38/execution-report.html" \\
     -resume -ansi-log false
 
 '''
 }
-*/
+
