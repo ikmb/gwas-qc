@@ -86,3 +86,40 @@ To separate the operating system within the singularity container from the host 
 singularity.runOptions = "-B /data_storage -B /some_other_storage -B /even_more_storage"
 ```
 
+### Non-hg19 Data and Liftover to hg19 (pre-QC)
+
+Currently, the pipeline requires working on hg19 data. It is, however, possible to semi-automatically convert your hg18 (genome build 36) or hg38 coordinates to hg19 (genome build 37) prior to any actual QC steps. For this step to be possible, it is required that your input datasets are as original as possible regarding the microarray definition. If the input batches are already merged with other data or the variant names have been changed, the process is likely to fail.
+
+If you already started the QC with non-hg19 input, the resulting data should not be used. The report will show valuable information about the detected chip type and will help choosing the appropriate definition file for lifting over. Each batch will have a subsection called "Annotation Overview" where this information is contained:
+![Liftover Report Screenshot](doc/screenshot-liftover.png)
+
+As shown in the screenshot, several chips have been found to almost exactly match the input data. For this example we choose `Human610-Quadv1_B`. To configure the QC pipeline to convert this batch to b37, you need to specify the full path of the _build 37_ file in your `pipeline.config`:
+
+```
+dataset_prefixes['Some_Demo_Dataset'] = ["/home/user/oldbatch", "/home/user/otherbatch"]
+
+batch_liftover['oldbatch'] = "/assets/annotations/wrayner_strands/Source/Human610-Quadv1_B-b37.Source.strand"
+```
+
+The full path can be assembled as follows: `/assets/annotations/wraner_Strands/Source/$CHIP-b37.Source.strand`. Note that _b37_ is specified as build 37 is the target build of the liftover process. In the configuration file, the keys in the dictionary `batch_liftover` specify the base names of the datasets set in `dataset_prefixes`. Only those batches that are defined in `batch_liftover` will be processed, all others will not be converted (but included in the QC).
+
+After liftover, the report shows a short summary about the success (or failure) of the liftover process.
+
+### Post-QC Liftover to hg38 (and others)
+
+In addition to the regular GRCh37 (hg19) output, the QC pipeline offers automatic conversion to hg38. Due to licensing issues, the required tools are not included in this distribution and as such, this functionality is disabled by default. If you would like to use this feature, you will need to download the [UCSC LiftOver program for Linux](https://genome-store.ucsc.edu/), the chain file [`hg19ToHg38.over.chain.gz`](http://hgdownload.cse.ucsc.edu/goldenPath/hg19/liftOver/) and the _unpacked_ [UCSC hg38 reference `hg38.fa.gz`](http://hgdownload.cse.ucsc.edu/goldenPath/hg38/bigZips/). 
+
+The target directory should now contain the following files:
+```
+liftOver                 # needs to be executable: chmod a+x liftOver
+hg19ToHg38.over.chain.gz
+hg38.fa                  # obtain using: gunzip hg38.fa.gz
+```
+
+Open your dataset's `QC.config` and set the following parameter to the path where the above files reside:
+```
+params.ucsc_liftover = "/home/user/ucsc-liftover-data"
+```
+
+The pipeline process automatically detects the presence of the UCSC liftover tools and adds a hg38 conversion step to the pipeline.
+
