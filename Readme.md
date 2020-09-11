@@ -14,6 +14,7 @@ Note that no separate installation of the pipeline software is necessary. During
 
 1. Get the example dataset: https://raw.githubusercontent.com/ikmb/gwas-qc/master/example.tar.gz
    - Note that the example also contains files that will not be used by the QC, but for later marker association testing
+   - The example dataset is a subset of the 1000 Genomes Project, using 2504 samples with randomized sex and phenotype, and 50,000 randomly-selected variants
 3. Unpack it in your home folder: `tar xvaf example.tar.gz -C $HOME; cd $HOME/example`
 4. Launch the pipeline: `nextflow run -c pipeline.config ikmb/gwas-qc`
 5. (optional) use the QC output directly as input to the [Association Testing Pipeline](https://github.com/ikmb/gwas-assoc)
@@ -33,7 +34,7 @@ In most cases, the example configuration consisting of three files, `QC.config`,
 
 ### Individual Annotations
 
-For proper analysis of batch and principal component effects, the pipeline makes use of certain sample information that you need to supply in a text file. It contains a single header line and one line for each sample in your dataset. The columns are separated by one or more whitespaces (or tab characters). The format is as follows:
+For proper analysis of batch and principal component effects, the pipeline makes use of certain sample information that you need to supply in a text file. It contains a single header line and one line for each sample in your dataset. The columns are separated by tab characters. The format is as follows:
 ```
 familyID    individualID	paternalID	maternalID	sex	phenotype	batch	ethnicity_predicted	diagnosis	country
 HG00096	    HG00096	        0	        0               2       2	        1000G	European	        Control	        Somewhere
