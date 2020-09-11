@@ -61,15 +61,16 @@ Currently, the pipeline requires working on hg19 data. It is, however, possible 
 If you already started the QC with non-hg19 input, the resulting data should not be used. The report will show valuable information about the detected chip type and will help choosing the appropriate definition file for lifting over. Each batch will have a subsection called "Annotation Overview" where this information is contained:
 ![Liftover Report Screenshot](doc/screenshot-liftover.png)
 
-As shown in the screenshot, several chips have been found to almost exactly match the input data. For this example we choose `Human610-Quadv1_B`. To configure the QC pipeline to convert this batch to b37, you need to specify the full path of the _build 37_ file in your `pipeline.config`:
+As shown in the screenshot, several chips have been found to almost exactly match the input data. As they all performed equally, it does not matter which one you choose. For this example we choose `Human610-Quadv1_B`. To configure the QC pipeline to convert this batch to b37, you need to specify the chip in your `pipeline.config`. Consult the [full list of supported chips](https://github.com/ikmb/gwas-qc/blob/master/doc/supported-chips.txt) for possible values:
 
 ```
 dataset_prefixes['Some_Demo_Dataset'] = ["/home/user/oldbatch", "/home/user/otherbatch"]
 
-batch_liftover['oldbatch'] = "/assets/annotations/wrayner_strands/Source/Human610-Quadv1_B-b37.Source.strand"
+batch_liftover['oldbatch'] = "Human610-Quadv1_B"    // lift batch to build 37
+batch_liftover['otherbatch'] = ""                   // no liftover for this batch
 ```
 
-The full path can be assembled as follows: `/assets/annotations/wraner_Strands/Source/$CHIP-b37.Source.strand`. Note that _b37_ is specified as build 37 is the target build of the liftover process. In the configuration file, the keys in the dictionary `batch_liftover` specify the base names of the datasets set in `dataset_prefixes`. Only those batches that are defined in `batch_liftover` will be processed, all others will not be converted (but included in the QC).
+In the configuration file, the keys in the dictionary `batch_liftover` specify the base names of the datasets set in `dataset_prefixes`. 
 
 After liftover, the report shows a short summary about the success (or failure) of the liftover process.
 
