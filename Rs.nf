@@ -112,19 +112,34 @@ process lift_genome_build {
 '''
 TARGETNAME="!{original[1].baseName}_lift"
 BASENAME="!{original[1].baseName}"
-STRAND_FILE="!{params.liftover}"
+STRAND_ZIP="/assets/annotations/wrayner_strands/Source/!{params.liftover}-b37.Source.strand.zip"
+STRAND_FILE="!{params.liftover}-b37.Source.strand"
 
 module load Plink/1.9
 
-if [ -e "$STRAND_FILE" ]; then
-# TODO: Add memory requirements, maybe integrate script
-    !{SCRIPT_DIR}/update_build_PLINK1.9.sh  "!{original[1].baseName}" "$STRAND_FILE" "$TARGETNAME"
-else
+if [ "!{params.liftover}" == "" ]; then
     echo "No strand file specified for lifting."
     ln -s "!{original[1].baseName}.bed" "$TARGETNAME.bed"
     ln -s "!{original[1].baseName}.bim" "$TARGETNAME.bim"
     ln -s "!{original[1].baseName}.fam" "$TARGETNAME.fam"
+    exit 0
 fi
+
+if [ ! -f "$STRAND_ZIP" ]; then
+    echo "Could not find $STRAND_ZIP. Did you specify the correct strand file?"
+    exit 1
+fi
+
+unzip "$STRAND_ZIP"
+
+if [ ! -f "$STRAND_FILE" ]; then
+    echo "Could not find $STRAND_FILE within $STRAND_ZIP."
+    exit 1
+fi
+
+
+# TODO: Add memory requirements, maybe integrate script
+!{SCRIPT_DIR}/update_build_PLINK1.9.sh  "!{original[1].baseName}" "$STRAND_FILE" "$TARGETNAME"
 '''
 }
 

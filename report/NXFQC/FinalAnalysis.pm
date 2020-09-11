@@ -2,6 +2,7 @@ package NXFQC::FinalAnalysis;
 
 use NXFQC::Process;
 use NXFQC::PlinkLog;
+use NXFQC::PlinkInfo;
 
 # From the Perl core distribution
 use Cwd;
@@ -169,13 +170,28 @@ sub plot_maf {
     $dat;
 }
 
+sub get_plink_info {
+
+    my $self = shift;
+    my $dir = $self->{'trace'}->{'prune_final'};
+    my $dat = {};
+
+
+    $dat->{'info'} = plink_table("$dir/info.txt");
+    $dat;
+}
+
 sub build_report_chunk {
     my $self = shift;
 
     my $s = '\section{Final Analysis Results}';
+    my $info = $self->get_plink_info();
     my $pca = $self->pca('final_pca_con_projection');
     my $pca_a = $self->pca('final_pca_con_projection_atcg');
     my $pca_1kg = $self->pca_1kg();
+
+    $s .= '\subsection{Phase Summary}';
+    $s .= $info->{'info'};
 
     $s .= '\subsection{PCA without Projection}';
     $s .= '\subsubsection{Batch-annotated}';
