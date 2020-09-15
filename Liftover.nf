@@ -98,7 +98,7 @@ if [ -e "!{chrom}$INFIX.vcf" ]; then
     bgzip <!{chrom}$INFIX.vcf >!{chrom}_tmp.vcf.gz
     tabix !{chrom}_tmp.vcf.gz
 
-    bcftools norm -m - --check-ref s -f $ANNOTATION !{chrom}_tmp.vcf.gz | bgzip >chr!{chrom}$INFIX.vcf.gz
+    bcftools norm -m -both -N --check-ref s -f $ANNOTATION !{chrom}_tmp.vcf.gz | bgzip >chr!{chrom}$INFIX.vcf.gz
     tabix chr!{chrom}$INFIX.vcf.gz
 
 
