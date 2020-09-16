@@ -583,8 +583,8 @@ else
     tabix -p vcf $TARGET.vcf.gz
 fi
 
-cp *.vcf.gz !{params.qc_dir}/
-cp *.tbi !{params.qc_dir}/
+cp $TARGET.vcf.gz !{params.qc_dir}/
+cp $TARGET.vcf.gz.tbi !{params.qc_dir}/
 
 rm -f $TARGET.tmp.vcf.gz
 '''
