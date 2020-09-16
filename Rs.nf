@@ -117,7 +117,7 @@ STRAND_FILE="!{params.liftover}-b37.Source.strand"
 
 module load Plink/1.9
 
-if [ "!{params.liftover}" == "" ]; then
+if [ "!{params.liftover}" == "" ] || [ "!{params.liftover}" == "null" ]; then
     echo "No strand file specified for lifting."
     ln -s "!{original[1].baseName}.bed" "$TARGETNAME.bed"
     ln -s "!{original[1].baseName}.bim" "$TARGETNAME.bim"
