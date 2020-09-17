@@ -549,8 +549,8 @@ process split_vcf {
     each infix from Channel.of('', '.noATCG')
 
     output:
-    file "*.vcf.gz"
-    file "*.vcf.gz.tbi"
+    file ("*.vcf.gz") optional
+    file ("*.vcf.gz.tbi") optional
 
     shell:
 
@@ -570,8 +570,9 @@ else
 fi
 
 if [ ! -e ${TARGET}.tmp.vcf.gz ]; then
-    touch NA_!{chrom}.vcf.gz
-    touch NA_!{chrom}.vcf.gz.tbi
+    :
+#    touch NA_!{chrom}.vcf.gz
+#    touch NA_!{chrom}.vcf.gz.tbi
 else
 
     case "!{chrom}" in
@@ -583,8 +584,10 @@ else
     tabix -p vcf $TARGET.vcf.gz
 fi
 
-cp $TARGET.vcf.gz !{params.qc_dir}/
-cp $TARGET.vcf.gz.tbi !{params.qc_dir}/
+if [ -e $TARGET.vcf.gz ]; then
+    cp $TARGET.vcf.gz !{params.qc_dir}/
+    cp $TARGET.vcf.gz.tbi !{params.qc_dir}/
+fi
 
 rm -f $TARGET.tmp.vcf.gz
 '''
