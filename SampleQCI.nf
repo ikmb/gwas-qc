@@ -280,11 +280,15 @@ process pca_with_hapmap {
     tag "${params.collection_name}"
     label 'long_running'
     label 'big_mem'
+
+    when:
+        params.activate_hapmap_pca == 1
+
     input:
     file pruned from for_merge_hapmap
 
     output:
-        set file(prefix+'pruned_hapmap.bed'), file(prefix+'pruned_hapmap.bim'), file(prefix+'pruned_hapmap.fam') into for_pca_convert_pruned_hapmap, for_pca_run_pruned_hapmap
+//        set file(prefix+'pruned_hapmap.bed'), file(prefix+'pruned_hapmap.bim'), file(prefix+'pruned_hapmap.fam') into for_pca_convert_pruned_hapmap, for_pca_run_pruned_hapmap
 
         file prefix+'eigenstrat-parameters'
         file prefix+'pruned.{eigenstratgeno,ind,snp}'

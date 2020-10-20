@@ -3,6 +3,7 @@
 /* Verify config parameter*/
 params.dataset_prefixes = [:]
 params.datasets = null // used to only process a subset of specified datasets
+params.activate_hapmap_pca = 0 // can be enabled for datasets that are not super large
 
 // params.ucsc_liftover = null
 
@@ -239,6 +240,7 @@ nextflow run !{SampleQC_script} -c !{params.qc_config} -c !{params.dataset_confi
     --individuals_annotation="$ANNO" \\
     --skip_snpqc=!{params.skip_snpqc} \\
     --skip_sampleqc=!{params.skip_sampleqc} \\
+    --activate_hapmap_pca=!{params.activate_hapmap_pca} \\
     --nxf_dir=!{nxf_dir} \\
     -with-report "!{params.output}/!{dataset}/SampleQCI/execution-report.html" \\\
     -resume -ansi-log false -profile !{workflow.profile}
@@ -383,6 +385,7 @@ nextflow run !{Report_script} -c !{params.qc_config}  -c !{params.dataset_config
     --dataset "!{dataset}" \\
     --traces $(readlink -f traces.txt) \\
     --system $(readlink -f system.txt) \\
+    --activate_hapmap_pca !{params.activate_hapmap_pca} \\
     -resume -ansi-log false -profile !{workflow.profile}
 
 '''

@@ -355,7 +355,6 @@ sub build_report_chunk {
 
     my $ibs = $self->detect_duplicates_related();
     my $relatives = $self->remove_relatives();
-    my $pca = $self->pca_run();
     my $bad = $self->remove_bad_samples();
 
     $s .= '\subsection{Summary: Sample Removal}';
@@ -391,7 +390,7 @@ sub build_report_chunk {
 
 
     $s .= '\subsection{PCA with 1000 Genomes Projection}\label{sec:pca}' . "\n";
-    $pca = $self->flashpca1kg();
+    my $pca = $self->flashpca1kg();
     $s .= add_images(($pca->{'batch'}));
     #$s .= add_images(($pca->{'batch'}, $pca->{'country'}));
     #my $out_b = $pca->{'batch_fail'};
@@ -407,12 +406,14 @@ sub build_report_chunk {
     $s .= add_images(($pca->{'batch'}, $pca->{'country'})) . '\captionof{figure}{Batch-annotated (l.) and country-annotated (r.) PCA without reference, PC1 vs. PC2}' ;
     $s .= add_images(($pca->{'batch_4pc'}, $pca->{'country_4pc'})) . '\captionof{figure}{Batch-annotated (l.) and country-annoted (r.) PCA without reference, first 4 PCs}';
 
-
-    $s .= '\subsubsection{PCA with HapMap2 Projection}' . "\n";
-    my $hapmap = $self->pca_run();
-    $s .= $pca->{'pcs'} . ' principal components have been analyzed.\\\\';
-    $s .= add_images(($hapmap->{'2pc'}, $hapmap->{'4pc'}));
-    $s .= '\captionof{figure}{PCA with HapMap2 reference with 2 PCs (l.) and 4 PCs (r.)}';
+    print "HALLO DUMP " . Dumper(%ENV) . "\n";
+    if($ENV{'HAPMAP_PCA_ENABLED'} == "1") {
+       $s .= '\subsubsection{PCA with HapMap2 Projection}' . "\n";
+        my $hapmap = $self->pca_run();
+        $s .= $pca->{'pcs'} . ' principal components have been analyzed.\\\\';
+        $s .= add_images(($hapmap->{'2pc'}, $hapmap->{'4pc'}));
+        $s .= '\captionof{figure}{PCA with HapMap2 reference with 2 PCs (l.) and 4 PCs (r.)}';
+    }
     #$s .= add_images(($hapmap->{'2pc'}, $hapmap->{'2pc_wp'}));
     #$s .= add_images(($hapmap->{'4pc'}, $hapmap->{'4pc_wp'}));
 

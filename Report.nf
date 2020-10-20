@@ -28,7 +28,7 @@ export WARN_SNPQC=!{params.skip_snpqc}
 export WARN_SAMPLEQC=!{params.skip_sampleqc}
 export WARN_RELATED=!{params.keep_related}
 export PERL5LIB=!{report_dir}
-
+export HAPMAP_PCA_ENABLED=!{params.activate_hapmap_pca}
 echo "Plink 1.9;$(plink --version)" >>container.txt
 echo "Plink 2;$(plink2 --version)" >>container.txt
 echo "FlashPCA;$(flashpca2 --version 2>&1 | head -n2 | tail -n1)" >>container.txt
