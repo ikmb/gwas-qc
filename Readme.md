@@ -94,6 +94,12 @@ params.ucsc_liftover = "/home/user/ucsc-liftover-data"
 
 The pipeline process automatically detects the presence of the UCSC liftover tools and adds a hg38 conversion step to the pipeline.
 
+### Principal Component Analysis with HapMap
+
+By default, the QC pipeline performs a Principal Component Analysis with a 1000 Genomes Reference. It is possible to include an additional analysis using the HapMap2 reference for PCA by adding the parameter `--activate_hapmap_pca=1` to the Nextflow call. This additional PCA will not contribute to the actual outcome but will add HapMap2 PCA plots to the final report.
+
+It is not recommended to use this feature for large datasets, e.g. >50,000 samples.
+
 ## Advanced Configuration
 
 ### Local and Side-wide Configuration
