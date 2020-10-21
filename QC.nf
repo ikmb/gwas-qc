@@ -1,4 +1,5 @@
-// vim: syntax=nextflow
+// -*- mode:groovy -*-
+
 
 /* Verify config parameter*/
 params.dataset_prefixes = [:]
@@ -98,6 +99,7 @@ echo Dummy
 
 process Rs {
     tag "$dataset/$batch"
+    label 'phase'
 input:
     set dataset,filebase,batch from Rs_datasets
 
@@ -145,6 +147,7 @@ cd $MYPWD
 
 process SNPQCI {
     tag "${dataset}"
+    label 'phase'
 input:
     set val(dataset), val(filebase), file(bed), file(bim), file(fam), file(indels) from SNPQCI_batches.groupTuple()
 output:
@@ -218,6 +221,7 @@ cp SNPQCI-!{dataset}.trace.txt !{params.output}/!{dataset}/SNPQCI/
 
 process SampleQC {
     tag "${dataset}"
+    label 'phase'
 input:
     set val(dataset), val(filebase), file(bed), file(bim), file(fam) from SampleQC_ds
 output:
@@ -262,6 +266,8 @@ cp SampleQC-!{dataset}.trace.txt !{params.output}/!{dataset}/SampleQCI/
 
 process SNPQCII {
     tag "${dataset}"
+
+    label 'phase'
 input:
     set val(dataset), val(filebase), file(bed), file(bim), file(fam) from SNPQCII_ds
 output:
@@ -301,7 +307,9 @@ ln -fs !{params.output}/!{dataset}/SNPQCII/!{prefix}_annotation.txt
 }
 
 process FinalAnalysis {
-tag "${dataset}"
+
+    label 'phase'
+    tag "${dataset}"
 input:
     set val(dataset), val(filebase), file(bed), file(bim), file(fam), file(anno) from FinalAnalysis_ds
     file(evec) from FinalAnalysis_evec
@@ -341,7 +349,9 @@ cp "FinalAnalysis-!{dataset}.trace.txt" !{params.output}/!{dataset}/QCed/
 }
 
 process Report {
-tag "${dataset}"
+
+    label 'phase'
+    tag "${dataset}"
 publishDir "${params.output}/${dataset}", mode: 'copy'
 input:
     each dataset from ReportData
@@ -393,7 +403,9 @@ nextflow run !{Report_script} -c !{params.qc_config}  -c !{params.dataset_config
 
 
 process Liftover {
-tag "${dataset}"
+
+    label 'phase'
+    tag "${dataset}"
 publishDir "${params.output}/${dataset}/Final_hg38"
 
 
