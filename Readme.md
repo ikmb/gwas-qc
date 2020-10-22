@@ -34,7 +34,7 @@ In most cases, the example configuration consisting of three files, `QC.config`,
 
 ### Individual Annotations
 
-For proper analysis of batch and principal component effects, the pipeline makes use of certain sample information that you need to supply in a text file. It contains a single header line and one line for each sample in your dataset. **The columns are separated by tab characters.** The format is as follows:
+For a proper analysis of batch and principal component effects, the pipeline makes use of certain sample information that you need to supply in a text file. It contains a single header line and one line for each sample in your dataset. **The columns are separated by tab characters.** The format is as follows:
 ```
 familyID    individualID	paternalID	maternalID	sex	phenotype	batch	ethnicity_predicted	diagnosis	country
 HG00096	    HG00096	        0	        0               2       2	        1000G	European	        Control	        Somewhere
