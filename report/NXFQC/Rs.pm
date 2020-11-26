@@ -371,10 +371,12 @@ sub build_report_chunk {
     } elsif($par->{'merged'} == 0 && $par->{'fixed'} != 0) {
         $s .= "$par->{fixed} variants were assigned to the pseudo-autosomal regions. In hg19/GRCH37, these regions are defined as 60,001--2,699,520 for PAR1 and 154,931,044--155,260,560 for PAR2. ";
     } else {
-        $s .= '\begin{warning}Inconsistencies were found in the pseudo-autosomal regions. '.$par->{'merged'}.' variants were previously assigned to PAR regions but '.$par->{'fixed'}.' variants fit the PAR definitions. In hg19/GRCH37, these regions are defined as 60,001--2,699,520 for PAR1 and 154,931,044--155,260,560 for PAR2.\end{warning}';
+        $s .= '\begin{warning}Inconsistencies were found in the pseudo-autosomal regions PAR1 and PAR2 (chr25 in PLINK). In hg19/GRCh37, PAR1 and PAR2 are defined as 60,001–-2,699,520 and 154,931,044-–155,260,560, respectively, on chromosome X. ' . $par->{'merged'} . ' variants were assigned to PAR regions (chr25 in PLINK) but only '. $par->{'fixed'} . ' belong there. Because the remaining variants have genomic position outside PAR1 and PAR2, these variants were shifted to chromosome X (chr23 in PLINK). If these variants are then heterozygous calls in males, there will be another warning, because males can have only homozygous calls on chromsome X (PLINK does not allow haploid calls in bedbimfam format).\end{warning}';
+        
+#        In hg19/GRCH37, PAR1 and PAR2 are defined as 60,001–2,699,520'.$par->{'merged'}.' variants were previously assigned to PAR regions but '.$par->{'fixed'}.' variants fit the PAR definitions. In hg19/GRCH37, these regions are defined as 60,001--2,699,520 for PAR1 and 154,931,044--155,260,560 for PAR2.\end{warning}';
     }
     if($par->{'hh'} != 0) {
-        $s .= '\begin{warning}'.$par->{'hh'}.' heterozygous haploid genotype calls were found for male individuals in non-pseudoautosomal regions on chromosome X or Y. These will be set to missing.\end{warning}';
+        $s .= '\begin{warning}'.$par->{'hh'}.' heterozygous genotype calls were found for male individuals in nonpseudoautosomal regions on chromosome X or Y. These will be set to missing.\end{warning}';
     } else {
         $s .= 'No heterozygous haploid calls for males in non-pseudo-autosomal regions were found on chromosome X or Y.';
     }
