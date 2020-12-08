@@ -164,3 +164,7 @@ profiles {
 ```
 
 Before launching the pipeline, please assure that the proper modules are loaded: `module load nextflow singularity`. Java should be loaded automatically as a dependency of Nextflow.
+
+## License
+
+The whole pipeline package is published under the permissive MIT license. For details, see the included LICENSE file.
