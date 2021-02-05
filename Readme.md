@@ -145,8 +145,16 @@ To separate the operating system within the singularity container from the host 
 singularity.runOptions = "-B /data_storage -B /some_other_storage -B /even_more_storage"
 ```
 
+### Cache Issues
 
+Some users have experienced error messages that read like:
+```
+FATAL: Cached File Hash(...) and Expected Hash(...) does not match
+```
 
+When Nextflow is run on a grid computing/cluster platform, it makes heavy and parallel use of shared storage among the involved nodes. If the filesystem that is used on this shared storage cannot guarantee cache coherency, Nextflow might run into race conditions leading to the above error. Removing the `$NXF_WORK` or `work` directory and/or moving them to a different filesystem might help with the issue. Almost all of these errors that are known to us have happened on directories that are mounted via SMB/CIFS. It has successfully and thoroughly been tested with NFS and BeeGFS.
+
+If you absolutely must use a SMB/CIFS share as the pipeline working directory, you could try setting `process.cache = 'deep'` in your `nextflow.conf` (see above for suitable config file locations). This will make Nextflow's caching behavior considerably slower.
 
 ### UKSH medcluster configuration
 
