@@ -219,11 +219,9 @@ sub plink_flip {
     my $l = {};
 
     # Find target files
-    open my $fh, "<$dir/.command.sh" or die("$!: $dir/.command.sh");
-    while(<$fh>) {
-        $l->{'flip'} = parse_plink("$dir/$1.log") if /^plink --bfile dedup --flip.*--out "(.*)" --allow-no-sex$/;
-    }
-    $l->{'dedup'} = parse_plink("$dir/dedup.log");
+    #open my $fh, "<$dir/.command.sh" or die("$!: $dir/.command.sh");
+    $l->{'flip'} = parse_plink("$dir/fixed_flipped.log");
+    #$l->{'dedup'} = parse_plink("$dir/dedup.log");
     return $l;
 }
 
@@ -372,7 +370,7 @@ sub build_report_chunk {
         $s .= "$par->{fixed} variants were assigned to the pseudo-autosomal regions. In hg19/GRCH37, these regions are defined as 60,001--2,699,520 for PAR1 and 154,931,044--155,260,560 for PAR2. ";
     } else {
         $s .= '\begin{warning}Inconsistencies were found in the pseudo-autosomal regions PAR1 and PAR2 (chr25 in PLINK). In hg19/GRCh37, PAR1 and PAR2 are defined as 60,001–-2,699,520 and 154,931,044-–155,260,560, respectively, on chromosome X. ' . $par->{'merged'} . ' variants were assigned to PAR regions (chr25 in PLINK) but only '. $par->{'fixed'} . ' belong there. Because the remaining variants have genomic position outside PAR1 and PAR2, these variants were shifted to chromosome X (chr23 in PLINK). If these variants are then heterozygous calls in males, there will be another warning, because males can have only homozygous calls on chromsome X (PLINK does not allow haploid calls in bedbimfam format).\end{warning}';
-        
+
 #        In hg19/GRCH37, PAR1 and PAR2 are defined as 60,001–2,699,520'.$par->{'merged'}.' variants were previously assigned to PAR regions but '.$par->{'fixed'}.' variants fit the PAR definitions. In hg19/GRCH37, these regions are defined as 60,001--2,699,520 for PAR1 and 154,931,044--155,260,560 for PAR2.\end{warning}';
     }
     if($par->{'hh'} != 0) {
@@ -384,6 +382,7 @@ sub build_report_chunk {
 
     $s .= '\subsection{Variant ID and Strand Alignment}' . "\n";
     my $flip = $self->plink_flip();
+    my $dedup = $flip->{'flip'};
     my $norm = $self->normalize_variant_names();
 
     $s .= 'The variant names have been mapped from chip-specific IDs to the NCBI dbSNP IDs using a database compiled from the HRC1.1 reference panel, the UK10k panel, the UK10k + 1000G Phase 3 merge and the dbSNP150 database, in that order and priority.\\\\[1em]' . "\n";
