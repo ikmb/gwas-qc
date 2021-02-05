@@ -344,10 +344,14 @@ echo Deduplicating "!{bim.baseName}"
 cut -f2 "!{bim}" | sort -T . | uniq -d >duplicates
 echo Found $(wc -l <duplicates) duplicates.
 
-plink --bed "!{bedfam[0].baseName}.bed" --bim "!{bim}" --memory $MEM --fam "!{bedfam[0].baseName}.fam" --exclude duplicates --make-bed --out dedup
+# plink --bed "!{bedfam[0].baseName}.bed" --bim "!{bim}" --flip "!{flip}" --memory $MEM --fam "!{bedfam[0].baseName}.fam" --exclude duplicates --make-bed --out dedup
 
-echo Flipping strands for "!{bim.baseName}"
-plink --bfile dedup --flip "!{flip}" --threads 1 --memory $MEM --make-bed --out "!{bedfam[0].baseName}_flipped" --allow-no-sex
+# echo Flipping strands for "!{bim.baseName}"
+# plink --bfile dedup --flip "!{flip}" --threads 1 --memory $MEM --make-bed --out "!{bedfam[0].baseName}_flipped" --allow-no-sex
+
+
+plink --bed "!{bedfam[0].baseName}.bed" --bim "!{bim}" --flip "!{flip}" --memory $MEM --fam "!{bedfam[0].baseName}.fam" --exclude duplicates --make-bed --out "!{bedfam[0].baseName}_flipped" --allow-no-sex
+
 '''
 }
 
