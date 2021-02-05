@@ -136,6 +136,8 @@ This pipeline makes heavy use of temporary storage. By default, Nextflow will st
 - call Nextflow/the start script from a place with enough available storage. The config files do not need to be in the current working directory, or
 - set the environment variable `NXF_WORK` to a different directory. The default value is `NXF_WORK=$(pwd)/work`. A good place for this setting is your shell startup file (e.g. `.bashrc` or `.zshrc`, don't forget to `source` it or re-login to make it work). For a quick test, you can also just temporarily `export NXF_WORK=/some/other/place` before running the pipeline.
 
+The example dataset that comes with this package requires at least 620 MB temporary store space and additional 385 MB result storage.
+
 ### Mounting Paths into the Singularity Container
 
 To separate the operating system within the singularity container from the host system, Singularity only makes your home folder accessible to the insides. If your data files are stored in a directory different from your home (e.g. a shared storage `/data_storage`), you will need to explicitly make it accessible by specifying additional singularity options in your config file:
