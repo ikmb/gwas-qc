@@ -111,18 +111,23 @@ plinkinfo.pl !{dataset.bim} !{dataset.fam} >info.txt
 
 # note that grep returns 1 if the pattern was not found, thus || true
 <!{dataset.bim} tr -s '\\t ' ' ' | cut -f2 -d' ' | grep ^unk_ >unknowns || true
-plink --bim !{dataset.bim} --bed !{dataset.bed} --fam !{dataset.fam} --exclude unknowns --make-bed --out no-unknowns
+plink --bim !{dataset.bim} --bed !{dataset.bed} --fam !{dataset.fam} --exclude unknowns --write-snplist --out no-unknowns
 
-plink --bfile no-unknowns --indep-pairwise 50 5 0.2 --out after-indep-pairwise --allow-no-sex
-plink --bfile no-unknowns --extract after-indep-pairwise.prune.in --maf 0.05 --make-bed --out after-correlated-remove --allow-no-sex
+plink --bim !{dataset.bim} --bed !{dataset.bed} --fam !{dataset.fam} --extract no-unknowns.snplist --indep-pairwise 50 5 0.2 --out after-indep-pairwise --allow-no-sex
+cat no-unknowns.snplist after-indep-pairwise.prine.in | sort | uniq >extract-for-maf
+plink --bim !{dataset.bim} --bed !{dataset.bed} --fam !{dataset.fam} --extract extract-for-maf --maf 0.05 --write-snplist --out after-correlated-remove --allow-no-sex
 mv after-indep-pairwise.prune.in "!{params.disease_data_set_prefix_release}.prune.in"
 mv after-indep-pairwise.prune.out "!{params.disease_data_set_prefix_release}.prune.out"
 mv unknowns "!{params.disease_data_set_prefix_release}.prune.out.unknown_variants"
 
-python -c 'from SampleQCI_helpers import *; write_snps_autosomes_noLDRegions_noATandGC_noIndels("no-unknowns.bim", "include-variants")'
-python -c 'from SampleQCI_helpers import *; write_snps_autosomes_noLDRegions_noIndels("no-unknowns.bim", "include-variants-with-atcg")'
-plink --bfile after-correlated-remove --extract include-variants --make-bed --out "!{prefix}" --allow-no-sex
-plink --bfile after-correlated-remove --extract include-variants-with-atcg --make-bed --out "!{prefix}_with_atcg" --allow-no-sex
+python -c 'from SampleQCI_helpers import *; write_snps_autosomes_noLDRegions_noATandGC_noIndels("!{dataset.bim}", "include-variants")'
+python -c 'from SampleQCI_helpers import *; write_snps_autosomes_noLDRegions_noIndels("!{dataset.bim}", "include-variants-with-atcg")'
+
+grep -F -f include-variants after-correlated-remove.snplist >keep-snps
+grep -F -f include-variants-with-atcg after-correlated-remove.snplist >keep-snps-with-atcg
+
+plink --bim !{dataset.bim} --bed !{dataset.bed} --fam !{dataset.fam} --extract keep-snps --make-bed --out "!{prefix}" --allow-no-sex
+plink --bim !{dataset.bim} --bed !{dataset.bed} --fam !{dataset.fam} --extract keep-snps-with-atcg --make-bed --out "!{prefix}_with_atcg" --allow-no-sex
 '''
     }
 }
