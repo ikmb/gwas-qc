@@ -122,8 +122,9 @@ process hwe_definetti_preqc {
     module load Plink/1.9
 MEM=${task.memory.toMega()-1000}
 
-plink --memory \$MEM --bfile ${merged_bim.baseName} --exclude ${indels} --make-bed --out no-indels
-plink --memory \$MEM --bfile no-indels --hardy --out ${params.collection_name}_hardy --hwe 0.0 --chr 1-22 --allow-no-sex
+#plink --memory \$MEM --bfile ${merged_bim.baseName} --exclude ${indels} --make-bed --out no-indels
+#plink --memory \$MEM --bfile no-indels --hardy --out ${params.collection_name}_hardy --hwe 0.0 --chr 1-22 --allow-no-sex
+plink --memory \$MEM --bfile ${merged_bim.baseName} --exclude ${indels} --hardy --out ${params.collection_name}_hardy --hwe 0.0 --chr 1-22 --allow-no-sex
 R --slave --args ${params.collection_name}_hardy.hwe ${params.collection_name}_controls_DeFinetti ${params.collection_name}_cases_DeFinetti ${params.collection_name}_cases_controls_DeFinetti <$definetti_r
 """
 }
@@ -197,7 +198,7 @@ ANNOT_LINES=$(wc -l <individuals_annotation)
 # annotation file always has at least one header line
 if [ "$ANNOT_LINES" -gt 1 ]; then
 
-    # Filter dataset
+    # Extract our chunk from the main dataset, keep only the controls.
     plink --memory $MEM --bfile "!{new File(input_bim.toString()).getBaseName()}" --filter-controls --extract !{chunk} --make-bed --out !{chunk}-controls.all
 
     # It might be, that this chunk lies entirely in chr23, so the next one will fail and
@@ -448,9 +449,12 @@ process hwe_definetti_qci {
     module load Plink/1.9
 
 MEM=${task.memory.toMega()-1000}
-plink --bfile "${new File(new_plink[0].toString()).getBaseName()}" --exclude ${indels} --make-bed --out no-indels --memory \$MEM
-plink --bfile no-indels --hardy --out ${prefix} --hwe 0.0 --chr 1-22 --allow-no-sex --memory \$MEM
-mv no-indels.log ${prefix}.log
+#plink --bfile "${new File(new_plink[0].toString()).getBaseName()}" --exclude ${indels} --make-bed --out no-indels --memory \$MEM
+#plink --bfile no-indels --hardy --out ${prefix} --hwe 0.0 --chr 1-22 --allow-no-sex --memory \$MEM
+
+
+plink --bfile "${new File(new_plink[0].toString()).getBaseName()}" --exclude ${indels} --hardy --hwe 0.0 --chr 1-22 --allow-no-sex --out ${prefix} --memory \$MEM
+
 R --slave --args ${prefix}.hwe ${prefix}_controls_DeFinetti ${prefix}_cases_DeFinetti ${prefix}_cases_controls_DeFinetti <"$definetti_r"
 """
 }
