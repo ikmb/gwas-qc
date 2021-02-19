@@ -90,9 +90,30 @@ else
     ln -s !{indels} remove-vars
 fi
 
-/opt/plink2 --bed !{bed} --bim !{bim} --fam !{fam} \\
-        --exclude remove-vars \\
-        --chr !{chrom} --output-chr chrM --export vcf-4.2 --out !{chrom}$INFIX || true
+case "{!chrom}" in
+    23) 
+        /opt/plink2 --bed !{bed} --bim !{bim} --fam !{fam} --exclude remove-vars --chr 23 --split-par b38 --output-chr chrM --export vcf-4.2 --out 23_nonPAR"$INFIX" || true
+        /opt/plink2 --bed !{bed} --bim !{bim} --fam !{fam} --exclude remove-vars --chr PAR1 --split-par b38 --output-chr chrM --export vcf-4.2 --out 23_PAR1"$INFIX" || true
+        /opt/plink2 --bed !{bed} --bim !{bim} --fam !{fam} --exclude remove-vars --chr PAR2 --split-par b38 --output-chr chrM --export vcf-4.2 --out 23_PAR2"$INFIX" || true
+        FILENONPAR=
+        FILEPAR1=
+        FILEPAR2=
+        if [ -f 23_nonPAR"$INFIX".vcf ]; then
+            FILENONPAR=23_nonPAR"$INFIX".vcf
+        fi
+        if [ -f 23_PAR1"$INFIX".vcf ]; then
+            FILEPAR1=23_PAR1"$INFIX".vcf
+        fi
+        if [ -f 23_PAR2"$INFIX".vcf ]; then
+            FILEPAR2=23_PAR2"$INFIX".vcf
+        fi
+        bcftools concat "$FILEPAR1" "$FILENONPAR" "$FILEPAR2" -Ov -o !{chrom}"$INFIX".vcf
+        rm -f "$FILEPAR1" "$FILENONPAR" "$FILEPAR2"
+        ;;
+    *) /opt/plink2 --bed !{bed} --bim !{bim} --fam !{fam} --exclude remove-vars --chr !{chrom} --output-chr chrM --export vcf-4.2 --out !{chrom}$INFIX || true ;;
+esac
+
+#/opt/plink2 --bed !{bed} --bim !{bim} --fam !{fam} --exclude remove-vars --chr !{chrom} --output-chr chrM --export vcf-4.2 --out !{chrom}$INFIX || true
 
 if [ -e "!{chrom}$INFIX.vcf" ]; then
     bgzip <!{chrom}$INFIX.vcf >!{chrom}_tmp.vcf.gz
