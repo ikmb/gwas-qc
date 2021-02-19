@@ -27,6 +27,7 @@ to_calc_hwe = Channel.create()
 process merge_batches {
     label 'big_mem'
     tag "${params.collection_name}"
+    file individuals_annotation
 
     output:
     file "${params.collection_name}_Rs.bim" into merged_bim, to_split_bim, to_hwe_bim, to_verify_bim, to_exclude_bim, to_miss_bim, to_miss_batch_bim
@@ -34,6 +35,7 @@ process merge_batches {
     file "${params.collection_name}_Rs.fam" into merged_fam, to_hwe_fam, to_verify_fam, to_exclude_fam, to_miss_fam, to_miss_batch_fam
     file "${params.collection_name}_Rs.log"
     file "${params.collection_name}.indels" into preqc_hwe_indels,postqc_hwe_indels
+    file "ethnicities.txt" into ethnicities
 
     shell:
 
@@ -94,6 +96,7 @@ fi
 ln -s !{params.rs_dir}/${INDELS[0]} !{params.collection_name}.indels
 plinkinfo.pl !{params.collection_name}_Rs.bim !{params.collection_name}_Rs.fam >info.txt
 
+gawk 'NR>1 { ethn[$8] += 1 } END { for(key in ethn) { print ethn[key] " " key } }' !{individuals_annotation} | sort --reverse --numeric-sort >ethnicities.txt
 '''
 }
 
@@ -177,6 +180,7 @@ process calculate_hwe {
     file input_bed from to_hwe_bed
     file input_fam from to_hwe_fam
     file individuals_annotation
+    file ethnicities
 
   output:
   file "${chunk}-out.auto.R" into from_calc_hwe
@@ -194,6 +198,7 @@ MEM=!{task.memory.toMega()-1000}
 <!{individuals_annotation} mawk ' { if($9 == "Control" || $9 == "diagnosis") print $1,$2,$3,$4,$5,$6,$7,$8,$9,$10 }' >individuals_annotation
 
 ANNOT_LINES=$(wc -l <individuals_annotation)
+ETHNICITY=$(head -n1 !{ethnicities} | cut -f2 -d" ")
 
 # annotation file always has at least one header line
 if [ "$ANNOT_LINES" -gt 1 ]; then
@@ -226,7 +231,7 @@ if [ "$ANNOT_LINES" -gt 1 ]; then
     fi
 
     # Calc HWE
-    Rscript !{hwe_script} !{chunk}-controls individuals_annotation !{chunk}-out.auto.R
+    Rscript !{hwe_script} !{chunk}-controls individuals_annotation !{chunk}-out.auto.R $ETHNICITY
 else
     touch !{chunk}-out.auto.R
 fi

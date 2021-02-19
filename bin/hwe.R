@@ -10,7 +10,7 @@ dataset <- read.plink(bed=paste(basename,"bed",sep="."),
                       fam=paste(basename,"fam",sep="."))
 annotation  <- read.csv(args[2], sep=" ", header=T)
 outfile = args[3]
-
+ethnicity = args[4]
 
 runHWE <- function(x, ii){
    obs_hom1 <- sum(x[ii]==0, na.rm=T)
@@ -32,7 +32,7 @@ hwe <-function(x, annotation){
    batch <- sort(unique(annotation$batch))
 #   print(paste("Found batches: ", batch))
    # change the ethnic group to what you want
-   eth <- "European" # user defined variable
+   eth <- ethnicity # user defined variable
 
    # calculate HWE across entire collection
    ii <- annotation$phenotype=="1" & annotation$ethnicity_predicted ==eth
