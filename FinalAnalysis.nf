@@ -582,7 +582,7 @@ else
 
     case "!{chrom}" in
         23) bcftools norm -m -both -N --check-ref s -f $ANNOTATION $TARGET.tmp.vcf.gz | sed 's/ID=X/ID=23/' | sed 's/^X/23/' | bgzip >$TARGET.vcf.gz ;;
-        24) bcftools norm -m -both -N --check-ref s -f $ANNOTATION $TARGET.tmp.vcf.gz | sed 's/ID=Y/ID=23/' | sed 's/^Y/24/' | bgzip >$TARGET.vcf.gz ;;
+        24) bcftools norm -m -both -N --check-ref s -f $ANNOTATION $TARGET.tmp.vcf.gz | sed 's/ID=Y/ID=24/' | sed 's/^Y/24/' | bgzip >$TARGET.vcf.gz ;;
         *)  bcftools norm -m -both -N --check-ref s -f $ANNOTATION $TARGET.tmp.vcf.gz | bgzip >$TARGET.vcf.gz ;;
     esac
 
