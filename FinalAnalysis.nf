@@ -595,8 +595,8 @@ case "{!chrom}" in
         if [ -f "$TARGET".PAR2.tmp.vcf.gz ]; then
             FILEPAR2="$TARGET".PAR2.tmp.vcf.gz
         fi
-        bcftools concat "$FILEPAR1" "$FILENONPAR" "$FILEPAR2" -Oz -o "$TARGET".tmp.vcf.gz
-        rm -f "$FILEPAR1" "$FILENONPAR" "$FILEPAR2"
+        bcftools concat $FILEPAR1 $FILENONPAR $FILEPAR2 -Oz -o "$TARGET".tmp.vcf.gz
+        rm -f $FILEPAR1 $FILENONPAR $FILEPAR2
         ;;
     *) /opt/plink2 --bed "$BEDFILE" --bim "$BIMFILE" --fam "$FAMFILE" --chr !{chrom} --export vcf-4.2 bgz  --out "$TARGET".tmp || true ;;
 esac

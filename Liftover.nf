@@ -107,8 +107,8 @@ case "{!chrom}" in
         if [ -f 23_PAR2"$INFIX".vcf ]; then
             FILEPAR2=23_PAR2"$INFIX".vcf
         fi
-        bcftools concat "$FILEPAR1" "$FILENONPAR" "$FILEPAR2" -Ov -o !{chrom}"$INFIX".vcf
-        rm -f "$FILEPAR1" "$FILENONPAR" "$FILEPAR2"
+        bcftools concat $FILEPAR1 $FILENONPAR $FILEPAR2 -Ov -o !{chrom}"$INFIX".vcf
+        rm -f $FILEPAR1 $FILENONPAR $FILEPAR2
         ;;
     *) /opt/plink2 --bed !{bed} --bim !{bim} --fam !{fam} --exclude remove-vars --chr !{chrom} --output-chr chrM --export vcf-4.2 --out !{chrom}$INFIX || true ;;
 esac
@@ -120,7 +120,12 @@ if [ -e "!{chrom}$INFIX.vcf" ]; then
     tabix !{chrom}_tmp.vcf.gz
 
     bcftools norm -m -both -N --check-ref s -f $ANNOTATION !{chrom}_tmp.vcf.gz | bgzip >nochmal.vcf.gz
-    bcftools norm -m -both -N --check-ref s -f $ANNOTATION nochmal.vcf.gz | bgzip >chr!{chrom}$INFIX.vcf.gz
+    case "!{chrom}" in
+        23) bcftools norm -m -both -N --check-ref s -f $ANNOTATION nochmal.vcf.gz | sed 's/ID=chrX/ID=chr23/' | sed 's/^chrX/chr23/' | bgzip >chr!{chrom}$INFIX.vcf.gz ;;
+        24) bcftools norm -m -both -N --check-ref s -f $ANNOTATION nochmal.vcf.gz | sed 's/ID=chrY/ID=chr24/' | sed 's/^chrY/chr24/' | bgzip >chr!{chrom}$INFIX.vcf.gz ;;
+        *)  bcftools norm -m -both -N --check-ref s -f $ANNOTATION nochmal.vcf.gz | bgzip >chr!{chrom}$INFIX.vcf.gz ;;
+    esac
+    #bcftools norm -m -both -N --check-ref s -f $ANNOTATION nochmal.vcf.gz | bgzip >chr!{chrom}$INFIX.vcf.gz
     tabix chr!{chrom}$INFIX.vcf.gz
 
 
