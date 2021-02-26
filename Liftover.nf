@@ -120,16 +120,20 @@ if [ -e "!{chrom}$INFIX.vcf" ]; then
     tabix !{chrom}_tmp.vcf.gz
 
     bcftools norm -m -both -N --check-ref s -f $ANNOTATION !{chrom}_tmp.vcf.gz | bgzip >nochmal.vcf.gz
-    case "!{chrom}" in
-        23) bcftools norm -m -both -N --check-ref s -f $ANNOTATION nochmal.vcf.gz | sed 's/ID=chrX/ID=chr23/' | sed 's/^chrX/chr23/' | bgzip >chr!{chrom}$INFIX.vcf.gz ;;
-        24) bcftools norm -m -both -N --check-ref s -f $ANNOTATION nochmal.vcf.gz | sed 's/ID=chrY/ID=chr24/' | sed 's/^chrY/chr24/' | bgzip >chr!{chrom}$INFIX.vcf.gz ;;
-        *)  bcftools norm -m -both -N --check-ref s -f $ANNOTATION nochmal.vcf.gz | bgzip >chr!{chrom}$INFIX.vcf.gz ;;
-    esac
-    #bcftools norm -m -both -N --check-ref s -f $ANNOTATION nochmal.vcf.gz | bgzip >chr!{chrom}$INFIX.vcf.gz
+    bcftools norm -m -both -N --check-ref s -f $ANNOTATION nochmal.vcf.gz | bgzip >chr!{chrom}$INFIX.vcf.gz
     tabix chr!{chrom}$INFIX.vcf.gz
-
-
-    rm -f !{chrom}$INFIX.vcf !{chrom}_tmp.vcf.gz !{chrom}_tmp.vcf.gz.tbi atcg indels
+    
+    case "!{chrom}" in
+        23) mv chr!{chrom}$INFIX.vcf.gz chrX$INFIX.vcf.gz
+            mv chr!{chrom}$INFIX.vcf.gz.tbi chrX$INFIX.vcf.gz.tbi 
+            ;;
+        24) mv chr!{chrom}$INFIX.vcf.gz chrY$INFIX.vcf.gz
+            mv chr!{chrom}$INFIX.vcf.gz.tbi chrY$INFIX.vcf.gz.tbi 
+            ;;
+        *) ;;
+    esac
+    
+    rm -f !{chrom}$INFIX.vcf !{chrom}_tmp.vcf.gz !{chrom}_tmp.vcf.gz.tbi atcg indels nochmal.vcf.gz
 else
     touch NA_!{chrom}.vcf.gz
     touch NA_!{chrom}.vcf.gz.tbi
