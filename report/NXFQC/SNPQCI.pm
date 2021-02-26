@@ -73,6 +73,17 @@ sub merge_datasets {
 
     # Collect post-merge info
     $dat->{'info'} = plink_table("$dir/info.txt");
+
+    # Ethnicities
+    open my $etfh, '<', "$dir/ethnicities.txt" or die($!);
+    my $sum = 0;
+    $dat->{'ethnicities'} = {};
+
+    while(<$etfh>) {
+        chomp;
+        my @parts = split / /;
+        $dat->{'ethnicities'}->{$parts[0]} = $parts[1];
+    }
     return $dat;
 
 }
