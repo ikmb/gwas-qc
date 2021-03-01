@@ -90,7 +90,7 @@ else
     ln -s !{indels} remove-vars
 fi
 
-case "{!chrom}" in
+case "!{chrom}" in
     23) 
         /opt/plink2 --bed !{bed} --bim !{bim} --fam !{fam} --exclude remove-vars --chr 23 --split-par b38 --output-chr chrM --export vcf-4.2 --out 23_nonPAR"$INFIX" || true
         /opt/plink2 --bed !{bed} --bim !{bim} --fam !{fam} --exclude remove-vars --chr PAR1 --split-par b38 --output-chr chrM --export vcf-4.2 --out 23_PAR1"$INFIX" || true

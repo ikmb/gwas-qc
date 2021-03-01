@@ -578,7 +578,7 @@ else
     FAMFILE=!{fam}
 fi
 
-case "{!chrom}" in
+case "!{chrom}" in
     23) 
         /opt/plink2 --bed "$BEDFILE" --bim "$BIMFILE" --fam "$FAMFILE" --chr 23 --split-par b37 --export vcf-4.2 bgz  --out "$TARGET".nonPAR.tmp || true
         /opt/plink2 --bed "$BEDFILE" --bim "$BIMFILE" --fam "$FAMFILE" --chr PAR1 --split-par b37 --export vcf-4.2 bgz  --out "$TARGET".PAR1.tmp || true
