@@ -564,10 +564,43 @@ TARGET="!{chrom}!{infix}"
 
 # Force output in VCF-4.2 with 23 and 24 encoded as X and Y, as defined in the hg19 reference
 if [ "!{infix}" = ".noATCG" ]; then
-    /opt/plink2 --bed !{bed_noatcg} --bim !{bim_noatcg} --fam !{fam_noatcg} --chr !{chrom} --export vcf-4.2 bgz --out $TARGET.tmp || true
+    BEDFILE=!{bed_noatcg}
+    BIMFILE=!{bim_noatcg}
+    FAMFILE=!{fam_noatcg}
 else
-    /opt/plink2 --bed !{bed} --bim !{bim} --fam !{fam} --chr !{chrom} --export vcf-4.2 bgz  --out $TARGET.tmp || true
+    BEDFILE=!{bed}
+    BIMFILE=!{bim}
+    FAMFILE=!{fam}
 fi
+
+case "!{chrom}" in
+    23) 
+        /opt/plink2 --bed "$BEDFILE" --bim "$BIMFILE" --fam "$FAMFILE" --chr 23 --split-par b37 --export vcf-4.2 bgz  --out "$TARGET".nonPAR.tmp || true
+        /opt/plink2 --bed "$BEDFILE" --bim "$BIMFILE" --fam "$FAMFILE" --chr PAR1 --split-par b37 --export vcf-4.2 bgz  --out "$TARGET".PAR1.tmp || true
+        /opt/plink2 --bed "$BEDFILE" --bim "$BIMFILE" --fam "$FAMFILE" --chr PAR2 --split-par b37 --export vcf-4.2 bgz  --out "$TARGET".PAR2.tmp || true
+        FILENONPAR=
+        FILEPAR1=
+        FILEPAR2=
+        if [ -f "$TARGET".nonPAR.tmp.vcf.gz ]; then
+            FILENONPAR="$TARGET".nonPAR.tmp.vcf.gz
+        fi
+        if [ -f "$TARGET".PAR1.tmp.vcf.gz ]; then
+            FILEPAR1="$TARGET".PAR1.tmp.vcf.gz
+        fi
+        if [ -f "$TARGET".PAR2.tmp.vcf.gz ]; then
+            FILEPAR2="$TARGET".PAR2.tmp.vcf.gz
+        fi
+        bcftools concat $FILEPAR1 $FILENONPAR $FILEPAR2 -Oz -o "$TARGET".tmp.vcf.gz
+        rm -f $FILEPAR1 $FILENONPAR $FILEPAR2
+        ;;
+    *) /opt/plink2 --bed "$BEDFILE" --bim "$BIMFILE" --fam "$FAMFILE" --chr !{chrom} --export vcf-4.2 bgz  --out "$TARGET".tmp || true ;;
+esac
+
+#if [ "!{infix}" = ".noATCG" ]; then
+#    /opt/plink2 --bed !{bed_noatcg} --bim !{bim_noatcg} --fam !{fam_noatcg} --chr !{chrom} --export vcf-4.2 bgz --out $TARGET.tmp || true
+#else
+#    /opt/plink2 --bed !{bed} --bim !{bim} --fam !{fam} --chr !{chrom} --export vcf-4.2 bgz  --out $TARGET.tmp || true
+#fi
 
 if [ ! -e ${TARGET}.tmp.vcf.gz ]; then
     :
@@ -577,7 +610,7 @@ else
 
     case "!{chrom}" in
         23) bcftools norm -m -both -N --check-ref s -f $ANNOTATION $TARGET.tmp.vcf.gz | sed 's/ID=X/ID=23/' | sed 's/^X/23/' | bgzip >$TARGET.vcf.gz ;;
-        24) bcftools norm -m -both -N --check-ref s -f $ANNOTATION $TARGET.tmp.vcf.gz | sed 's/ID=Y/ID=23/' | sed 's/^Y/24/' | bgzip >$TARGET.vcf.gz ;;
+        24) bcftools norm -m -both -N --check-ref s -f $ANNOTATION $TARGET.tmp.vcf.gz | sed 's/ID=Y/ID=24/' | sed 's/^Y/24/' | bgzip >$TARGET.vcf.gz ;;
         *)  bcftools norm -m -both -N --check-ref s -f $ANNOTATION $TARGET.tmp.vcf.gz | bgzip >$TARGET.vcf.gz ;;
     esac
 
