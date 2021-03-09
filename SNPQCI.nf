@@ -95,8 +95,8 @@ else
 fi
 ln -s !{params.rs_dir}/${INDELS[0]} !{params.collection_name}.indels
 plinkinfo.pl !{params.collection_name}_Rs.bim !{params.collection_name}_Rs.fam >info.txt
-
 gawk 'NR>1 { ethn[$8] += 1 } END { for(key in ethn) { print ethn[key] " " key } }' !{individuals_annotation} | sort --reverse --numeric-sort >ethnicities.txt
+
 '''
 }
 
@@ -151,7 +151,20 @@ output:
 shell:
 '''
   CONTROLS=$(awk '{if($9=="Control") print}' "!{individuals_annotation}"| wc -l)
-  if [ "$CONTROLS" -ge 1 ]; then
+  IS_QUANT=0
+  cut -f6 "!{individuals_annotation}" | tail -n +2 | sort | uniq >phenotypes
+  while read pheno; do
+    case "$pheno" in
+        -9|0|1|2) 
+            ;;
+        *) IS_QUANT=1
+            ;;
+    esac
+  done <phenotypes
+
+  echo $IS_QUANT >is_quantitative.txt
+
+  if [ "$CONTROLS" -ge 1 ] || [ "$IS_QUANT" == "1" ]; then
     cut -f 2 !{input_bim} | split -l 1000 -a 5 -d - chunk_
   else
     touch chunk_00000
@@ -196,15 +209,43 @@ MEM=!{task.memory.toMega()-1000}
 
 # Filter annotations to include only controls
 <!{individuals_annotation} mawk ' { if($9 == "Control" || $9 == "diagnosis") print $1,$2,$3,$4,$5,$6,$7,$8,$9,$10 }' >individuals_annotation
+NUM_CONTROLS=$(wc -l <individuals_annotation)
 
-ANNOT_LINES=$(wc -l <individuals_annotation)
+IS_QUANT=0
+cut -f6 "!{individuals_annotation}" | tail -n +2 | sort | uniq >phenotypes
+while read pheno; do
+    case "$pheno" in
+        -9|0|1|2) 
+            ;;
+        *) IS_QUANT=1
+            ;;
+    esac
+done <phenotypes
+
+# note that NUM_CONTROLS includes the header line so "1" means 0 controls
+# Overwrite the local copy if we're checking a quantitative trait but we have
+# no defined controls:
+if [ "$NUM_CONTROLS" == "1" ] && [ "$IS_QUANT" == "1" ]; then
+    cp !{individuals_annotation} individuals_annotation
+    # if it's quantitative and no controls have been defined, use everything.
+    FILTER_CONTROLS=""
+elif [ "$NUM_CONTROLS" -gt "1" ] && [ "$IS_QUANT" == "1" ]; then
+    # Plink can't handle control phenotype in a quantitative setting, so just
+    # handle them explicitly
+    cut -f1,2 | tail -n +2 individuals_annotation >keep.fam
+    FILTER_CONTROLS="--keep keep.fam"
+else
+    FILTER_CONTROLS="--filter-controls"
+fi
+
+# sorted by count, take the ethnicity with the highest count
 ETHNICITY=$(head -n1 !{ethnicities} | cut -f2 -d" ")
 
 # annotation file always has at least one header line
-if [ "$ANNOT_LINES" -gt 1 ]; then
+if [ "$NUM_CONTROLS" -gt 1 ] || [ "$IS_QUANT" == "1" ]; then
 
     # Extract our chunk from the main dataset, keep only the controls.
-    plink --memory $MEM --bfile "!{new File(input_bim.toString()).getBaseName()}" --filter-controls --extract !{chunk} --make-bed --out !{chunk}-controls.all
+    plink --memory $MEM --bfile "!{new File(input_bim.toString()).getBaseName()}" $FILTER_CONTROLS --extract !{chunk} --make-bed --out !{chunk}-controls.all
 
     # It might be, that this chunk lies entirely in chr23, so the next one will fail and
     # we don't need to merge later on.

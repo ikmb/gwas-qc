@@ -200,6 +200,17 @@ sub exclude_bad_variants {
   $dat;
 }
 
+sub split_dataset {
+  my $self = shift;
+  my $dir = $self->{'trace'}->{'split_dataset'};
+
+  open my $fh, '<', "$dir/is_quantitative.txt" or die($!);
+  while(<$fh>) {
+    chomp;
+    return $_;
+  }
+}
+
 sub new {
 
     my $class = shift;
@@ -236,14 +247,27 @@ sub build_report_chunk {
     }
     $s .= '\\\\';
     $s .= $merge->{'info'};
+    my $ethnicities = $merge->{'ethnicities'};
+    $s .= '\textbf{Ethnicities}\\\\';
+    $s .= '\begin{tabular}{ll}';
+    foreach(sort keys %$ethnicities) {
+        $s .= $_ . '&' . $ethnicities->{$_} . "\\\\";
+    }
+    $s .= '\end{tabular}\\';
 
+    my $is_quant = $self->split_dataset();
 
     $s .= '\subsection{Hardy-Weinberg}';
     my $fdr_thres = '10$^{\text{-' . ($hwe->{'threshold'} + 1) . '}}$';
 
-    if($bad->{'final-controls'} == 0) {
+    if($bad->{'final-controls'} == 0 && $is_quant == 0) {
         $s .= 'Hardy-Weinberg tests were skipped because no control samples are available.';
     } else {
+        if($is_quant == 1 && $bad->{'final-controls'} == 0) {
+            $s .= "\\begin{note}The dataset uses quantitative traits and no controls were defined. All samples of ethnicity $ethnicity are used for HWE analysis.\\\\";
+        } else {
+            $s .= "\\begin{note}All controls of ethnicity $ethnicity are be used for HWE analysis.\\\\";
+        }
         #        my $fdr_thres =        #$s .= 'Variants were tested for Hardy-Weinberg-Equilibrium, corrected for false discovery rates with a threshold of ' . $fdr_thres . ' (Benjamini and Hochberg, 1995). ';
         # $s .= $hwe->{'all-count'} . ' variants where rejected from the whole collection, and ' . $hwe->{'worstbatch-count'} . ' variants when the worst-performing batch is was removed.\\\\[1em]';
         $s .= '\begin{minipage}{1\textwidth}\includegraphics[width=0.9\textwidth]{' . sanitize_img($hwe->{'worstbatch-img'}) . '}';

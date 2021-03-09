@@ -160,10 +160,10 @@ process prune {
 
 echo Using PCA SNP List file and sample outliers for variant selection
 if [ ${params.skip_snpqc} -eq 0 ]; then
-    plink --bfile "${base}" --remove !{removelist} --extract "$params.PCA_SNPList" --remove removelist --make-bed --out pruned
+    plink --bfile "${base}" --extract "$params.PCA_SNPList" --remove removelist --make-bed --out pruned
 else
     touch dummy
-    plink --bfile "${base}" --remove !{removelist} --extract "$params.PCA_SNPList" --remove dummy --make-bed --out pruned
+    plink --bfile "${base}" --extract "$params.PCA_SNPList" --remove dummy --make-bed --out pruned
 fi
 
 """
@@ -187,7 +187,7 @@ python -c 'from SampleQCI_helpers import *; write_snps_autosomes_noLDRegions_noA
 # take intermediate.snplist and keep only those listed in include_variants
 grep -F -f include_variants intermediate.snplist >extract-snplist
 
-plink -bfile "${base}" --extract extract-snplist --make-bed --out "${prefix}pruned"
+plink --bfile "${base}" --remove removelist --extract extract-snplist --make-bed --out "${prefix}pruned"
 """
     }
 }
