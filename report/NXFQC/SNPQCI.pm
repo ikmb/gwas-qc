@@ -243,30 +243,33 @@ sub build_report_chunk {
             $s .= $merge->{'multiallelics'} . " variants were removed that would present 3 or more alleles after the dataset merge. ";
         }
     } else {
-        $s .= 'Only one input dataset is specified, dataset merge has been skipped. ';
+        $s .= 'Only one input dataset is specified, dataset merge has been skipped. \\\\\\textbf{General Stats}';
     }
     $s .= '\\\\';
     $s .= $merge->{'info'};
     my $ethnicities = $merge->{'ethnicities'};
-    $s .= '\textbf{Ethnicities}\\\\';
-    $s .= '\begin{tabular}{ll}';
+    $s .= '\\\\\\textbf{Ethnicities}\\\\';
+    $s .= '\\begin{tabular}{ll}';
     foreach(sort keys %$ethnicities) {
         $s .= $_ . '&' . $ethnicities->{$_} . "\\\\";
     }
-    $s .= '\end{tabular}\\';
+    $s .= '\\end{tabular}\\\\';
+
+    my @sorted = sort { $b <=> $a } keys %$ethnicities;
+    my $ethnicity = $ethnicities->{$sorted[-1]};
 
     my $is_quant = $self->split_dataset();
 
-    $s .= '\subsection{Hardy-Weinberg}';
+    $s .= '\\subsection{Hardy-Weinberg}';
     my $fdr_thres = '10$^{\text{-' . ($hwe->{'threshold'} + 1) . '}}$';
 
     if($bad->{'final-controls'} == 0 && $is_quant == 0) {
         $s .= 'Hardy-Weinberg tests were skipped because no control samples are available.';
     } else {
         if($is_quant == 1 && $bad->{'final-controls'} == 0) {
-            $s .= "\\begin{note}The dataset uses quantitative traits and no controls were defined. All samples of ethnicity $ethnicity are used for HWE analysis.\\\\";
+            $s .= "\\begin{note}The dataset uses quantitative traits and no controls were defined. All samples of ethnicity $ethnicity were used for HWE analysis.\\end{note}";
         } else {
-            $s .= "\\begin{note}All controls of ethnicity $ethnicity are be used for HWE analysis.\\\\";
+            $s .= "\\begin{note}All controls of ethnicity $ethnicity were used for HWE analysis.\\end{note}";
         }
         #        my $fdr_thres =        #$s .= 'Variants were tested for Hardy-Weinberg-Equilibrium, corrected for false discovery rates with a threshold of ' . $fdr_thres . ' (Benjamini and Hochberg, 1995). ';
         # $s .= $hwe->{'all-count'} . ' variants where rejected from the whole collection, and ' . $hwe->{'worstbatch-count'} . ' variants when the worst-performing batch is was removed.\\\\[1em]';
