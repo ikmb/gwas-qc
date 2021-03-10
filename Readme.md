@@ -15,8 +15,9 @@ Note that no separate installation of the pipeline software is necessary. During
 1. Get the example dataset: https://raw.githubusercontent.com/ikmb/gwas-qc/master/example.tar.gz
    - Note that the example also contains files that will not be used by the QC, but for later marker association testing
    - The example dataset is a subset of the 1000 Genomes Project, using 2504 samples with randomized sex and phenotype, and 50,000 randomly-selected variants
-3. Unpack it in your home folder: `tar xvaf example.tar.gz -C $HOME; cd $HOME/example`
-4. Launch the pipeline: `nextflow run -c pipeline.config ikmb/gwas-qc`
+2. Unpack it in your home folder: `tar xvaf example.tar.gz -C $HOME; cd $HOME/example`
+3. Launch the pipeline: `nextflow run -c pipeline.config ikmb/gwas-qc`
+   - If you run the pipeline for the very first time, Nextflow will try to download our image. Depending on your internet connection, it might take a while to download 13 GB. If your head node or compute nodes do not have internet connection, you will need to acquire the images yourself. Please take a look at the respective section [Shared Singularity Cache](#shared-singularity-cache).
 5. (optional) use the QC output directly as input to the [Association Testing Pipeline](https://github.com/ikmb/gwas-assoc)
 
 The pipeline output and reports will be written to the `output` directory.
@@ -118,6 +119,14 @@ singularity.cacheDir = '/some/shared/place/singularity'
 ```
 Note that the directory must be accessible from all compute nodes.
 
+If your head node or compute nodes have restricted internet access, you need to manually acquire the images. This can be done as follows:
+```
+# the path under singularity.cacheDir, see above
+cd /some/shared/place/singularity
+singularity pull jkaessens-ikmb-gwas-qc-assoc.sif library://jkaessens/ikmb-gwas-qc-assoc
+singularity pull saige-0.43.2.sif docker://wzhou88/saige:0.43.2
+```
+
 ### HPC Resources and Job Queues
 
 By default, all processes are launched on the computer where the QC is started. This is usually not appropriate on HPC login nodes where jobs should be sheduled on different nodes. Nextflow provides support for a broad range of job submission systems, such as SLURM, SGE or PBS/Torque. Please review the [Nextflow documenation on compute resources](https://www.nextflow.io/docs/latest/executor.html).
@@ -163,7 +172,7 @@ For optimal configuration on the UKSH medcluster, perform the following configur
 Create or change your `$HOME/.nextflow/config` file:
 ```
 // use pre-populated singularity image cache
-singularity.cacheDir = "/work_ifs/sukmb388/singularity-cache"
+singularity.cacheDir = "/work_ifs/sukmb113/singularity-cache"
 
 // bind /work_ifs folders. If you need more than $HOME and work_ifs, add another "-B /somewhere" switch.
 singularity.runOptions = "-B /work_ifs"
@@ -185,7 +194,7 @@ Before launching the pipeline, please assure that the proper modules are loaded:
 
 MIT License
 
-Copyright (c) 2020 Institute of Clinical Molecular Biology
+Copyright (c) 2020-2021 Institute of Clinical Molecular Biology
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
