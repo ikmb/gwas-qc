@@ -595,6 +595,11 @@ case "!{chrom}" in
         if [ -f "$TARGET".PAR2.tmp.vcf.gz ]; then
             FILEPAR2="$TARGET".PAR2.tmp.vcf.gz
         fi
+
+        # No chromosome 23 at all? We're done here.
+        if [ "$FILEPAR1$FILENONPAR$FILEPAR2" == "" ]; then
+            exit 0
+        fi
         bcftools concat $FILEPAR1 $FILENONPAR $FILEPAR2 -Oz -o "$TARGET".tmp.vcf.gz
         rm -f $FILEPAR1 $FILENONPAR $FILEPAR2
         ;;

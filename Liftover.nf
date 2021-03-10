@@ -107,6 +107,9 @@ case "!{chrom}" in
         if [ -f 23_PAR2"$INFIX".vcf ]; then
             FILEPAR2=23_PAR2"$INFIX".vcf
         fi
+        if [ "$FILENONPAR$FILEPAR1$FILEPAR2" == "" ]; then
+            exit 0
+        fi
         bcftools concat $FILEPAR1 $FILENONPAR $FILEPAR2 -Ov -o !{chrom}"$INFIX".vcf
         rm -f $FILEPAR1 $FILENONPAR $FILEPAR2
         ;;
