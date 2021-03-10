@@ -199,22 +199,15 @@ my $logtarget = "Rs-!{params.batch_name}.RsTranslation.log";
 
 my $scratch_dir = $ENV{'TMPDIR'};
 
-# print "Copying database to $scratch_dir}...\\n";
-
 my $variant_db = "!{params.variant_annotation_db}";
 my $db_in_scratch = 0;
 
-if(copy("!{params.variant_annotation_db}", "$scratch_dir/annotation.sqlite") == 0) {
-	print "Could not copy annotation DB, using remote DB instead. This will take a long time.\\n";
-	# Maybe copy() failed half-way through, so better unlink
-	unlink("$scratch_dir/annotation.sqlite");
-} else {
-	$variant_db = "$scratch_dir/annotation.sqlite";
-	print "Copied annotation database to local scratch.\\n";
-	$db_in_scratch = 1;
-}
+# my $db_file = DBI->connect("dbi:SQLite:dbname=$variant_db", "", "", { sqlite_open_flags => SQLITE_OPEN_READONLY });
+print "Loading ${variant_db}...\n";
+my $db = DBI->connect("dbi:SQLite:dbname=:memory","","");
+$db->sqlite_backup_from_file($variant_db);
+print "Done loading.\n";
 
-my $db = DBI->connect("dbi:SQLite:dbname=$variant_db", "", "", { sqlite_open_flags => SQLITE_OPEN_READONLY });
 my $query_plus = $db->prepare('SELECT name FROM annotation WHERE chrom=?1 AND position=?2 AND ((strand="+" AND alleleA=?3 AND alleleB=?4) OR (strand="+" AND alleleB=?3 AND alleleA=?4) OR (strand="-" AND alleleA=?5 AND alleleB=?6) OR (strand="-" AND alleleB=?5 AND alleleA=?6))');
 
 my $query_minus = $db->prepare('SELECT name FROM annotation WHERE chrom=?1 AND position=?2 AND ((strand="+" AND alleleA=?5 AND alleleB=?6) OR (strand="+" AND alleleB=?5 AND alleleA=?6) OR (strand="-" AND alleleA=?3 AND alleleB=?4) OR (strand="-" AND alleleB=?3 AND alleleA=?4))');
