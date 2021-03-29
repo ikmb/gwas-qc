@@ -25,12 +25,12 @@ The pipeline output and reports will be written to the `output` directory.
 
 In most cases, the example configuration consisting of three files, `QC.config`, `dataset.config` and `pipeline.config` can be used for your own dataset with only minor changes. The file `pipeline.config` describes extrinsic parameters, i.e. where your input files are, etc. The file `dataset.config` contains dataset-specific information, i.e. the target name of the dataset, the expected diagnoses and various configurable threshold parameters to the QC process. The last file, `QC.config`, configures the runtime parameters such as allocated memory on HPC clusters, wallclock time allowance. To prepare your own dataset, perform the following steps:
 
-1. Create a new directory to host your configuration and results
-2. Copy the aforementioned configuration files to your newly-created directory
+1. Create a new directory to host your configuration and results.
+2. Copy the aforementioned configuration files to your newly-created directory.
 3. Adjust the names and locations of datasets and config files in your `pipeline.config`. Note that absolute path names are required, relative names are not supported.
 4. Change the items `collection_name` and `allowed_diagnoses` in your dataset.config according to your data. The collection name is the name prefix that will be used for output files and is arbitrary, as long as it would be a valid filename. The `allowed_diagnoses` key is used to specify which samples to filter based on specified diseases in case you have a multi-disease dataset. Disease names are arbitrary but should not contain whitespaces.
 5. Create individual annotations (see below) for your dataset and place it among your source files. If your source files are named `MyGWAS.bim/bed/fam`, the annotations are expected to be in `MyGWAS_individuals_annotation.txt`. The entire pipeline (QC module and association module) works for binary as well as quantitative traits. For a QC based on quantitative traits, in the PLINK input Fam file, only the 6th column must be specified as a quantitative trait (for more information, see also http://zzz.bwh.harvard.edu/plink/data.shtml#ped).
-6. Run the pipeline with `nextflow run -c pipeline.config ikmb/gwas-qc`
+6. Run the pipeline with `nextflow run -c pipeline.config ikmb/gwas-qc`.
 
 ### Individual Annotations
 
@@ -47,10 +47,10 @@ HG00102	    HG00102	        0	        0	        2	2	        1000G	European	     
 
 * familyID, individualID, paternalID, maternalID: can be copied from the Plink FAM file. The `individualID` must be unique. `paternalID` and `maternalID` are required but are currently not used.
 * sex, phenotype: same encoding as in the FAM file. For sex, 1/2 is male/female and for phenotype, 1/2 is control/case.
-* batch: used by principal component analysis to find batch effects. Can be set to the same value for all samples if you only have one batch
+* batch: used by principal component analysis to find batch effects. Can be set to the same value for all samples if you only have one batch.
 * ethnicity_predicted: used to provide a reference frame for PCA plots. Based on the numerically most frequently specified ethnicity in column "ethnicity_predicted" the HWE test is performed only for controls of that ethnicity (or for all samples with that ethnicity if it is a quantitative trait).
-* diagnosis: if the `phenotype` is 1, this should be control. Otherwise, pick a disease name for the cases. This is used in PCA effect analysis and diagnosis filtering (see "How to use")
-* country: the probably self-reported origin of the sample. Is used in PCA to show batch effects
+* diagnosis: if the `phenotype` is 1, this should be control. Otherwise, pick a disease name for the cases. This is used in PCA effect analysis and diagnosis filtering (see "How to use").
+* country: the probably self-reported origin of the sample. Is used in PCA to show batch effects.
 
 Note that empty lines or comment lines are currently not supported.
 
