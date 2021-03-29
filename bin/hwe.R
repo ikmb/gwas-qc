@@ -9,6 +9,8 @@ dataset <- read.plink(bed=paste(basename,"bed",sep="."),
                       bim=paste(basename,"bim",sep="."),
                       fam=paste(basename,"fam",sep="."))
 annotation  <- read.csv(args[2], sep=" ", header=T)
+# sort by sample ID
+annotation_s <- annotation[order(annotation[,2]),]
 outfile = args[3]
 ethnicity = args[4]
 
@@ -59,7 +61,10 @@ hwe <-function(x, annotation){
 }
 
 genotypes = as(dataset$genotypes, "numeric")
-out <- t(apply(genotypes, 2, hwe, annotation))
+# sort by sample ID
+genotypes_s <- genotypes[order(rownames(genotypes)),]
+# for a correct association of the samples from the dataset to the sample in the annotations file, we apply the test on the sorted matrices:
+out <- t(apply(genotypes_s, 2, hwe, annotation_s))
 out <- out[,-1]
 if(file.exists(outfile)) {
    file.remove(outfile)
