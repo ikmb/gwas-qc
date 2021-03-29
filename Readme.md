@@ -13,11 +13,11 @@ Note that no separate installation of the pipeline software is necessary. During
 ## Quick Start
 
 1. Get the example dataset: https://raw.githubusercontent.com/ikmb/gwas-qc/master/example.tar.gz
-   - Note that the example also contains files that will not be used by the QC, but for later marker association testing
-   - The example dataset is a subset of the 1000 Genomes Project, using 2504 samples with randomized sex and phenotype, and 50,000 randomly-selected variants
+   - Note, that the example also contains files that will not be used by the QC, but for later marker association testing.
+   - The example dataset is a subset of the 1000 Genomes Project, using 2504 samples with randomized sex and phenotype, and 50,000 randomly-selected variants.
 3. Unpack it in your home folder: `tar xvaf example.tar.gz -C $HOME; cd $HOME/example`
 4. Launch the pipeline: `nextflow run -c pipeline.config ikmb/gwas-qc`
-5. (optional) use the QC output directly as input to the [Association Testing Pipeline](https://github.com/ikmb/gwas-assoc)
+5. (optional) Use the QC output directly as input to the [Association Testing Pipeline](https://github.com/ikmb/gwas-assoc).
 
 The pipeline output and reports will be written to the `output` directory.
 
