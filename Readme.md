@@ -8,17 +8,16 @@
 
 Please ensure that you have 16 GB RAM installed on the computer where you intend to run the pipeline (i.e. your local computer or your HPC compute nodes).
 
-Note that no separate installation of the pipeline software is necessary. During Nextflow's first launch, required scripts and containers are automatically downloaded and installed locally into a cache folder. If the current version on Github is updated, Nextflow prints a notice that the local copy is outdated. In that case, the local copy can be updated using `nextflow pull ikmb/gwas-qc`.
+Note, that no separate installation of the pipeline software is necessary. During Nextflow's first launch, required scripts and containers are automatically downloaded and installed locally into a cache folder. If the current version on Github is updated, Nextflow prints a notice that the local copy is outdated. In that case, the local copy can be updated using `nextflow pull ikmb/gwas-qc`.
 
 ## Quick Start
 
 1. Get the example dataset: https://raw.githubusercontent.com/ikmb/gwas-qc/master/example.tar.gz
-   - Note that the example also contains files that will not be used by the QC, but for later marker association testing
-   - The example dataset is a subset of the 1000 Genomes Project, using 2504 samples with randomized sex and phenotype, and 50,000 randomly-selected variants
-2. Unpack it in your home folder: `tar xvaf example.tar.gz -C $HOME; cd $HOME/example`
-3. Launch the pipeline: `nextflow run -c pipeline.config ikmb/gwas-qc`
-   - If you run the pipeline for the very first time, Nextflow will try to download our image. Depending on your internet connection, it might take a while to download 13 GB. If your head node or compute nodes do not have internet connection, you will need to acquire the images yourself. Please take a look at the respective section [Shared Singularity Cache](#shared-singularity-cache).
-5. (optional) use the QC output directly as input to the [Association Testing Pipeline](https://github.com/ikmb/gwas-assoc)
+   - Note, that the example also contains files that will not be used by the QC, but for later marker association testing.
+   - The example dataset is a subset of the 1000 Genomes Project, using 2504 samples with randomized sex and phenotype, and 50,000 randomly-selected variants.
+3. Unpack it in your home folder: `tar xvaf example.tar.gz -C $HOME; cd $HOME/example`
+4. Launch the pipeline: `nextflow run -c pipeline.config ikmb/gwas-qc`
+5. (optional) Use the QC output directly as input to the [Association Testing Pipeline](https://github.com/ikmb/gwas-assoc).
 
 The pipeline output and reports will be written to the `output` directory.
 
@@ -26,12 +25,12 @@ The pipeline output and reports will be written to the `output` directory.
 
 In most cases, the example configuration consisting of three files, `QC.config`, `dataset.config` and `pipeline.config` can be used for your own dataset with only minor changes. The file `pipeline.config` describes extrinsic parameters, i.e. where your input files are, etc. The file `dataset.config` contains dataset-specific information, i.e. the target name of the dataset, the expected diagnoses and various configurable threshold parameters to the QC process. The last file, `QC.config`, configures the runtime parameters such as allocated memory on HPC clusters, wallclock time allowance. To prepare your own dataset, perform the following steps:
 
-1. Create a new directory to host your configuration and results
-2. Copy the aforementioned configuration files to your newly-created directory
+1. Create a new directory to host your configuration and results.
+2. Copy the aforementioned configuration files to your newly-created directory.
 3. Adjust the names and locations of datasets and config files in your `pipeline.config`. Note that absolute path names are required, relative names are not supported.
 4. Change the items `collection_name` and `allowed_diagnoses` in your dataset.config according to your data. The collection name is the name prefix that will be used for output files and is arbitrary, as long as it would be a valid filename. The `allowed_diagnoses` key is used to specify which samples to filter based on specified diseases in case you have a multi-disease dataset. Disease names are arbitrary but should not contain whitespaces.
-5. Create individual annotations (see below) for your dataset and place it among your source files. If your source files are named `MyGWAS.bim/bed/fam`, the annotations are expected to be in `MyGWAS_individuals_annotation.txt`.
-6. Run the pipeline with `nextflow run -c pipeline.config ikmb/gwas-qc`
+5. Create individual annotations (see below) for your dataset and place it among your source files. If your source files are named `MyGWAS.bim/bed/fam`, the annotations are expected to be in `MyGWAS_individuals_annotation.txt`. The entire pipeline (QC module and association module) works for binary as well as quantitative traits. For a QC based on quantitative traits, in the PLINK input Fam file, only the 6th column must be specified as a quantitative trait (for more information, see also http://zzz.bwh.harvard.edu/plink/data.shtml#ped).
+6. Run the pipeline with `nextflow run -c pipeline.config ikmb/gwas-qc`.
 
 ### Individual Annotations
 
@@ -48,10 +47,10 @@ HG00102	    HG00102	        0	        0	        2	2	        1000G	European	     
 
 * familyID, individualID, paternalID, maternalID: can be copied from the Plink FAM file. The `individualID` must be unique. `paternalID` and `maternalID` are required but are currently not used.
 * sex, phenotype: same encoding as in the FAM file. For sex, 1/2 is male/female and for phenotype, 1/2 is control/case.
-* batch: used by principal component analysis to find batch effects. Can be set to the same value for all samples if you only have one batch
-* ethnicity_predicted: used to provide a reference frame for PCA plots. Currently, only `European` is supported
-* diagnosis: if the `phenotype` is 1, this should be control. Otherwise, pick a disease name for the cases. This is used in PCA effect analysis and diagnosis filtering (see "How to use")
-* country: the probably self-reported origin of the sample. Is used in PCA to show batch effects
+* batch: used by principal component analysis to find batch effects. Can be set to the same value for all samples if you only have one batch.
+* ethnicity_predicted: used to provide a reference frame for PCA plots. Based on the numerically most frequently specified ethnicity in column "ethnicity_predicted" the HWE test is performed only for controls of that ethnicity (or for all samples with that ethnicity if it is a quantitative trait).
+* diagnosis: if the `phenotype` is 1, this should be control. Otherwise, pick a disease name for the cases. This is used in PCA effect analysis and diagnosis filtering (see "How to use").
+* country: the probably self-reported origin of the sample. Is used in PCA to show batch effects.
 
 Note that empty lines or comment lines are currently not supported.
 
@@ -119,14 +118,6 @@ singularity.cacheDir = '/some/shared/place/singularity'
 ```
 Note that the directory must be accessible from all compute nodes.
 
-If your head node or compute nodes have restricted internet access, you need to manually acquire the images. This can be done as follows:
-```
-# the path under singularity.cacheDir, see above
-cd /some/shared/place/singularity
-singularity pull jkaessens-ikmb-gwas-qc-assoc.sif library://jkaessens/ikmb-gwas-qc-assoc
-singularity pull saige-0.43.2.sif docker://wzhou88/saige:0.43.2
-```
-
 ### HPC Resources and Job Queues
 
 By default, all processes are launched on the computer where the QC is started. This is usually not appropriate on HPC login nodes where jobs should be sheduled on different nodes. Nextflow provides support for a broad range of job submission systems, such as SLURM, SGE or PBS/Torque. Please review the [Nextflow documenation on compute resources](https://www.nextflow.io/docs/latest/executor.html).
@@ -139,14 +130,6 @@ executor.queueSize = 150           // optional, override max queue length for Ne
 process.clusterOptions = '--qos=someval' // optional, if you need to supply additional args to sbatch
 ```
 
-### Limited Temporary Space
-
-This pipeline makes heavy use of temporary storage. By default, Nextflow will store them in a folder called `work` within your current working directory. If your local storage is limited and/or you need to store the temporary files in a different place, you can
-- call Nextflow/the start script from a place with enough available storage. The config files do not need to be in the current working directory, or
-- set the environment variable `NXF_WORK` to a different directory. The default value is `NXF_WORK=$(pwd)/work`. A good place for this setting is your shell startup file (e.g. `.bashrc` or `.zshrc`, don't forget to `source` it or re-login to make it work). For a quick test, you can also just temporarily `export NXF_WORK=/some/other/place` before running the pipeline.
-
-The example dataset that comes with this package requires at least 620 MB temporary store space and additional 385 MB result storage.
-
 ### Mounting Paths into the Singularity Container
 
 To separate the operating system within the singularity container from the host system, Singularity only makes your home folder accessible to the insides. If your data files are stored in a directory different from your home (e.g. a shared storage `/data_storage`), you will need to explicitly make it accessible by specifying additional singularity options in your config file:
@@ -154,16 +137,8 @@ To separate the operating system within the singularity container from the host 
 singularity.runOptions = "-B /data_storage -B /some_other_storage -B /even_more_storage"
 ```
 
-### Cache Issues
 
-Some users have experienced error messages that read like:
-```
-FATAL: Cached File Hash(...) and Expected Hash(...) does not match
-```
 
-When Nextflow is run on a grid computing/cluster platform, it makes heavy and parallel use of shared storage among the involved nodes. If the filesystem that is used on this shared storage cannot guarantee cache coherency, Nextflow might run into race conditions leading to the above error. Removing the `$NXF_WORK` or `work` directory and/or moving them to a different filesystem might help with the issue. Almost all of these errors that are known to us have happened on directories that are mounted via SMB/CIFS. It has successfully and thoroughly been tested with NFS and BeeGFS.
-
-If you absolutely must use a SMB/CIFS share as the pipeline working directory, you could try setting `process.cache = 'deep'` in your `nextflow.conf` (see above for suitable config file locations). This will make Nextflow's caching behavior considerably slower.
 
 ### UKSH medcluster configuration
 
@@ -172,7 +147,7 @@ For optimal configuration on the UKSH medcluster, perform the following configur
 Create or change your `$HOME/.nextflow/config` file:
 ```
 // use pre-populated singularity image cache
-singularity.cacheDir = "/work_ifs/sukmb113/singularity-cache"
+singularity.cacheDir = "/work_ifs/sukmb388/singularity-cache"
 
 // bind /work_ifs folders. If you need more than $HOME and work_ifs, add another "-B /somewhere" switch.
 singularity.runOptions = "-B /work_ifs"
@@ -194,7 +169,7 @@ Before launching the pipeline, please assure that the proper modules are loaded:
 
 MIT License
 
-Copyright (c) 2020-2021 Institute of Clinical Molecular Biology
+Copyright (c) 2020 Institute of Clinical Molecular Biology
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
