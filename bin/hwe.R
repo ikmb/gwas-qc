@@ -31,8 +31,6 @@ hwe <-function(x, annotation){
    pval <- c()
    nsample <- c()
    i<-1
-   batch <- sort(unique(annotation$batch))
-#   print(paste("Found batches: ", batch))
    # change the ethnic group to what you want
    eth <- ethnicity # user defined variable
 
@@ -63,6 +61,8 @@ hwe <-function(x, annotation){
 genotypes = as(dataset$genotypes, "numeric")
 # sort by sample ID
 genotypes_s <- genotypes[order(rownames(genotypes)),]
+batch <- sort(unique(annotation$batch))
+#   print(paste("Found batches: ", batch))
 # for a correct association of the samples from the dataset to the sample in the annotations file, we apply the test on the sorted matrices:
 out <- t(apply(genotypes_s, 2, hwe, annotation_s))
 out <- out[,-1]
