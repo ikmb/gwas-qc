@@ -8,6 +8,12 @@
 
 Please ensure that you have 16 GB RAM installed on the computer where you intend to run the pipeline (i.e. your local computer or your HPC compute nodes).
 
+We recommend to set the environment variable `NXF_WORK` to point to a directory with sufficient disk space available:
+```
+export NXF_WORK=/dir/with/more/available/space
+```
+This setting can also be set permanently in your `$HOME/.bashrc`.
+
 Note, that no separate installation of the pipeline software is necessary. During Nextflow's first launch, required scripts and containers are automatically downloaded and installed locally into a cache folder. If the current version on Github is updated, Nextflow prints a notice that the local copy is outdated. In that case, the local copy can be updated using `nextflow pull ikmb/gwas-qc`.
 
 ## Quick Start
