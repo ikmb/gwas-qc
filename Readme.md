@@ -6,15 +6,11 @@
 - Singularity 3.4 or higher
 - A to-be-QCed dataset in Plink format (bim/bed/fam). You can use the included example for test runs.
 
-Please ensure that you have 16 GB RAM installed on the computer where you intend to run the pipeline (i.e. your local computer or your HPC compute nodes).
+Please ensure that you have 16 GB RAM installed on the computer where you intend to run the pipeline, and have at least 1.5 GB available hard disk space for the example dataset. For larger datasets, consider setting a location for temporary files (see [Limited Temporary Space](#limited-temporary-space)).
 
-We recommend to set the environment variable `NXF_WORK` to point to a directory with sufficient disk space available:
-```
-export NXF_WORK=/dir/with/more/available/space
-```
-This setting can also be set permanently in your `$HOME/.bashrc` (see [Limited Temporary Space](#limited-temporary-space)) .
+Typically, users would like to run the tool on an HPC instead of a single local computer. For local testing, no further configuration needs to be done (proceed to [Quick Start](#quick-start)). For HPC environments, please consult the [Advanced Configuration](#advanced-configuration) section. At the very least, consider setting up your batch scheduler and temporary space location ([Limited Temporary Space](#limited-temporary-space))
 
-Note, that no separate installation of the pipeline software is necessary. During Nextflow's first launch, required scripts and containers are automatically downloaded and installed locally into a cache folder. If the current version on Github is updated, Nextflow prints a notice that the local copy is outdated. In that case, the local copy can be updated using `nextflow pull ikmb/gwas-qc`.
+Note, that no separate installation of the pipeline software is necessary. During Nextflow's first launch, required scripts and containers are automatically downloaded and installed locally into a cache folder. If your HPC cluster has limited Internet connectivity, you might need to download some files manually (see [Shared Singularity Cache](#shared-singularity-cache)). If the current version on Github is updated, Nextflow prints a notice that the local copy is outdated. In that case, the local copy can be updated using `nextflow pull ikmb/gwas-qc`.
 
 ## Quick Start
 
@@ -145,7 +141,7 @@ The example dataset that comes with this package requires at least 620 MB tempor
 
 By default, all processes are launched on the computer where the QC is started. This is usually not appropriate on HPC login nodes where jobs should be sheduled on different nodes. Nextflow provides support for a broad range of job submission systems, such as SLURM, SGE or PBS/Torque. Please review the [Nextflow documenation on compute resources](https://www.nextflow.io/docs/latest/executor.html).
 
-For example, if you intend to use a SLURM environment, place the following code in your config (see "Shared Singularity Cache"):
+For example, if you intend to use a SLURM environment, place the following code in your config (see [Local and Side-wide Configuration](#local-and-side-wide-configuration)):
 ```
 process.executor = "slurm"
 executor.queue = "partition-name"  // optional
