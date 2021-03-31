@@ -158,9 +158,11 @@ process hwe_definetti_preqc {
     file is_quantitative from is_quant_preqc
     file indels from preqc_hwe_indels
   output:
-    file "${params.collection_name}_controls_DeFinetti.jpg"
-    file "${params.collection_name}_cases_DeFinetti.jpg"
-    file "${params.collection_name}_cases_controls_DeFinetti.jpg"
+    file ("${params.collection_name}_controls_DeFinetti.jpg") optional true
+    file ("${params.collection_name}_cases_DeFinetti.jpg") optional true
+    file ("${params.collection_name}_cases_controls_DeFinetti.jpg") optional true
+    file ("${params.collection_name}_DeFinetti.jpg") optional true
+    
     file "${params.collection_name}_hardy.hwe"
     file "${params.collection_name}_hardy.log"
 
@@ -499,7 +501,8 @@ process hwe_definetti_qci {
 
     output:
     file prefix+".hwe"
-    file prefix+"*_DeFinetti.jpg"
+    file (prefix+"_{controls,cases,cases_controls}_DeFinetti.jpg") optional true
+    file (prefix+"_DeFinetti.jpg") optional true
     file prefix+".log"
 
 """
