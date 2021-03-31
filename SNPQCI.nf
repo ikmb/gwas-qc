@@ -16,6 +16,8 @@ hwe_script = file("${workflow.projectDir}/bin/hwe.R")
 // Lots of indirection layers require lots of backslash escaping
 individuals_annotation = file(params.individuals_annotation)
 definetti_r = file(SCRIPT_DIR + "/DeFinetti_hardy.r")
+definetti_quant_r = file(SCRIPT_DIR + "/DeFinetti_hardy_QuantTrait.r")
+
 //autosomes = file(ANNOTATION_DIR + "/" + params.chip_build + "/" + ChipDefinitions.Producer(params.chip_producer) + "/" + ChipDefinitions.RsAutosomes(params.chip_version))
 draw_fdr = file("${workflow.projectDir}/bin/SNP_QCI_draw_FDR.r")
 draw_fdr_allbatches = file("${workflow.projectDir}/bin/SNP_QCI_draw_FDR_Fail_allbatches.r")
@@ -101,38 +103,6 @@ gawk 'NR>1 { ethn[$8] += 1 } END { for(key in ethn) { print ethn[key] " " key } 
 }
 
 /*
- Generate HWE tables and draw DeFinetti plots of the whole data set
- */
-process hwe_definetti_preqc {
-  tag "${params.collection_name}"
-  publishDir params.snpqci_dir ?: '.', mode: 'copy', overwrite: true
-
-  input:
-    file definetti_r
-    file merged_bim
-    file merged_bed
-    file merged_fam
-    file indels from preqc_hwe_indels
-  output:
-    file "${params.collection_name}_controls_DeFinetti.jpg"
-    file "${params.collection_name}_cases_DeFinetti.jpg"
-    file "${params.collection_name}_cases_controls_DeFinetti.jpg"
-    file "${params.collection_name}_hardy.hwe"
-    file "${params.collection_name}_hardy.log"
-
-"""
-    module load IKMB
-    module load Plink/1.9
-MEM=${task.memory.toMega()-1000}
-
-#plink --memory \$MEM --bfile ${merged_bim.baseName} --exclude ${indels} --make-bed --out no-indels
-#plink --memory \$MEM --bfile no-indels --hardy --out ${params.collection_name}_hardy --hwe 0.0 --chr 1-22 --allow-no-sex
-plink --memory \$MEM --bfile ${merged_bim.baseName} --exclude ${indels} --hardy --out ${params.collection_name}_hardy --hwe 0.0 --chr 1-22 --allow-no-sex
-R --slave --args ${params.collection_name}_hardy.hwe ${params.collection_name}_controls_DeFinetti ${params.collection_name}_cases_DeFinetti ${params.collection_name}_cases_controls_DeFinetti <$definetti_r
-"""
-}
-
-/*
  Split the data set into 1000-SNP chunks so they can be evaluated in parallel.
  */
 
@@ -147,7 +117,7 @@ input:
 
 output:
   file 'chunk_*' into to_calc_hwe
-
+  file 'is_quantitative.txt' into is_quant_preqc, is_quant_postqc
 shell:
 '''
   CONTROLS=$(awk '{if($9=="Control") print}' "!{individuals_annotation}"| wc -l)
@@ -170,6 +140,46 @@ shell:
     touch chunk_00000
   fi
 '''
+}
+
+/*
+ Generate HWE tables and draw DeFinetti plots of the whole data set
+ */
+process hwe_definetti_preqc {
+  tag "${params.collection_name}"
+  publishDir params.snpqci_dir ?: '.', mode: 'copy', overwrite: true
+
+  input:
+    file definetti_r
+    file definetti_quant_r
+    file merged_bim
+    file merged_bed
+    file merged_fam
+    file is_quantitative from is_quant_preqc
+    file indels from preqc_hwe_indels
+  output:
+    file "${params.collection_name}_controls_DeFinetti.jpg"
+    file "${params.collection_name}_cases_DeFinetti.jpg"
+    file "${params.collection_name}_cases_controls_DeFinetti.jpg"
+    file "${params.collection_name}_hardy.hwe"
+    file "${params.collection_name}_hardy.log"
+
+"""
+    module load IKMB
+    module load Plink/1.9
+MEM=${task.memory.toMega()-1000}
+
+#plink --memory \$MEM --bfile ${merged_bim.baseName} --exclude ${indels} --make-bed --out no-indels
+#plink --memory \$MEM --bfile no-indels --hardy --out ${params.collection_name}_hardy --hwe 0.0 --chr 1-22 --allow-no-sex
+plink --memory \$MEM --bfile ${merged_bim.baseName} --exclude ${indels} --hardy --out ${params.collection_name}_hardy --hwe 0.0 --chr 1-22 --allow-no-sex
+
+if [ "\$(cat ${is_quantitative})" == "0" ]; then
+    R --slave --args ${params.collection_name}_hardy.hwe ${params.collection_name}_controls_DeFinetti ${params.collection_name}_cases_DeFinetti ${params.collection_name}_cases_controls_DeFinetti <$definetti_r
+else
+    R --slave --args ${params.collection_name}_hardy.hwe ${params.collection_name}_DeFinetti <$definetti_quant_r
+fi
+
+"""
 }
 
 
@@ -483,11 +493,13 @@ process hwe_definetti_qci {
     input:
     file new_plink from draw_definetti_after
     file definetti_r
+    file definetti_quant_r
+    file is_quantitative from is_quant_postqc
     file indels from postqc_hwe_indels
 
     output:
     file prefix+".hwe"
-    file prefix+"_{cases,controls,cases_controls}_DeFinetti.jpg"
+    file prefix+"*_DeFinetti.jpg"
     file prefix+".log"
 
 """
@@ -501,7 +513,13 @@ MEM=${task.memory.toMega()-1000}
 
 plink --bfile "${new File(new_plink[0].toString()).getBaseName()}" --exclude ${indels} --hardy --hwe 0.0 --chr 1-22 --allow-no-sex --out ${prefix} --memory \$MEM
 
-R --slave --args ${prefix}.hwe ${prefix}_controls_DeFinetti ${prefix}_cases_DeFinetti ${prefix}_cases_controls_DeFinetti <"$definetti_r"
+
+if [ "\$(cat ${is_quantitative})" == "0" ]; then
+    R --slave --args ${prefix}.hwe ${params.collection_name}_controls_DeFinetti ${params.collection_name}_cases_DeFinetti ${params.collection_name}_cases_controls_DeFinetti <$definetti_r
+else
+    R --slave --args ${prefix}.hwe ${params.collection_name}_DeFinetti <$definetti_quant_r
+fi
+
 """
 }
 

@@ -100,6 +100,9 @@ sub definetti_preqc {
       $dat->{'cases'} = "$dir/$2.jpg";
       $dat->{'cases/controls'} = "$dir/$3.jpg";
     }
+    if(/R --slave.*hwe (\S+) </) {
+        $dat->{'quant'} = "$dir/$1.jpg";
+    }
   }
   $dat;
 }
@@ -115,6 +118,10 @@ sub definetti_postqc {
       $dat->{'controls'} = "$dir/$1.jpg";
       $dat->{'cases'} = "$dir/$2.jpg";
       $dat->{'cases/controls'} = "$dir/$3.jpg";
+    }
+
+    if(/R --slave.*hwe (\S+) </) {
+        $dat->{'quant'} = "$dir/$1.jpg";
     }
   }
   $dat;
@@ -301,12 +308,18 @@ sub build_report_chunk {
     my $def_pre = $self->definetti_preqc();
     my $def_post = $self->definetti_postqc();
     $s .= '\subsection{DeFinetti Diagrams}';
-    $s .= '\begin{minipage}{0.5\textwidth}{\centering \textbf{Pre-QC}\\\\}\includegraphics[width=\textwidth]{' . sanitize_img($def_pre->{'controls'}) . '}\end{minipage}';
-    $s .= '\begin{minipage}{0.5\textwidth}{\centering \textbf{Post-QC}\\\\}\includegraphics[width=\textwidth]{' . sanitize_img($def_post->{'controls'}) . '}\end{minipage}\\\\';
-    $s .= '\begin{minipage}{0.5\textwidth}\includegraphics[width=\textwidth]{' . sanitize_img($def_pre->{'cases'}) . '}\end{minipage}';
-    $s .= '\begin{minipage}{0.5\textwidth}\includegraphics[width=\textwidth]{' . sanitize_img($def_post->{'cases'}) . '}\end{minipage}\\\\';
-    $s .= '\begin{minipage}{0.5\textwidth}\includegraphics[width=\textwidth]{' . sanitize_img($def_pre->{'cases/controls'}) . '}\end{minipage}';
-    $s .= '\begin{minipage}{0.5\textwidth}\includegraphics[width=\textwidth]{' . sanitize_img($def_post->{'cases/controls'}) . '}\end{minipage}\\\\';
+    if(!$is_quant) {
+        $s .= '\begin{minipage}{0.5\textwidth}{\centering \textbf{Pre-QC}\\\\}\includegraphics[width=\textwidth]{' . sanitize_img($def_pre->{'controls'}) . '}\end{minipage}';
+        $s .= '\begin{minipage}{0.5\textwidth}{\centering \textbf{Post-QC}\\\\}\includegraphics[width=\textwidth]{' . sanitize_img($def_post->{'controls'}) . '}\end{minipage}\\\\';
+        $s .= '\begin{minipage}{0.5\textwidth}\includegraphics[width=\textwidth]{' . sanitize_img($def_pre->{'cases'}) . '}\end{minipage}';
+        $s .= '\begin{minipage}{0.5\textwidth}\includegraphics[width=\textwidth]{' . sanitize_img($def_post->{'cases'}) . '}\end{minipage}\\\\';
+        $s .= '\begin{minipage}{0.5\textwidth}\includegraphics[width=\textwidth]{' . sanitize_img($def_pre->{'cases/controls'}) . '}\end{minipage}';
+        $s .= '\begin{minipage}{0.5\textwidth}\includegraphics[width=\textwidth]{' . sanitize_img($def_post->{'cases/controls'}) . '}\end{minipage}\\\\';
+    } else {
+
+        $s .= '\begin{minipage}{0.5\textwidth}{\centering \textbf{Pre-QC}\\\\}\includegraphics[width=\textwidth]{' . sanitize_img($def_pre->{'quant'}) . '}\end{minipage}';
+        $s .= '\begin{minipage}{0.5\textwidth}{\centering \textbf{Post-QC}\\\\}\includegraphics[width=\textwidth]{' . sanitize_img($def_post->{'quant'}) . '}\end{minipage}\\\\';
+    }
 
     $s .= '\subsection{Phase Summary}';
     $s .= $bad->{'info'};
