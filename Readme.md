@@ -12,7 +12,7 @@ We recommend to set the environment variable `NXF_WORK` to point to a directory 
 ```
 export NXF_WORK=/dir/with/more/available/space
 ```
-This setting can also be set permanently in your `$HOME/.bashrc`.
+This setting can also be set permanently in your `$HOME/.bashrc` (see [Limited Temporary Space](#limited-temporary-space)) .
 
 Note, that no separate installation of the pipeline software is necessary. During Nextflow's first launch, required scripts and containers are automatically downloaded and installed locally into a cache folder. If the current version on Github is updated, Nextflow prints a notice that the local copy is outdated. In that case, the local copy can be updated using `nextflow pull ikmb/gwas-qc`.
 
@@ -124,6 +124,23 @@ singularity.cacheDir = '/some/shared/place/singularity'
 ```
 Note that the directory must be accessible from all compute nodes.
 
+If your head node or compute nodes have restricted internet access, you need to manually acquire the images. This can be done as follows:
+```
+# the path under singularity.cacheDir, see above
+cd /some/shared/place/singularity
+singularity pull jkaessens-ikmb-gwas-qc-assoc.sif library://jkaessens/ikmb-gwas-qc-assoc
+singularity pull saige-0.43.2.sif docker://wzhou88/saige:0.43.2
+```
+
+### Limited Temporary Space
+
+This pipeline makes heavy use of temporary storage. By default, Nextflow will store them in a folder called `work` within your current working directory. If your local storage is limited and/or you need to store the temporary files in a different place, you can
+- call Nextflow/the start script from a place with enough available storage. The config files do not need to be in the current working directory, or
+- set the environment variable `NXF_WORK` to a different directory. The default value is `NXF_WORK=$(pwd)/work`. A good place for this setting is your shell startup file (e.g. `.bashrc` or `.zshrc`, don't forget to `source` it or re-login to make it work). For a quick test, you can also just temporarily `export NXF_WORK=/some/other/place` before running the pipeline.
+
+The example dataset that comes with this package requires at least 620 MB temporary store space and additional 385 MB result storage.
+
+
 ### HPC Resources and Job Queues
 
 By default, all processes are launched on the computer where the QC is started. This is usually not appropriate on HPC login nodes where jobs should be sheduled on different nodes. Nextflow provides support for a broad range of job submission systems, such as SLURM, SGE or PBS/Torque. Please review the [Nextflow documenation on compute resources](https://www.nextflow.io/docs/latest/executor.html).
@@ -143,7 +160,16 @@ To separate the operating system within the singularity container from the host 
 singularity.runOptions = "-B /data_storage -B /some_other_storage -B /even_more_storage"
 ```
 
+### Cache Issues
 
+Some users have experienced error messages that read like:
+```
+FATAL: Cached File Hash(...) and Expected Hash(...) does not match
+```
+
+When Nextflow is run on a grid computing/cluster platform, it makes heavy and parallel use of shared storage among the involved nodes. If the filesystem that is used on this shared storage cannot guarantee cache coherency, Nextflow might run into race conditions leading to the above error. Removing the `$NXF_WORK` or `work` directory and/or moving them to a different filesystem might help with the issue. Almost all of these errors that are known to us have happened on directories that are mounted via SMB/CIFS. It has successfully and thoroughly been tested with NFS and BeeGFS.
+
+If you absolutely must use a SMB/CIFS share as the pipeline working directory, you could try setting `process.cache = 'deep'` in your `nextflow.conf` (see above for suitable config file locations). This will make Nextflow's caching behavior considerably slower.
 
 
 ### UKSH medcluster configuration
@@ -175,7 +201,7 @@ Before launching the pipeline, please assure that the proper modules are loaded:
 
 MIT License
 
-Copyright (c) 2020 Institute of Clinical Molecular Biology
+Copyright (c) 2020-2021 Institute of Clinical Molecular Biology
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
