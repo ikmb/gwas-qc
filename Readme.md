@@ -1,9 +1,9 @@
 # GWAS Quality Control Pipeline User Manual
 
 ## Prerequisites
-- Nextflow: https://www.nextflow.io/
-- Java 8 or higher
-- Singularity 3.4 or higher
+- Nextflow: https://www.nextflow.io/ (must be installed in your search path, e.g. `$PATH`)
+- Java 8 or higher (must be available on all compute nodes and head node)
+- Singularity 3.4 or higher (must be available on all compute nodes)
 - A to-be-QCed dataset in Plink format (bim/bed/fam). You can use the included example for test runs.
 
 Please ensure that you have 16 GB RAM installed on the computer where you intend to run the pipeline, and have at least 1.5 GB available hard disk space for the example dataset. For larger datasets, consider setting a location for temporary files (see [Limited Temporary Space](#limited-temporary-space)).
