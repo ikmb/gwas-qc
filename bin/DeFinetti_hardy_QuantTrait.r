@@ -73,6 +73,5 @@ genos <-data.frame(geno.11 = as.numeric(genos[,1]),
                 geno.12 = as.numeric(genos[,2]),
                 geno.22 = as.numeric(genos[,3]))
 jpeg(file=paste(file.out, ".jpg", sep=""), quality=100,width=900,height=700)
-makeDefinetti(genos, label = "Controls")
+makeDefinetti(genos, label = "Quantitative trait")
 dev.off()
-

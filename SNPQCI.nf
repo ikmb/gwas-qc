@@ -178,7 +178,7 @@ plink --memory \$MEM --bfile ${merged_bim.baseName} --exclude ${indels} --hardy 
 if [ "\$(cat ${is_quantitative})" == "0" ]; then
     R --slave --args ${params.collection_name}_hardy.hwe ${params.collection_name}_controls_DeFinetti ${params.collection_name}_cases_DeFinetti ${params.collection_name}_cases_controls_DeFinetti <$definetti_r
 else
-    R --slave --args ${params.collection_name}_hardy.hwe ${params.collection_name}_DeFinetti <$definetti_quant_r
+    R --no-save --args ${params.collection_name}_hardy.hwe ${params.collection_name}_DeFinetti <$definetti_quant_r
 fi
 
 """
