@@ -250,19 +250,21 @@ sub build_report_chunk {
             $s .= $merge->{'multiallelics'} . " variants were removed that would present 3 or more alleles after the dataset merge. ";
         }
     } else {
-        $s .= 'Only one input dataset is specified, dataset merge has been skipped. \\\\\\textbf{General Stats}';
+        $s .= 'Only one input dataset is specified, dataset merge has been skipped. \\\\\\subsubsection{General Stats}';
     }
     $s .= '\\\\';
     $s .= $merge->{'info'};
     my $ethnicities = $merge->{'ethnicities'};
-    $s .= '\\\\\\textbf{Ethnicities}\\\\';
-    $s .= '\\begin{tabular}{ll}';
-    foreach(sort keys %$ethnicities) {
+    $s .= '\\\\\\subsubsection{Ethnicity Report}\\\\';
+    $s .= '\\begin{tabular}{ll}\\toprule';
+    $s .= '\textbf{Ethnicity} & \textbf{Samples}\\\\\\midrule';
+    foreach(sort {$a <=> $b} keys %$ethnicities) {
         $s .= $_ . '&' . $ethnicities->{$_} . "\\\\";
     }
+    $s .= '\\bottomrule';
     $s .= '\\end{tabular}\\\\';
 
-    my @sorted = sort { $b <=> $a } keys %$ethnicities;
+    my @sorted = sort { $a <=> $b } keys %$ethnicities;
     my $ethnicity = $ethnicities->{$sorted[-1]};
 
     my $is_quant = $self->split_dataset();
