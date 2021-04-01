@@ -204,7 +204,7 @@ my $db_in_scratch = 0;
 
 # my $db_file = DBI->connect("dbi:SQLite:dbname=$variant_db", "", "", { sqlite_open_flags => SQLITE_OPEN_READONLY });
 print "Loading ${variant_db}...\n";
-my $db = DBI->connect("dbi:SQLite:dbname=:memory","","");
+my $db = DBI->connect("dbi:SQLite:dbname=:memory:","","");
 $db->sqlite_backup_from_file($variant_db);
 print "Done loading.\n";
 
