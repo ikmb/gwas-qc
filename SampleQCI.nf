@@ -594,7 +594,7 @@ process extract_qced_samples {
 
     output:
     set file ("${dataset[0].baseName}.evec"), file ("${dataset[0].baseName}.country.evec") into for_draw_histograms_evec, for_prune_related_evec
-    file "${dataset[0].baseName}_annotation.txt" into for_draw_histograms_ann
+    file "${dataset[0].baseName}_annotation.txt" into for_draw_histograms_ann, tw_annotations
 
     shell:
     //individuals_annotation = ANNOTATION_DIR + "/${params.individuals_annotation}"
@@ -657,14 +657,36 @@ process tracy_widom_stats {
     file logfile from for_tracy_widom_stats_log
     file dataset from for_tracy_widom_stats
     file eval from for_tracy_widom_stats_eval
+    file individuals_annotation from tw_annotations
 
     output:
-    file "*.tracy_widom"
+    file ("*.tracy_widom") optional true
 
     shell:
 '''
     module load 'IKMB'
     module load 'Eigensoft/6.1.4'
+
+
+  IS_QUANT=0
+  cut -f6 "!{individuals_annotation}" | tail -n +2 | sort | uniq >phenotypes
+  while read pheno; do
+    case "$pheno" in
+        -9|0|1|2) 
+            ;;
+        *) IS_QUANT=1
+            ;;
+    esac
+  done <phenotypes
+
+  echo $IS_QUANT >is_quantitative.txt
+
+
+if [ "$IS_QUANT" == "1" ]; then
+    exit 0
+fi
+
+
 NUM_CASES=$(grep -Po '\\d+(?= are cases)' !{logfile})
 NUM_CONTROLS=$(grep -Po '\\d+(?= are controls)' !{logfile})
 echo Cases: $NUM_CASES, controls: $NUM_CONTROLS
