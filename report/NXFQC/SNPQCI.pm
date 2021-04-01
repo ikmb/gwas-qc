@@ -82,6 +82,7 @@ sub merge_datasets {
     while(<$etfh>) {
         chomp;
         my @parts = split / /;
+        print "FOUND ETHNICITY @parts. Updating hash: " . Dumper($dat) . "\n";
         $dat->{'ethnicities'}->{$parts[1]} = $parts[0];
     }
     return $dat;
@@ -242,23 +243,25 @@ sub build_report_chunk {
     my $merge = $self->merge_datasets();
 
     $s .= '\subsection{Dataset Merge}' . "%\n";
-    my @ds = $merge->{'datasets'};
-    if(@ds > 1) {
+    my @ds = @{$merge->{'datasets'}};
+    print "DATASETS: " . Dumper(@ds) . "\n DATASET COUNT: " . scalar @ds . "\n";
+    if(scalar @ds > 1) {
         $s .= 'The following datasets were merged: ' . sanitize(join(', ', @{$merge->{'datasets'}})) . '. ';
 
         if($merge->{'multiallelic'} > 0) {
             $s .= $merge->{'multiallelics'} . " variants were removed that would present 3 or more alleles after the dataset merge. ";
         }
     } else {
-        $s .= 'Only one input dataset is specified, dataset merge has been skipped. \\\\\\subsubsection{General Stats}';
+        $s .= 'Only one input dataset is specified, dataset merge has been skipped. ';
     }
+    $s .= '\subsubsection{General Stats}';
     $s .= $merge->{'info'};
     my $ethnicities = $merge->{'ethnicities'};
     $s .= '\\subsubsection{Ethnicity Report}';
     $s .= '\\begin{tabular}{ll}\\toprule';
-    $s .= '\textbf{Ethnicity} & \textbf{Samples}\\\\\midrule';
+    $s .= '\textbf{Ethnicity} & \textbf{Samples}\\\\\midrule{}';
     my @ethn_sorted;
-    foreach my $e (sort {$ethnicities->{$a} <=> $ethnicities->{$b} } keys %$ethnicities) {
+    foreach my $e (sort {$ethnicities->{$b} <=> $ethnicities->{$a} } keys %$ethnicities) {
         push(@ethn_sorted, $e);
     }
 
