@@ -73,6 +73,18 @@ sub merge_datasets {
 
     # Collect post-merge info
     $dat->{'info'} = plink_table("$dir/info.txt");
+
+    # Ethnicities
+    open my $etfh, '<', "$dir/ethnicities.txt" or die($!);
+    my $sum = 0;
+    $dat->{'ethnicities'} = {};
+
+    while(<$etfh>) {
+        chomp;
+        my @parts = split / /;
+        print "FOUND ETHNICITY @parts. Updating hash: " . Dumper($dat) . "\n";
+        $dat->{'ethnicities'}->{$parts[1]} = $parts[0];
+    }
     return $dat;
 
 }
@@ -89,6 +101,9 @@ sub definetti_preqc {
       $dat->{'cases'} = "$dir/$2.jpg";
       $dat->{'cases/controls'} = "$dir/$3.jpg";
     }
+    if(/R --no-save.*hwe (\S+) </) {
+        $dat->{'quant'} = "$dir/$1.jpg";
+    }
   }
   $dat;
 }
@@ -104,6 +119,10 @@ sub definetti_postqc {
       $dat->{'controls'} = "$dir/$1.jpg";
       $dat->{'cases'} = "$dir/$2.jpg";
       $dat->{'cases/controls'} = "$dir/$3.jpg";
+    }
+
+    if(/R --slave.*hwe (\S+) </) {
+        $dat->{'quant'} = "$dir/$1.jpg";
     }
   }
   $dat;
@@ -189,6 +208,17 @@ sub exclude_bad_variants {
   $dat;
 }
 
+sub split_dataset {
+  my $self = shift;
+  my $dir = $self->{'trace'}->{'split_dataset'};
+
+  open my $fh, '<', "$dir/is_quantitative.txt" or die($!);
+  while(<$fh>) {
+    chomp;
+    return $_;
+  }
+}
+
 sub new {
 
     my $class = shift;
@@ -213,8 +243,9 @@ sub build_report_chunk {
     my $merge = $self->merge_datasets();
 
     $s .= '\subsection{Dataset Merge}' . "%\n";
-    my @ds = $merge->{'datasets'};
-    if(@ds > 1) {
+    my @ds = @{$merge->{'datasets'}};
+    print "DATASETS: " . Dumper(@ds) . "\n DATASET COUNT: " . scalar @ds . "\n";
+    if(scalar @ds > 1) {
         $s .= 'The following datasets were merged: ' . sanitize(join(', ', @{$merge->{'datasets'}})) . '. ';
 
         if($merge->{'multiallelic'} > 0) {
@@ -223,16 +254,43 @@ sub build_report_chunk {
     } else {
         $s .= 'Only one input dataset is specified, dataset merge has been skipped. ';
     }
-    $s .= '\\\\';
+    $s .= '\subsubsection{General Stats}';
     $s .= $merge->{'info'};
+    my $ethnicities = $merge->{'ethnicities'};
+    $s .= '\\subsubsection{Ethnicity Report}';
+    $s .= '\\begin{tabular}{ll}\\toprule';
+    $s .= '\textbf{Ethnicity} & \textbf{Samples}\\\\\midrule{}';
+    my @ethn_sorted;
+    foreach my $e (sort {$ethnicities->{$b} <=> $ethnicities->{$a} } keys %$ethnicities) {
+        push(@ethn_sorted, $e);
+    }
 
+    foreach(@ethn_sorted) {
+        $s .= $_ . '&' . $ethnicities->{$_} . "\\\\";
+    }
+    #    foreach(sort {$a <=> $b} keys %$ethnicities) {
+    #    $s .= $_ . '&' . $ethnicities->{$_} . "\\\\";
+    #}
+    $s .= '\\bottomrule';
+    $s .= '\\end{tabular}\\\\';
 
-    $s .= '\subsection{Hardy-Weinberg}';
+    #my @sorted = sort { $a <=> $b } keys %$ethnicities;
+    #my $ethnicity = $ethnicities->{$sorted[-1]};
+    my $ethnicity = $ethn_sorted[0];
+
+    my $is_quant = $self->split_dataset();
+
+    $s .= '\\subsection{Hardy-Weinberg}';
     my $fdr_thres = '10$^{\text{-' . ($hwe->{'threshold'} + 1) . '}}$';
 
-    if($bad->{'final-controls'} == 0) {
+    if($bad->{'final-controls'} == 0 && $is_quant == 0) {
         $s .= 'Hardy-Weinberg tests were skipped because no control samples are available.';
     } else {
+        if($is_quant == 1 && $bad->{'final-controls'} == 0) {
+            $s .= "\\begin{note}The dataset uses quantitative traits and no controls were defined. All samples of ethnicity $ethnicity were used for HWE analysis.\\end{note}";
+        } else {
+            $s .= "\\begin{note}All controls of ethnicity $ethnicity were used for HWE analysis.\\end{note}";
+        }
         #        my $fdr_thres =        #$s .= 'Variants were tested for Hardy-Weinberg-Equilibrium, corrected for false discovery rates with a threshold of ' . $fdr_thres . ' (Benjamini and Hochberg, 1995). ';
         # $s .= $hwe->{'all-count'} . ' variants where rejected from the whole collection, and ' . $hwe->{'worstbatch-count'} . ' variants when the worst-performing batch is was removed.\\\\[1em]';
         $s .= '\begin{minipage}{1\textwidth}\includegraphics[width=0.9\textwidth]{' . sanitize_img($hwe->{'worstbatch-img'}) . '}';
@@ -263,12 +321,18 @@ sub build_report_chunk {
     my $def_pre = $self->definetti_preqc();
     my $def_post = $self->definetti_postqc();
     $s .= '\subsection{DeFinetti Diagrams}';
-    $s .= '\begin{minipage}{0.5\textwidth}{\centering \textbf{Pre-QC}\\\\}\includegraphics[width=\textwidth]{' . sanitize_img($def_pre->{'controls'}) . '}\end{minipage}';
-    $s .= '\begin{minipage}{0.5\textwidth}{\centering \textbf{Post-QC}\\\\}\includegraphics[width=\textwidth]{' . sanitize_img($def_post->{'controls'}) . '}\end{minipage}\\\\';
-    $s .= '\begin{minipage}{0.5\textwidth}\includegraphics[width=\textwidth]{' . sanitize_img($def_pre->{'cases'}) . '}\end{minipage}';
-    $s .= '\begin{minipage}{0.5\textwidth}\includegraphics[width=\textwidth]{' . sanitize_img($def_post->{'cases'}) . '}\end{minipage}\\\\';
-    $s .= '\begin{minipage}{0.5\textwidth}\includegraphics[width=\textwidth]{' . sanitize_img($def_pre->{'cases/controls'}) . '}\end{minipage}';
-    $s .= '\begin{minipage}{0.5\textwidth}\includegraphics[width=\textwidth]{' . sanitize_img($def_post->{'cases/controls'}) . '}\end{minipage}\\\\';
+    if(!$is_quant) {
+        $s .= '\begin{minipage}{0.5\textwidth}{\centering \textbf{Pre-QC}\\\\}\includegraphics[width=\textwidth]{' . sanitize_img($def_pre->{'controls'}) . '}\end{minipage}';
+        $s .= '\begin{minipage}{0.5\textwidth}{\centering \textbf{Post-QC}\\\\}\includegraphics[width=\textwidth]{' . sanitize_img($def_post->{'controls'}) . '}\end{minipage}\\\\';
+        $s .= '\begin{minipage}{0.5\textwidth}\includegraphics[width=\textwidth]{' . sanitize_img($def_pre->{'cases'}) . '}\end{minipage}';
+        $s .= '\begin{minipage}{0.5\textwidth}\includegraphics[width=\textwidth]{' . sanitize_img($def_post->{'cases'}) . '}\end{minipage}\\\\';
+        $s .= '\begin{minipage}{0.5\textwidth}\includegraphics[width=\textwidth]{' . sanitize_img($def_pre->{'cases/controls'}) . '}\end{minipage}';
+        $s .= '\begin{minipage}{0.5\textwidth}\includegraphics[width=\textwidth]{' . sanitize_img($def_post->{'cases/controls'}) . '}\end{minipage}\\\\';
+    } else {
+
+        $s .= '\begin{minipage}{0.5\textwidth}{\centering \textbf{Pre-QC}\\\\}\includegraphics[width=\textwidth]{' . sanitize_img($def_pre->{'quant'}) . '}\end{minipage}';
+        $s .= '\begin{minipage}{0.5\textwidth}{\centering \textbf{Post-QC}\\\\}\includegraphics[width=\textwidth]{' . sanitize_img($def_post->{'quant'}) . '}\end{minipage}\\\\';
+    }
 
     $s .= '\subsection{Phase Summary}';
     $s .= $bad->{'info'};

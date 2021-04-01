@@ -383,7 +383,25 @@ fi
 
 cp "!{dataset.annotation}" "!{prefix}_annotation.txt"
 
-plink --bfile "!{dataset.bed.baseName}" --test-missing --out !{prefix}_test_missingness --allow-no-sex
+  IS_QUANT=0
+  cut -f6 "!{dataset.annotation}" | tail -n +2 | sort | uniq >phenotypes
+  while read pheno; do
+    case "$pheno" in
+        -9|0|1|2) 
+            ;;
+        *) IS_QUANT=1
+            ;;
+    esac
+  done <phenotypes
+
+  echo $IS_QUANT >is_quantitative.txt
+
+if [ "$IS_QUANT" == "1" ]; then
+    touch dummy.test_missingness.dummy
+else
+    plink --bfile "!{dataset.bed.baseName}" --test-missing --out !{prefix}_test_missingness --allow-no-sex
+fi
+
 
 '''
 }

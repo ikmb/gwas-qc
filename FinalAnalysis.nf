@@ -111,18 +111,23 @@ plinkinfo.pl !{dataset.bim} !{dataset.fam} >info.txt
 
 # note that grep returns 1 if the pattern was not found, thus || true
 <!{dataset.bim} tr -s '\\t ' ' ' | cut -f2 -d' ' | grep ^unk_ >unknowns || true
-plink --bim !{dataset.bim} --bed !{dataset.bed} --fam !{dataset.fam} --exclude unknowns --make-bed --out no-unknowns
+plink --bim !{dataset.bim} --bed !{dataset.bed} --fam !{dataset.fam} --exclude unknowns --write-snplist --out no-unknowns
 
-plink --bfile no-unknowns --indep-pairwise 50 5 0.2 --out after-indep-pairwise --allow-no-sex
-plink --bfile no-unknowns --extract after-indep-pairwise.prune.in --maf 0.05 --make-bed --out after-correlated-remove --allow-no-sex
+plink --bim !{dataset.bim} --bed !{dataset.bed} --fam !{dataset.fam} --extract no-unknowns.snplist --indep-pairwise 50 5 0.2 --out after-indep-pairwise --allow-no-sex
+cat no-unknowns.snplist after-indep-pairwise.prune.in | sort | uniq >extract-for-maf
+plink --bim !{dataset.bim} --bed !{dataset.bed} --fam !{dataset.fam} --extract extract-for-maf --maf 0.05 --write-snplist --out after-correlated-remove --allow-no-sex
 mv after-indep-pairwise.prune.in "!{params.disease_data_set_prefix_release}.prune.in"
 mv after-indep-pairwise.prune.out "!{params.disease_data_set_prefix_release}.prune.out"
 mv unknowns "!{params.disease_data_set_prefix_release}.prune.out.unknown_variants"
 
-python -c 'from SampleQCI_helpers import *; write_snps_autosomes_noLDRegions_noATandGC_noIndels("no-unknowns.bim", "include-variants")'
-python -c 'from SampleQCI_helpers import *; write_snps_autosomes_noLDRegions_noIndels("no-unknowns.bim", "include-variants-with-atcg")'
-plink --bfile after-correlated-remove --extract include-variants --make-bed --out "!{prefix}" --allow-no-sex
-plink --bfile after-correlated-remove --extract include-variants-with-atcg --make-bed --out "!{prefix}_with_atcg" --allow-no-sex
+python -c 'from SampleQCI_helpers import *; write_snps_autosomes_noLDRegions_noATandGC_noIndels("!{dataset.bim}", "include-variants")'
+python -c 'from SampleQCI_helpers import *; write_snps_autosomes_noLDRegions_noIndels("!{dataset.bim}", "include-variants-with-atcg")'
+
+grep -F -f include-variants after-correlated-remove.snplist >keep-snps
+grep -F -f include-variants-with-atcg after-correlated-remove.snplist >keep-snps-with-atcg
+
+plink --bim !{dataset.bim} --bed !{dataset.bed} --fam !{dataset.fam} --extract keep-snps --make-bed --out "!{prefix}" --allow-no-sex
+plink --bim !{dataset.bim} --bed !{dataset.bed} --fam !{dataset.fam} --extract keep-snps-with-atcg --make-bed --out "!{prefix}_with_atcg" --allow-no-sex
 '''
     }
 }
@@ -387,7 +392,7 @@ process twstats_final_pruned {
 
     output:
 
-    file "*.tracy_widom"
+    file ("*.tracy_widom") optional true
 
     shell:
 
@@ -399,6 +404,26 @@ process twstats_final_pruned {
     '''
     module load 'IKMB'
     module load 'Eigensoft/6.1.4'
+
+
+  IS_QUANT=0
+  cut -f6 "!{annotation}" | tail -n +2 | sort | uniq >phenotypes
+  while read pheno; do
+    case "$pheno" in
+        -9|0|1|2) 
+            ;;
+        *) IS_QUANT=1
+            ;;
+    esac
+  done <phenotypes
+
+  echo $IS_QUANT >is_quantitative.txt
+
+if [ "$IS_QUANT" == "1" ]; then
+    exit 0
+fi
+
+
 NUM_CASES=$(grep -Po '\\d+(?= are cases)' !{dataset.log})
 NUM_CONTROLS=$(grep -Po '\\d+(?= are controls)' !{dataset.log})
 echo Cases: $NUM_CASES, controls: $NUM_CONTROLS
@@ -564,10 +589,48 @@ TARGET="!{chrom}!{infix}"
 
 # Force output in VCF-4.2 with 23 and 24 encoded as X and Y, as defined in the hg19 reference
 if [ "!{infix}" = ".noATCG" ]; then
-    /opt/plink2 --bed !{bed_noatcg} --bim !{bim_noatcg} --fam !{fam_noatcg} --chr !{chrom} --export vcf-4.2 bgz --out $TARGET.tmp || true
+    BEDFILE=!{bed_noatcg}
+    BIMFILE=!{bim_noatcg}
+    FAMFILE=!{fam_noatcg}
 else
-    /opt/plink2 --bed !{bed} --bim !{bim} --fam !{fam} --chr !{chrom} --export vcf-4.2 bgz  --out $TARGET.tmp || true
+    BEDFILE=!{bed}
+    BIMFILE=!{bim}
+    FAMFILE=!{fam}
 fi
+
+case "!{chrom}" in
+    23) 
+        /opt/plink2 --bed "$BEDFILE" --bim "$BIMFILE" --fam "$FAMFILE" --chr 23 --split-par b37 --export vcf-4.2 bgz  --out "$TARGET".nonPAR.tmp || true
+        /opt/plink2 --bed "$BEDFILE" --bim "$BIMFILE" --fam "$FAMFILE" --chr PAR1 --split-par b37 --export vcf-4.2 bgz  --out "$TARGET".PAR1.tmp || true
+        /opt/plink2 --bed "$BEDFILE" --bim "$BIMFILE" --fam "$FAMFILE" --chr PAR2 --split-par b37 --export vcf-4.2 bgz  --out "$TARGET".PAR2.tmp || true
+        FILENONPAR=
+        FILEPAR1=
+        FILEPAR2=
+        if [ -f "$TARGET".nonPAR.tmp.vcf.gz ]; then
+            FILENONPAR="$TARGET".nonPAR.tmp.vcf.gz
+        fi
+        if [ -f "$TARGET".PAR1.tmp.vcf.gz ]; then
+            FILEPAR1="$TARGET".PAR1.tmp.vcf.gz
+        fi
+        if [ -f "$TARGET".PAR2.tmp.vcf.gz ]; then
+            FILEPAR2="$TARGET".PAR2.tmp.vcf.gz
+        fi
+
+        # No chromosome 23 at all? We're done here.
+        if [ "$FILEPAR1$FILENONPAR$FILEPAR2" == "" ]; then
+            exit 0
+        fi
+        bcftools concat $FILEPAR1 $FILENONPAR $FILEPAR2 -Oz -o "$TARGET".tmp.vcf.gz
+        rm -f $FILEPAR1 $FILENONPAR $FILEPAR2
+        ;;
+    *) /opt/plink2 --bed "$BEDFILE" --bim "$BIMFILE" --fam "$FAMFILE" --chr !{chrom} --export vcf-4.2 bgz  --out "$TARGET".tmp || true ;;
+esac
+
+#if [ "!{infix}" = ".noATCG" ]; then
+#    /opt/plink2 --bed !{bed_noatcg} --bim !{bim_noatcg} --fam !{fam_noatcg} --chr !{chrom} --export vcf-4.2 bgz --out $TARGET.tmp || true
+#else
+#    /opt/plink2 --bed !{bed} --bim !{bim} --fam !{fam} --chr !{chrom} --export vcf-4.2 bgz  --out $TARGET.tmp || true
+#fi
 
 if [ ! -e ${TARGET}.tmp.vcf.gz ]; then
     :
@@ -577,7 +640,7 @@ else
 
     case "!{chrom}" in
         23) bcftools norm -m -both -N --check-ref s -f $ANNOTATION $TARGET.tmp.vcf.gz | sed 's/ID=X/ID=23/' | sed 's/^X/23/' | bgzip >$TARGET.vcf.gz ;;
-        24) bcftools norm -m -both -N --check-ref s -f $ANNOTATION $TARGET.tmp.vcf.gz | sed 's/ID=Y/ID=23/' | sed 's/^Y/24/' | bgzip >$TARGET.vcf.gz ;;
+        24) bcftools norm -m -both -N --check-ref s -f $ANNOTATION $TARGET.tmp.vcf.gz | sed 's/ID=Y/ID=24/' | sed 's/^Y/24/' | bgzip >$TARGET.vcf.gz ;;
         *)  bcftools norm -m -both -N --check-ref s -f $ANNOTATION $TARGET.tmp.vcf.gz | bgzip >$TARGET.vcf.gz ;;
     esac
 

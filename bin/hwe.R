@@ -9,8 +9,10 @@ dataset <- read.plink(bed=paste(basename,"bed",sep="."),
                       bim=paste(basename,"bim",sep="."),
                       fam=paste(basename,"fam",sep="."))
 annotation  <- read.csv(args[2], sep=" ", header=T)
+# sort by sample ID
+annotation_s <- annotation[order(annotation[,2]),]
 outfile = args[3]
-
+ethnicity = args[4]
 
 runHWE <- function(x, ii){
    obs_hom1 <- sum(x[ii]==0, na.rm=T)
@@ -29,27 +31,25 @@ hwe <-function(x, annotation){
    pval <- c()
    nsample <- c()
    i<-1
-   batch <- sort(unique(annotation$batch))
-#   print(paste("Found batches: ", batch))
    # change the ethnic group to what you want
-   eth <- "European" # user defined variable
+   eth <- ethnicity # user defined variable
 
    # calculate HWE across entire collection
-   ii <- annotation$phenotype=="1" & annotation$ethnicity_predicted ==eth
+   ii <- annotation$ethnicity_predicted ==eth
    ret <- runHWE(x, ii)
    pval[i] <- ret$pval
    nsample[i] <- ret$sample
    i<-i+1
    for (batch in batch){
       # calculate HWE for particular batch
-      ii <- annotation$phenotype=="1" & annotation$ethnicity_predicted ==eth & annotation$batch==batch
+      ii <- annotation$ethnicity_predicted ==eth & annotation$batch==batch
       ret <- runHWE(x, ii)
       pval[i] <- ret$pval
       nsample[i] <- ret$sample
       i<-i+1
 
       # calculate HWE for all batches excluding particular batch
-      ii <- annotation$phenotype=="1" & annotation$ethnicity_predicted ==eth & annotation$batch!=batch
+      ii <- annotation$ethnicity_predicted ==eth & annotation$batch!=batch
       ret <- runHWE(x, ii)
       pval[i] <- ret$pval
       nsample[i] <- ret$sample
@@ -59,7 +59,12 @@ hwe <-function(x, annotation){
 }
 
 genotypes = as(dataset$genotypes, "numeric")
-out <- t(apply(genotypes, 2, hwe, annotation))
+# sort by sample ID
+genotypes_s <- genotypes[order(rownames(genotypes)),]
+batch <- sort(unique(annotation$batch))
+#   print(paste("Found batches: ", batch))
+# for a correct association of the samples from the dataset to the sample in the annotations file, we apply the test on the sorted matrices:
+out <- t(apply(genotypes_s, 2, hwe, annotation_s))
 out <- out[,-1]
 if(file.exists(outfile)) {
    file.remove(outfile)

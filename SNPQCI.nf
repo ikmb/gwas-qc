@@ -16,6 +16,8 @@ hwe_script = file("${workflow.projectDir}/bin/hwe.R")
 // Lots of indirection layers require lots of backslash escaping
 individuals_annotation = file(params.individuals_annotation)
 definetti_r = file(SCRIPT_DIR + "/DeFinetti_hardy.r")
+definetti_quant_r = file(SCRIPT_DIR + "/DeFinetti_hardy_QuantTrait.r")
+
 //autosomes = file(ANNOTATION_DIR + "/" + params.chip_build + "/" + ChipDefinitions.Producer(params.chip_producer) + "/" + ChipDefinitions.RsAutosomes(params.chip_version))
 draw_fdr = file("${workflow.projectDir}/bin/SNP_QCI_draw_FDR.r")
 draw_fdr_allbatches = file("${workflow.projectDir}/bin/SNP_QCI_draw_FDR_Fail_allbatches.r")
@@ -27,6 +29,7 @@ to_calc_hwe = Channel.create()
 process merge_batches {
     label 'big_mem'
     tag "${params.collection_name}"
+    file individuals_annotation
 
     output:
     file "${params.collection_name}_Rs.bim" into merged_bim, to_split_bim, to_hwe_bim, to_verify_bim, to_exclude_bim, to_miss_bim, to_miss_batch_bim
@@ -34,6 +37,7 @@ process merge_batches {
     file "${params.collection_name}_Rs.fam" into merged_fam, to_hwe_fam, to_verify_fam, to_exclude_fam, to_miss_fam, to_miss_batch_fam
     file "${params.collection_name}_Rs.log"
     file "${params.collection_name}.indels" into preqc_hwe_indels,postqc_hwe_indels
+    file "ethnicities.txt" into ethnicities
 
     shell:
 
@@ -93,39 +97,9 @@ else
 fi
 ln -s !{params.rs_dir}/${INDELS[0]} !{params.collection_name}.indels
 plinkinfo.pl !{params.collection_name}_Rs.bim !{params.collection_name}_Rs.fam >info.txt
+gawk 'NR>1 { ethn[$8] += 1 } END { for(key in ethn) { print ethn[key] " " key } }' !{individuals_annotation} | sort --reverse --numeric-sort >ethnicities.txt
 
 '''
-}
-
-/*
- Generate HWE tables and draw DeFinetti plots of the whole data set
- */
-process hwe_definetti_preqc {
-  tag "${params.collection_name}"
-  publishDir params.snpqci_dir ?: '.', mode: 'copy', overwrite: true
-
-  input:
-    file definetti_r
-    file merged_bim
-    file merged_bed
-    file merged_fam
-    file indels from preqc_hwe_indels
-  output:
-    file "${params.collection_name}_controls_DeFinetti.jpg"
-    file "${params.collection_name}_cases_DeFinetti.jpg"
-    file "${params.collection_name}_cases_controls_DeFinetti.jpg"
-    file "${params.collection_name}_hardy.hwe"
-    file "${params.collection_name}_hardy.log"
-
-"""
-    module load IKMB
-    module load Plink/1.9
-MEM=${task.memory.toMega()-1000}
-
-plink --memory \$MEM --bfile ${merged_bim.baseName} --exclude ${indels} --make-bed --out no-indels
-plink --memory \$MEM --bfile no-indels --hardy --out ${params.collection_name}_hardy --hwe 0.0 --chr 1-22 --allow-no-sex
-R --slave --args ${params.collection_name}_hardy.hwe ${params.collection_name}_controls_DeFinetti ${params.collection_name}_cases_DeFinetti ${params.collection_name}_cases_controls_DeFinetti <$definetti_r
-"""
 }
 
 /*
@@ -143,16 +117,71 @@ input:
 
 output:
   file 'chunk_*' into to_calc_hwe
-
+  file 'is_quantitative.txt' into is_quant_preqc, is_quant_postqc
 shell:
 '''
   CONTROLS=$(awk '{if($9=="Control") print}' "!{individuals_annotation}"| wc -l)
-  if [ "$CONTROLS" -ge 1 ]; then
+  IS_QUANT=0
+  cut -f6 "!{individuals_annotation}" | tail -n +2 | sort | uniq >phenotypes
+  while read pheno; do
+    case "$pheno" in
+        -9|0|1|2) 
+            ;;
+        *) IS_QUANT=1
+            ;;
+    esac
+  done <phenotypes
+
+  echo $IS_QUANT >is_quantitative.txt
+
+  if [ "$CONTROLS" -ge 1 ] || [ "$IS_QUANT" == "1" ]; then
     cut -f 2 !{input_bim} | split -l 1000 -a 5 -d - chunk_
   else
     touch chunk_00000
   fi
 '''
+}
+
+/*
+ Generate HWE tables and draw DeFinetti plots of the whole data set
+ */
+process hwe_definetti_preqc {
+  tag "${params.collection_name}"
+  publishDir params.snpqci_dir ?: '.', mode: 'copy', overwrite: true
+
+  input:
+    file definetti_r
+    file definetti_quant_r
+    file merged_bim
+    file merged_bed
+    file merged_fam
+    file is_quantitative from is_quant_preqc
+    file indels from preqc_hwe_indels
+  output:
+    file ("${params.collection_name}_controls_DeFinetti.jpg") optional true
+    file ("${params.collection_name}_cases_DeFinetti.jpg") optional true
+    file ("${params.collection_name}_cases_controls_DeFinetti.jpg") optional true
+    file ("${params.collection_name}_DeFinetti.jpg") optional true
+    
+    file "${params.collection_name}_hardy.hwe"
+    file "${params.collection_name}_hardy.log"
+
+"""
+    module load IKMB
+    module load Plink/1.9
+MEM=${task.memory.toMega()-1000}
+
+#plink --memory \$MEM --bfile ${merged_bim.baseName} --exclude ${indels} --make-bed --out no-indels
+#plink --memory \$MEM --bfile no-indels --hardy --out ${params.collection_name}_hardy --hwe 0.0 --chr 1-22 --allow-no-sex
+plink --memory \$MEM --bfile ${merged_bim.baseName} --exclude ${indels} --hardy --out ${params.collection_name}_hardy --hwe 0.0 --chr 1-22 --allow-no-sex
+
+if [ "\$(cat ${is_quantitative})" == "0" ]; then
+    R --slave --args ${params.collection_name}_hardy.hwe ${params.collection_name}_controls_DeFinetti ${params.collection_name}_cases_DeFinetti ${params.collection_name}_cases_controls_DeFinetti <$definetti_r
+else
+    R --no-save --args ${params.collection_name}_hardy.hwe ${params.collection_name}_DeFinetti <$definetti_quant_r
+fi
+
+"""
 }
 
 
@@ -176,6 +205,7 @@ process calculate_hwe {
     file input_bed from to_hwe_bed
     file input_fam from to_hwe_fam
     file individuals_annotation
+    file ethnicities
 
   output:
   file "${chunk}-out.auto.R" into from_calc_hwe
@@ -191,14 +221,43 @@ MEM=!{task.memory.toMega()-1000}
 
 # Filter annotations to include only controls
 <!{individuals_annotation} mawk ' { if($9 == "Control" || $9 == "diagnosis") print $1,$2,$3,$4,$5,$6,$7,$8,$9,$10 }' >individuals_annotation
+NUM_CONTROLS=$(wc -l <individuals_annotation)
 
-ANNOT_LINES=$(wc -l <individuals_annotation)
+IS_QUANT=0
+cut -f6 "!{individuals_annotation}" | tail -n +2 | sort | uniq >phenotypes
+while read pheno; do
+    case "$pheno" in
+        -9|0|1|2) 
+            ;;
+        *) IS_QUANT=1
+            ;;
+    esac
+done <phenotypes
+
+# note that NUM_CONTROLS includes the header line so "1" means 0 controls
+# Overwrite the local copy if we're checking a quantitative trait but we have
+# no defined controls:
+if [ "$NUM_CONTROLS" == "1" ] && [ "$IS_QUANT" == "1" ]; then
+    cp !{individuals_annotation} individuals_annotation
+    # if it's quantitative and no controls have been defined, use everything.
+    FILTER_CONTROLS=""
+elif [ "$NUM_CONTROLS" -gt "1" ] && [ "$IS_QUANT" == "1" ]; then
+    # Plink can't handle control phenotype in a quantitative setting, so just
+    # handle them explicitly
+    cut -f1,2 | tail -n +2 individuals_annotation >keep.fam
+    FILTER_CONTROLS="--keep keep.fam"
+else
+    FILTER_CONTROLS="--filter-controls"
+fi
+
+# sorted by count, take the ethnicity with the highest count
+ETHNICITY=$(head -n1 !{ethnicities} | cut -f2 -d" ")
 
 # annotation file always has at least one header line
-if [ "$ANNOT_LINES" -gt 1 ]; then
+if [ "$NUM_CONTROLS" -gt 1 ] || [ "$IS_QUANT" == "1" ]; then
 
-    # Filter dataset
-    plink --memory $MEM --bfile "!{new File(input_bim.toString()).getBaseName()}" --filter-controls --extract !{chunk} --make-bed --out !{chunk}-controls.all
+    # Extract our chunk from the main dataset, keep only the controls.
+    plink --memory $MEM --bfile "!{new File(input_bim.toString()).getBaseName()}" $FILTER_CONTROLS --extract !{chunk} --make-bed --out !{chunk}-controls.all
 
     # It might be, that this chunk lies entirely in chr23, so the next one will fail and
     # we don't need to merge later on.
@@ -225,7 +284,7 @@ if [ "$ANNOT_LINES" -gt 1 ]; then
     fi
 
     # Calc HWE
-    Rscript !{hwe_script} !{chunk}-controls individuals_annotation !{chunk}-out.auto.R
+    Rscript !{hwe_script} !{chunk}-controls individuals_annotation !{chunk}-out.auto.R $ETHNICITY
 else
     touch !{chunk}-out.auto.R
 fi
@@ -436,11 +495,14 @@ process hwe_definetti_qci {
     input:
     file new_plink from draw_definetti_after
     file definetti_r
+    file definetti_quant_r
+    file is_quantitative from is_quant_postqc
     file indels from postqc_hwe_indels
 
     output:
     file prefix+".hwe"
-    file prefix+"_{cases,controls,cases_controls}_DeFinetti.jpg"
+    file (prefix+"_{controls,cases,cases_controls}_DeFinetti.jpg") optional true
+    file (prefix+"_DeFinetti.jpg") optional true
     file prefix+".log"
 
 """
@@ -448,10 +510,19 @@ process hwe_definetti_qci {
     module load Plink/1.9
 
 MEM=${task.memory.toMega()-1000}
-plink --bfile "${new File(new_plink[0].toString()).getBaseName()}" --exclude ${indels} --make-bed --out no-indels --memory \$MEM
-plink --bfile no-indels --hardy --out ${prefix} --hwe 0.0 --chr 1-22 --allow-no-sex --memory \$MEM
-mv no-indels.log ${prefix}.log
-R --slave --args ${prefix}.hwe ${prefix}_controls_DeFinetti ${prefix}_cases_DeFinetti ${prefix}_cases_controls_DeFinetti <"$definetti_r"
+#plink --bfile "${new File(new_plink[0].toString()).getBaseName()}" --exclude ${indels} --make-bed --out no-indels --memory \$MEM
+#plink --bfile no-indels --hardy --out ${prefix} --hwe 0.0 --chr 1-22 --allow-no-sex --memory \$MEM
+
+
+plink --bfile "${new File(new_plink[0].toString()).getBaseName()}" --exclude ${indels} --hardy --hwe 0.0 --chr 1-22 --allow-no-sex --out ${prefix} --memory \$MEM
+
+
+if [ "\$(cat ${is_quantitative})" == "0" ]; then
+    R --slave --args ${prefix}.hwe ${params.collection_name}_controls_DeFinetti ${params.collection_name}_cases_DeFinetti ${params.collection_name}_cases_controls_DeFinetti <$definetti_r
+else
+    R --slave --args ${prefix}.hwe ${params.collection_name}_DeFinetti <$definetti_quant_r
+fi
+
 """
 }
 

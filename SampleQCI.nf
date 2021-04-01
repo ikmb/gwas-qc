@@ -37,11 +37,12 @@ individuals_annotation = file(params.individuals_annotation)
 
 script_dir = file(SCRIPT_DIR)
 
-input_ch = Channel.create()
+for_det_miss_het_ds = Channel.create()
+for_calc_pi_hat_ds = Channel.create()
 Channel.fromFilePairs("${params.snpqci_dir}/${params.collection_name}_QCI.{bed,bim,fam}", size: 3, flat: true) { file -> file.baseName } \
     .ifEmpty{ error "Could not find Plink input dataset" } \
     .map { a -> [fileExists(a[1]), fileExists(a[2]), fileExists(a[3])] }
-    .separate (input_ch) { a -> [a] }
+    .separate (for_det_miss_het_ds, for_calc_pi_hat_ds) { a -> [a, a] }
 
 for_remove_bad_samples = Channel.create()
 Channel.fromFilePairs("${params.snpqci_dir}/${params.collection_name}_QCI.{bed,bim,fam}", size: 3, flat: true) { file -> file.baseName } \
@@ -59,25 +60,26 @@ prefix = params.collection_name + "_SampleQCI_"
 process apply_precalc_remove_list {
     tag "${params.collection_name}"
     input:
-    file plink from input_ch
+//    file plink from input_ch
 
     output:
-    file "manually-removed.{bed,bim,fam}" into for_det_miss_het, for_calc_pi_hat
+    //    file "manually-removed.{bed,bim,fam}" into for_det_miss_het, for_calc_pi_hat
+    file "removelist_manual" into for_det_miss_het, for_calc_pi_hat
 
 
     shell:
-    base = plink[0].baseName
 
 '''
 module load IKMB
 module load Plink/1.9
 
 if [ -e "!{params.individuals_remove_manually}" ]; then
-    plink --bfile "!{base}" --remove "!{params.individuals_remove_manually}" --make-bed --out manually-removed --allow-no-sex --memory !{task.memory.toMega()}
+    cp !{params.individuals_remove_manually} removelist_manual
 else
-    touch nofiles
-    plink --bfile "!{base}" --remove nofiles --make-bed --out manually-removed --allow-no-sex --memory !{task.memory.toMega()}
+    touch removelist_manual
 fi
+
+
 '''
 }
 
@@ -88,7 +90,8 @@ process determine_miss_het {
 	errorStrategy 'retry'
 
     input:
-        file dataset from for_det_miss_het
+        file dataset from for_det_miss_het_ds
+        file removelist from for_det_miss_het
 
     output:
     file prefix+"het.het.{1.png,2.png,logscale.1.png,logscale.2.png}"
@@ -106,9 +109,9 @@ shell:
 MEM=!{task.memory.toMega()-1000}
 
 # generates  miss.{hh,imiss,lmiss,log,nosex}
-plink --memory $MEM --bfile "!{new File(dataset[0].toString()).getBaseName()}" --out !{prefix}miss --missing
+plink --memory $MEM --bfile "!{new File(dataset[0].toString()).getBaseName()}" --remove !{removelist} --out !{prefix}miss --missing
 # generates het.{het,hh,log,nosex}
-plink --memory $MEM --bfile "!{new File(dataset[0].toString()).getBaseName()}" --chr 1-22 --out !{prefix}het --het
+plink --memory $MEM --bfile "!{new File(dataset[0].toString()).getBaseName()}" --remove !{removelist} --chr 1-22 --out !{prefix}het --het
 
 # might run in parallel with enough memory at hand:
 R --slave --args !{prefix}het.het !{prefix}miss.imiss < "!{script_dir + "/heterozygosity_logimiss_withoutthresh.r"}"
@@ -135,7 +138,8 @@ process prune {
     publishDir params.sampleqci_dir ?: '.', mode: 'copy'
 
     input:
-    file dataset from for_calc_pi_hat
+    file dataset from for_calc_pi_hat_ds
+    file removelist from for_calc_pi_hat
     file outliers from for_calc_pi_hat_outliers
 
     output:
@@ -151,9 +155,12 @@ process prune {
 """
     module load "IKMB"
     module load "Plink/1.9"
+
+    cat !{outliers} !{removelist} | sort | uniq >removelist
+
 echo Using PCA SNP List file and sample outliers for variant selection
 if [ ${params.skip_snpqc} -eq 0 ]; then
-    plink --bfile "${base}" --extract "$params.PCA_SNPList" --remove  "$outliers" --make-bed --out pruned
+    plink --bfile "${base}" --extract "$params.PCA_SNPList" --remove removelist --make-bed --out pruned
 else
     touch dummy
     plink --bfile "${base}" --extract "$params.PCA_SNPList" --remove dummy --make-bed --out pruned
@@ -165,15 +172,22 @@ fi
     module load "IKMB"
     module load "Plink/1.9"
 echo Generating PCA SNP List file for variant selection
-plink --bfile "${base}" --indep-pairwise 50 5 0.2 --out _prune --memory ${task.memory.toMega()} 
+
 if [ ${params.skip_snpqc} -eq 0 ]; then
-    plink --bfile "${base}" --extract _prune.prune.in --maf 0.05 --remove "$outliers" --make-bed --out intermediate --memory ${task.memory.toMega()} 
+    cat ${outliers} ${removelist} | sort | uniq >removelist
 else
-    touch dummy
-    plink --bfile "${base}" --extract _prune.prune.in --maf 0.05 --remove dummy --make-bed --out intermediate --memory ${task.memory.toMega()}
+    ln -s ${removelist} removelist
 fi
+
+plink --bfile "${base}" --remove removelist --indep-pairwise 50 5 0.2 --out _prune --memory ${task.memory.toMega()} 
+plink --bfile "${base}" --extract _prune.prune.in --maf 0.05 --remove removelist --write-snplist --out intermediate --memory ${task.memory.toMega()} 
+
 python -c 'from SampleQCI_helpers import *; write_snps_autosomes_noLDRegions_noATandGC_noIndels("${bim}", "include_variants")'
-plink --noweb --bfile intermediate --extract include_variants --make-bed --out "${prefix}pruned"
+
+# take intermediate.snplist and keep only those listed in include_variants
+grep -F -f include_variants intermediate.snplist >extract-snplist
+
+plink --bfile "${base}" --remove removelist --extract extract-snplist --make-bed --out "${prefix}pruned"
 """
     }
 }
@@ -579,24 +593,24 @@ process extract_qced_samples {
     file individuals_annotation
 
     output:
-    set file ("${dataset[0].baseName}.evec"), file ("${dataset[0].baseName}.country.evec") into for_draw_histograms_evec, for_prune_related_evec
-    file "${dataset[0].baseName}_annotation.txt" into for_draw_histograms_ann
+    set file ("${dataset[0].baseName}.pca.evec"), file ("${dataset[0].baseName}.country.evec") into for_draw_histograms_evec, for_prune_related_evec
+    file "${dataset[0].baseName}.annotation.txt" into for_draw_histograms_ann, tw_annotations
 
     shell:
     //individuals_annotation = ANNOTATION_DIR + "/${params.individuals_annotation}"
-    qced_annotations = "${dataset[0].baseName}_annotation.txt"
-    newevec = "${dataset[0].baseName}.evec"
+    qced_annotations = "${dataset[0].baseName}.annotation.txt"
+    newevec = "${dataset[0].baseName}.pca.evec"
     newcountryevec = "${dataset[0].baseName}.country.evec"
 
 '''
 if [ "!{params.skip_sampleqc}" = "1" ]; then
-    cp !{individuals_annotation} "!{dataset[0].baseName}_annotation.txt"
-    cp !{evec[0]} "!{dataset[0].baseName}.evec"
+    cp !{individuals_annotation} "!{dataset[0].baseName}.annotation.txt"
+    cp !{evec[0]} "!{dataset[0].baseName}.pca.evec"
     cp !{evec[1]} "!{dataset[0].baseName}.country.evec"
 else
     echo "Extract QCed samples from annotation file"
     python -c 'from SampleQCI_helpers import *; extract_QCsamples_from_pc_file("!{evec[0]}", "!{newevec}", "!{dataset[2]}")'
-    python -c 'from SampleQCI_helpers import *; extract_QCsamples_from_annotationfile("!{newevec}", "!{individuals_annotation}", "!{dataset[0].baseName}_annotation.txt")'
+    python -c 'from SampleQCI_helpers import *; extract_QCsamples_from_annotationfile("!{newevec}", "!{individuals_annotation}", "!{dataset[0].baseName}.annotation.txt")'
 
     python -c 'from SampleQCI_helpers import *; extract_QCsamples_from_pc_file("!{evec[1]}", "!{newcountryevec}", "!{dataset[2]}")'
 fi
@@ -643,14 +657,36 @@ process tracy_widom_stats {
     file logfile from for_tracy_widom_stats_log
     file dataset from for_tracy_widom_stats
     file eval from for_tracy_widom_stats_eval
+    file individuals_annotation from tw_annotations
 
     output:
-    file "*.tracy_widom"
+    file ("*.tracy_widom") optional true
 
     shell:
 '''
     module load 'IKMB'
     module load 'Eigensoft/6.1.4'
+
+
+  IS_QUANT=0
+  cut -f6 "!{individuals_annotation}" | tail -n +2 | sort | uniq >phenotypes
+  while read pheno; do
+    case "$pheno" in
+        -9|0|1|2) 
+            ;;
+        *) IS_QUANT=1
+            ;;
+    esac
+  done <phenotypes
+
+  echo $IS_QUANT >is_quantitative.txt
+
+
+if [ "$IS_QUANT" == "1" ]; then
+    exit 0
+fi
+
+
 NUM_CASES=$(grep -Po '\\d+(?= are cases)' !{logfile})
 NUM_CONTROLS=$(grep -Po '\\d+(?= are controls)' !{logfile})
 echo Cases: $NUM_CASES, controls: $NUM_CONTROLS
@@ -769,7 +805,7 @@ else
 plink --bfile "!{dataset[0].baseName}" --remove !{relatives} --make-bed --out "!{dataset[0].baseName}_withoutRelatives"
 
 
-python -c 'from SampleQCI_helpers import *; extract_QCsamples_from_pc_file("!{evec[0]}", "!{dataset[0].baseName}_withoutRelatives.pca.evec", "!{dataset[2]}")'
+python -c 'from SampleQCI_helpers import *; extract_QCsamples_from_pc_file("!{evec[0]}", "!{dataset[0].baseName}_withoutRelatives.pca.evec", "!{dataset[0].baseName}_withoutRelatives.fam")'
 python -c 'from SampleQCI_helpers import *; extract_QCsamples_from_annotationfile("!{dataset[0].baseName}_withoutRelatives.pca.evec", "!{individuals_annotation}", "!{dataset[0].baseName}_withoutRelatives.annotation.txt")'
 fi
 
@@ -812,12 +848,13 @@ plink --bfile "${base}" --extract "$params.PCA_SNPList" --remove  "$miss_outlier
 echo Generating PCA SNP List file for variant selection
 plink --bfile "${base}" --indep-pairwise 50 5 0.2 --out _prune
 if [ ${params.skip_snpqc} -eq 0 ]; then
-    plink --bfile "${base}" --extract _prune.prune.in --maf 0.05 --remove "$miss_outliers" --make-bed --out intermediate
+    plink --bfile "${base}" --extract _prune.prune.in --maf 0.05 --remove "$miss_outliers" --write-snplist --out intermediate
 else
-    plink --bfile "${base}" --extract _prune.prune.in --maf 0.05 --make-bed --out intermediate  
+    plink --bfile "${base}" --extract _prune.prune.in --maf 0.05 --write-snplist --out intermediate  
 fi
 python -c 'from SampleQCI_helpers import *; write_snps_autosomes_noLDRegions_noATandGC_noIndels("${bim}", "include_variants")'
-plink --noweb --bfile intermediate --extract include_variants --make-bed --out "${target}"
+grep -F -f include_variants intermediate.snplist >extract-variants
+plink --bfile "${base}" --extract extract-variants --make-bed --out "${target}"
 """
     }
 }
