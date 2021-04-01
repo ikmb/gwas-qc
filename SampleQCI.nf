@@ -593,24 +593,24 @@ process extract_qced_samples {
     file individuals_annotation
 
     output:
-    set file ("${dataset[0].baseName}.evec"), file ("${dataset[0].baseName}.country.evec") into for_draw_histograms_evec, for_prune_related_evec
-    file "${dataset[0].baseName}_annotation.txt" into for_draw_histograms_ann, tw_annotations
+    set file ("${dataset[0].baseName}.pca.evec"), file ("${dataset[0].baseName}.country.evec") into for_draw_histograms_evec, for_prune_related_evec
+    file "${dataset[0].baseName}.annotation.txt" into for_draw_histograms_ann, tw_annotations
 
     shell:
     //individuals_annotation = ANNOTATION_DIR + "/${params.individuals_annotation}"
-    qced_annotations = "${dataset[0].baseName}_annotation.txt"
-    newevec = "${dataset[0].baseName}.evec"
+    qced_annotations = "${dataset[0].baseName}.annotation.txt"
+    newevec = "${dataset[0].baseName}.pca.evec"
     newcountryevec = "${dataset[0].baseName}.country.evec"
 
 '''
 if [ "!{params.skip_sampleqc}" = "1" ]; then
-    cp !{individuals_annotation} "!{dataset[0].baseName}_annotation.txt"
-    cp !{evec[0]} "!{dataset[0].baseName}.evec"
+    cp !{individuals_annotation} "!{dataset[0].baseName}.annotation.txt"
+    cp !{evec[0]} "!{dataset[0].baseName}.pca.evec"
     cp !{evec[1]} "!{dataset[0].baseName}.country.evec"
 else
     echo "Extract QCed samples from annotation file"
     python -c 'from SampleQCI_helpers import *; extract_QCsamples_from_pc_file("!{evec[0]}", "!{newevec}", "!{dataset[2]}")'
-    python -c 'from SampleQCI_helpers import *; extract_QCsamples_from_annotationfile("!{newevec}", "!{individuals_annotation}", "!{dataset[0].baseName}_annotation.txt")'
+    python -c 'from SampleQCI_helpers import *; extract_QCsamples_from_annotationfile("!{newevec}", "!{individuals_annotation}", "!{dataset[0].baseName}.annotation.txt")'
 
     python -c 'from SampleQCI_helpers import *; extract_QCsamples_from_pc_file("!{evec[1]}", "!{newcountryevec}", "!{dataset[2]}")'
 fi
