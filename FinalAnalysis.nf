@@ -392,7 +392,7 @@ process twstats_final_pruned {
 
     output:
 
-    file "*.tracy_widom"
+    file ("*.tracy_widom") optional true
 
     shell:
 
@@ -404,6 +404,26 @@ process twstats_final_pruned {
     '''
     module load 'IKMB'
     module load 'Eigensoft/6.1.4'
+
+
+  IS_QUANT=0
+  cut -f6 "!{annotation}" | tail -n +2 | sort | uniq >phenotypes
+  while read pheno; do
+    case "$pheno" in
+        -9|0|1|2) 
+            ;;
+        *) IS_QUANT=1
+            ;;
+    esac
+  done <phenotypes
+
+  echo $IS_QUANT >is_quantitative.txt
+
+if [ "$IS_QUANT" == "1" ]; then
+    exit 0
+fi
+
+
 NUM_CASES=$(grep -Po '\\d+(?= are cases)' !{dataset.log})
 NUM_CONTROLS=$(grep -Po '\\d+(?= are controls)' !{dataset.log})
 echo Cases: $NUM_CASES, controls: $NUM_CONTROLS
