@@ -101,7 +101,7 @@ sub definetti_preqc {
       $dat->{'cases'} = "$dir/$2.jpg";
       $dat->{'cases/controls'} = "$dir/$3.jpg";
     }
-    if(/R --slave.*hwe (\S+) </) {
+    if(/R --no-save.*hwe (\S+) </) {
         $dat->{'quant'} = "$dir/$1.jpg";
     }
   }
