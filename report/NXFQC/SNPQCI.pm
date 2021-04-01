@@ -82,7 +82,7 @@ sub merge_datasets {
     while(<$etfh>) {
         chomp;
         my @parts = split / /;
-        $dat->{'ethnicities'}->{$parts[0]} = $parts[1];
+        $dat->{'ethnicities'}->{$parts[1]} = $parts[0];
     }
     return $dat;
 
@@ -252,20 +252,28 @@ sub build_report_chunk {
     } else {
         $s .= 'Only one input dataset is specified, dataset merge has been skipped. \\\\\\subsubsection{General Stats}';
     }
-    $s .= '\\\\';
     $s .= $merge->{'info'};
     my $ethnicities = $merge->{'ethnicities'};
-    $s .= '\\\\\\subsubsection{Ethnicity Report}\\\\';
+    $s .= '\\subsubsection{Ethnicity Report}';
     $s .= '\\begin{tabular}{ll}\\toprule';
-    $s .= '\textbf{Ethnicity} & \textbf{Samples}\\\\\\midrule';
-    foreach(sort {$a <=> $b} keys %$ethnicities) {
+    $s .= '\textbf{Ethnicity} & \textbf{Samples}\\\\\midrule';
+    my @ethn_sorted;
+    foreach my $e (sort {$ethnicities->{$a} <=> $ethnicities->{$b} } keys %$ethnicities) {
+        push(@ethn_sorted, $e);
+    }
+
+    foreach(@ethn_sorted) {
         $s .= $_ . '&' . $ethnicities->{$_} . "\\\\";
     }
+    #    foreach(sort {$a <=> $b} keys %$ethnicities) {
+    #    $s .= $_ . '&' . $ethnicities->{$_} . "\\\\";
+    #}
     $s .= '\\bottomrule';
     $s .= '\\end{tabular}\\\\';
 
-    my @sorted = sort { $a <=> $b } keys %$ethnicities;
-    my $ethnicity = $ethnicities->{$sorted[-1]};
+    #my @sorted = sort { $a <=> $b } keys %$ethnicities;
+    #my $ethnicity = $ethnicities->{$sorted[-1]};
+    my $ethnicity = $ethn_sorted[0];
 
     my $is_quant = $self->split_dataset();
 
