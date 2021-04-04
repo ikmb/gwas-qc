@@ -48,7 +48,7 @@ HG00102	    HG00102	        0	        0	        2	2	        1000G	European	     
 ```
 
 * familyID, individualID, paternalID, maternalID: can be copied from the Plink FAM file. The `individualID` must be unique. `paternalID` and `maternalID` are required but are currently not used.
-* sex, phenotype: same encoding as in the FAM file. For sex, 1/2 is male/female and for phenotype, 1/2 is control/case.
+* sex, phenotype: same encoding as in the FAM file. For sex, 1/2 is male/female and for phenotype, 1/2 is control/case for a binary trait. 0 or -9 represents "unknown" phenotype. Any value other than -9/0/1/2 represents a quantitative trait, i.e. if a value other than -9/0/1/2 is given in the phenotype column, a quantitative trait is assumed.
 * batch: used by principal component analysis to find batch effects. Can be set to the same value for all samples if you only have one batch.
 * ethnicity_predicted: used to provide a reference frame for PCA plots. Based on the numerically most frequently specified ethnicity in column "ethnicity_predicted" the HWE test is performed only for controls of that ethnicity (or for all samples with that ethnicity if it is a quantitative trait).
 * diagnosis: if the `phenotype` is 1, this should be control. Otherwise, pick a disease name for the cases. This is used in PCA effect analysis and diagnosis filtering (see "How to use").
