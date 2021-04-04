@@ -102,6 +102,10 @@ By default, the QC pipeline performs a Principal Component Analysis with a 1000 
 
 It is not recommended to use this feature for large datasets, e.g. >50,000 samples.
 
+### Duplicate/Relatedness Detection
+
+The QC pipeline performs duplicate/relatedness testing (identity-by-state (IBS) and identity-by-descent (IBD) estimation). Pairwise percentage IBD values are computed from a pruned subset of linkage disequilibrium (LD) independent genetic variants. The expectation is that IBD = 1 for duplicates or monozygotic twins, IBD = 0.5 for first-degree relatives, IBD = 0.25 for second-degree relatives and IBD = 0.125 for third-degree relatives. By default, one individual is removed from each pair with an IBD value of > 0.1875, which is halfway between the expected IBD for third- and second-degree relatives. To keep relatives, add the `--keep_related` parameter to the nextflow call.
+
 ## Advanced Configuration
 
 ### Local and Side-wide Configuration
