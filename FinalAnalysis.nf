@@ -114,8 +114,12 @@ plinkinfo.pl !{dataset.bim} !{dataset.fam} >info.txt
 plink --bim !{dataset.bim} --bed !{dataset.bed} --fam !{dataset.fam} --exclude unknowns --write-snplist --out no-unknowns
 
 plink --bim !{dataset.bim} --bed !{dataset.bed} --fam !{dataset.fam} --extract no-unknowns.snplist --indep-pairwise 50 5 0.2 --out after-indep-pairwise --allow-no-sex
-cat no-unknowns.snplist after-indep-pairwise.prune.in | sort | uniq -d >extract-for-maf
-plink --bim !{dataset.bim} --bed !{dataset.bed} --fam !{dataset.fam} --extract extract-for-maf --maf 0.05 --write-snplist --out after-correlated-remove --allow-no-sex
+
+# after-indep-pairwise.prune.in is a subset of no-unknowns.snplist -> building of intersection not required
+## build intersection of no-unknowns.snplist and after-indep-pairwise.prune.in
+#cat no-unknowns.snplist after-indep-pairwise.prune.in | sort | uniq -d >extract-for-maf
+#plink --bim !{dataset.bim} --bed !{dataset.bed} --fam !{dataset.fam} --extract extract-for-maf --maf 0.05 --write-snplist --out after-correlated-remove --allow-no-sex
+plink --bim !{dataset.bim} --bed !{dataset.bed} --fam !{dataset.fam} --extract after-indep-pairwise.prune.in --maf 0.05 --write-snplist --out after-correlated-remove --allow-no-sex
 mv after-indep-pairwise.prune.in "!{params.disease_data_set_prefix_release}.prune.in"
 mv after-indep-pairwise.prune.out "!{params.disease_data_set_prefix_release}.prune.out"
 mv unknowns "!{params.disease_data_set_prefix_release}.prune.out.unknown_variants"

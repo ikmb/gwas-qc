@@ -802,6 +802,7 @@ if [ "!{params.skip_sampleqc}" = "1" ]; then
     cp !{evec[0]} "!{dataset[0].baseName}_withoutRelatives.pca.evec"
     cp !{individuals_annotation} "!{dataset[0].baseName}_withoutRelatives.annotation.txt"
 else
+# use --keep-allele-order to have consistent bim-files in ...final and ...final_withoutRelatives datasets
 plink --bfile "!{dataset[0].baseName}" --remove !{relatives} --make-bed --keep-allele-order --out "!{dataset[0].baseName}_withoutRelatives"
 
 
