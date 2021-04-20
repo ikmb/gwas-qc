@@ -64,12 +64,13 @@ input_datasets.close()
 /* Additional external files (TODO) */
 //hapmap2_samples = file("/work_ifs/sukmb388/regeneron_annotations/hapmap2-annotations.txt")
 
-qc_config = parseQCConfig(params.qc_config)
 
 params.skip_snpqc = 0
 params.skip_sampleqc = 0
 params.keep_related = false
 params.batch_liftover = [:]
+
+qc_config = parseQCConfig(params.qc_config)
 
 Rs_script = getScriptPath("Rs.nf") //file("${workflow.scriptFile}/Rs.nf")
 SNPQCI_script = getScriptPath("SNPQCI.nf") //file("${params.nxfdir}/SNPQCI.nf")
