@@ -550,6 +550,7 @@ touch remove-samples
 
 if [ "!{params.skip_sampleqc}" = "1" ]; then
     plink --bfile !{pruned[0].baseName} --remove /dev/null --make-bed --out !{target_basename} --allow-no-sex
+    plinkinfo.pl !{target_basename}.bim !{target_basename}.fam >info.txt
     exit 0
 fi
 
