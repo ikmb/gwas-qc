@@ -260,6 +260,7 @@ ln -fs !{params.output}/!{dataset}/SampleQCI/!{prefix}.bim
 ln -fs !{params.output}/!{dataset}/SampleQCI/!{prefix}.fam
 ln -fs !{params.output}/!{dataset}/SampleQCI/!{prefix}.pca.evec
 cp SampleQC-!{dataset}.trace.txt !{params.output}/!{dataset}/SampleQCI/
+cp remove-samples !{params.output}/!{dataset}/SampleQCI/!{prefix}.remove-samples
 #cp *-qc.txt !{params.output}/!{dataset}/SampleQCI/
 '''
 }
