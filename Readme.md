@@ -197,6 +197,14 @@ profiles {
 
 Before launching the pipeline, please assure that the proper modules are loaded: `module load nextflow singularity`. Java should be loaded automatically as a dependency of Nextflow.
 
+## Citation instructions
+
+If you use our software in any published work, please cite our BIGwas software and methods paper: 
+
+Kässens JC, Wienbrandt L, Ellinghaus D. BIGwas: Single-command quality control
+and association testing for multi-cohort and biobank-scale GWAS/PheWAS data.
+Gigascience. 2021 Jun 29;10(6):giab047.
+
 ## License
 
 MIT License
