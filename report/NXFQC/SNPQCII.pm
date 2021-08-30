@@ -170,6 +170,7 @@ sub build_report_chunk {
     $s .= 'Total: & ' . $total . '\\\\';
     $s .= 'Unique: & ' . $unique . '\\\\\\bottomrule{}\end{tabular}\\\\';
     $s .= 'Additionally, ' . $mono->{'count'} . ' variants have been flagged as monomorphic. ' . $diag->{'count'} . ' samples have been removed due to unspecified or undeclared diagnoses. ';
+    $s .= "\\newpage";
     $s;
 }
 1

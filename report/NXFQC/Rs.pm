@@ -407,9 +407,10 @@ sub build_report_chunk {
     #   . $flip->{'loaded-variants'} . ' variants and '
     #   . ($flip->{'loaded-phenotypes'}) .' samples ('
     #   . $flip->{'final-cases'} . ' cases, ' . $flip->{'final-controls'} . ' controls, ' . ($flip->{'loaded-phenotypes'} - ($flip->{'final-cases'} + $flip->{'final-controls'})) . ' unknown). ';
-
+    $s .= "\\newpage";
 
     $s
+    
 }
 
 1

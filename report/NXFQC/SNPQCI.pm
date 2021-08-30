@@ -234,26 +234,26 @@ sub build_report_chunk {
     my $self = shift;
 
     my $s = "";
+    $s = '\section{Merging of Data}' . "%\n";
+    my $merge = $self->merge_datasets();    
+    my @ds = @{$merge->{'datasets'}};
+    print "DATASETS: " . Dumper(@ds) . "\n DATASET COUNT: " . scalar @ds . "\n";
+      if(scalar @ds > 1) {
+        $s .= 'The following datasets were merged: ' . sanitize(join(', ', @{$merge->{'datasets'}})) . '. ';
 
-    $s = '\section{SNP QC Phase I -- Missingness and Hardy-Weinberg}';
+          if($merge->{'multiallelic'} > 0) {
+            $s .= $merge->{'multiallelics'} . " variants were removed that would present 3 or more alleles after the dataset merge. ";
+          }
+      } else {
+          $s .= 'Only one input dataset is specified, dataset merge has been skipped. ';
+        }
+
+    $s .= '\section{SNP QC Phase I -- Missingness and Hardy-Weinberg}';
     my $miss = $self->exclude_missingness();
     my $hwe = $self->hwe_fdr_filter();
     my $bad = $self->exclude_bad_variants();
 
-    my $merge = $self->merge_datasets();
-
-    $s .= '\subsection{Dataset Merge}' . "%\n";
-    my @ds = @{$merge->{'datasets'}};
-    print "DATASETS: " . Dumper(@ds) . "\n DATASET COUNT: " . scalar @ds . "\n";
-    if(scalar @ds > 1) {
-        $s .= 'The following datasets were merged: ' . sanitize(join(', ', @{$merge->{'datasets'}})) . '. ';
-
-        if($merge->{'multiallelic'} > 0) {
-            $s .= $merge->{'multiallelics'} . " variants were removed that would present 3 or more alleles after the dataset merge. ";
-        }
-    } else {
-        $s .= 'Only one input dataset is specified, dataset merge has been skipped. ';
-    }
+    $s .= '\subsection{Data Overview}';
     $s .= '\subsubsection{General Stats}';
     $s .= $merge->{'info'};
     my $ethnicities = $merge->{'ethnicities'};
@@ -277,6 +277,7 @@ sub build_report_chunk {
     #my @sorted = sort { $a <=> $b } keys %$ethnicities;
     #my $ethnicity = $ethnicities->{$sorted[-1]};
     my $ethnicity = $ethn_sorted[0];
+    $s .= "\\newpage";
 
     my $is_quant = $self->split_dataset();
 
@@ -302,22 +303,6 @@ sub build_report_chunk {
     }
     $s .= "\\\\\n";
 
-    $s .= '\subsection{Exclusion Summary}';
-    my $percentage=0;
-    if($bad->{'loaded-variants'} != 0) {
-        $percentage = sprintf("%.1f", ($bad->{'loaded-variants'} - $bad->{'variants-after-exclude'}) * 100.0 / $bad->{'loaded-variants'});
-    }
-    $s .= 'Due to failing missingness and/or HWE tests, ' . ($bad->{'loaded-variants'} - $bad->{'variants-after-exclude'}) . " variants have been removed ($percentage\\,\\%):\\\\[1em]";
-    $s .= '\begin{tabular}{lr}\toprule{}';
-    $s .= 'Variants in whole collection failing missingness test (threshold ' . $miss->{'whole-thres'} . '): & ' . $miss->{'whole-count'} . '\\\\';
-    $s .= 'Variants failing missingness test with worst batch removed (threshold ' . $miss->{'perbatch-thres'} . '): & ' . $miss->{'perbatch-count'} . '\\\\';
-    $s .= 'Variants in whole collection failing HWE test (FDR <' . $fdr_thres . '): & ' . $hwe->{'all-count'} . '\\\\';
-    $s .= 'Variants failing HWE test with worst batch removed (FDR <' . $fdr_thres . '): & ' . $hwe->{'worstbatch-count'} . '\\\\';
-    $s .= 'Variants failing HWE test in 2+ batches (FDR <' . $fdr_thres . '): & ' . $hwe->{'twoplus-count'} . '\\\\';
-    $s .= '\midrule{}';
-    $s .= 'Total variants to be excluded: & ' . ($miss->{'whole-count'}+$miss->{'perbatch-count'}+$hwe->{'all-count'}+$hwe->{'worstbatch-count'}+$hwe->{'twoplus-count'}) . '\\\\';
-    $s .= 'Unique variants excluded: & ' . ($bad->{'loaded-variants'} - $bad->{'variants-after-exclude'}) . '\\\\\bottomrule{}\end{tabular}';
-
     my $def_pre = $self->definetti_preqc();
     my $def_post = $self->definetti_postqc();
     $s .= '\subsection{DeFinetti Diagrams}';
@@ -336,6 +321,25 @@ sub build_report_chunk {
 
     $s .= '\subsection{Phase Summary}';
     $s .= $bad->{'info'};
+
+
+    $s .= '\subsection{Exclusion Summary}';
+    my $percentage=0;
+    if($bad->{'loaded-variants'} != 0) {
+        $percentage = sprintf("%.1f", ($bad->{'loaded-variants'} - $bad->{'variants-after-exclude'}) * 100.0 / $bad->{'loaded-variants'});
+    }
+    $s .= 'Due to failing missingness and/or HWE tests, ' . ($bad->{'loaded-variants'} - $bad->{'variants-after-exclude'}) . " variants have been removed ($percentage\\,\\%):\\\\[1em]";
+    $s .= '\begin{tabular}{lr}\toprule{}';
+    $s .= 'Variants in whole collection failing missingness test (threshold ' . $miss->{'whole-thres'} . '): & ' . $miss->{'whole-count'} . '\\\\';
+    $s .= 'Variants failing missingness test with worst batch removed (threshold ' . $miss->{'perbatch-thres'} . '): & ' . $miss->{'perbatch-count'} . '\\\\';
+    $s .= 'Variants in whole collection failing HWE test (FDR <' . $fdr_thres . '): & ' . $hwe->{'all-count'} . '\\\\';
+    $s .= 'Variants failing HWE test with worst batch removed (FDR <' . $fdr_thres . '): & ' . $hwe->{'worstbatch-count'} . '\\\\';
+    $s .= 'Variants failing HWE test in 2+ batches (FDR <' . $fdr_thres . '): & ' . $hwe->{'twoplus-count'} . '\\\\';
+    $s .= '\midrule{}';
+    $s .= 'Total variants to be excluded: & ' . ($miss->{'whole-count'}+$miss->{'perbatch-count'}+$hwe->{'all-count'}+$hwe->{'worstbatch-count'}+$hwe->{'twoplus-count'}) . '\\\\';
+    $s .= 'Unique variants excluded: & ' . ($bad->{'loaded-variants'} - $bad->{'variants-after-exclude'}) . '\\\\\bottomrule{}\end{tabular}';
+    $s .= "\\newpage";
+
     $s
 }
 

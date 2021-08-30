@@ -350,13 +350,20 @@ sub add_images {
 sub build_report_chunk {
     my $self = shift;
 
-    my $s = '\section{Sample QC}';
+    my $s = '';
     my $misshet = $self->miss_het();
 
     my $ibs = $self->detect_duplicates_related();
     my $relatives = $self->remove_relatives();
     my $bad = $self->remove_bad_samples();
 
+    $s .= '\subsection{Missingness}\label{sec:miss}';
+    $s .= add_images(($misshet->{'img_miss1'}, $misshet->{'img_miss2'})) . "\n";
+    $s .= '\captionof{figure}{SNP missingness, scaled between 0...1 (left) and to threshold ' . $misshet->{'miss_threshold'} . ' (right)}' . "\n";
+    $s .= add_images(($misshet->{'img_miss1log'}, $misshet->{'img_miss2log'})) . "\n";
+    $s .= '\captionof{figure}{SNP missingness, log-scaled scaled between 0...1 (left) and to threshold ' . $misshet->{'miss_threshold'} . ' (right)}' . "\n";
+
+    $s .= '\section{Sample QC}';
     $s .= '\subsection{Summary: Sample Removal}';
     $s .= '\begin{tabular}{lr}\toprule{}';
     $s .= "Samples before QC:&".$bad->{'plink'}->{'loaded-phenotypes'}." total\\\\";
@@ -374,14 +381,7 @@ sub build_report_chunk {
     $s .= "\\end{tabular}\\\\";
     my $removed = $bad->{'unique'} + $ibs->{'rel'};
     $s .= "Of initially " . $bad->{'plink'}->{'loaded-phenotypes'} . " samples, $removed were removed (" . sprintf("%.2f\\,\\%%). ", 100.0*($removed/$bad->{'plink'}->{'loaded-phenotypes'})) . "\\\\";
-
-
-    $s .= '\subsection{Missingness}\label{sec:miss}';
-    $s .= add_images(($misshet->{'img_miss1'}, $misshet->{'img_miss2'})) . "\n";
-    $s .= '\captionof{figure}{SNP missingness, scaled between 0...1 (left) and to threshold ' . $misshet->{'miss_threshold'} . ' (right)}' . "\n";
-    $s .= add_images(($misshet->{'img_miss1log'}, $misshet->{'img_miss2log'})) . "\n";
-    $s .= '\captionof{figure}{SNP missingness, log-scaled scaled between 0...1 (left) and to threshold ' . $misshet->{'miss_threshold'} . ' (right)}' . "\n";
-
+    $s .= "\\newpage";
     $s .= '\subsection{Heterozygosity}\label{sec:het}' . "\n";
     $s .= add_images(($misshet->{'img_het1'}, $misshet->{'img_het2'})) . "\n";
     $s .= '\captionof{figure}{Heterozygosity, scaled between 0...1 (left) and to 5$\times$SD (right)}' . "\n";
@@ -447,6 +447,7 @@ sub build_report_chunk {
     $s .= '\centering\textbf{Without Related Individuals}\\\\';
     $s .= $relatives->{'info'};
     $s .= '\end{minipage}';
+    $s .= "\\newpage";
     $s
 
 }
