@@ -436,6 +436,8 @@ sub build_report_chunk {
     $s .= add_images(($relatives->{'ibs_img'}));
     $s .= ($ibs->{'dup'}) . " samples were identified as duplicates or identical twins (\$\\hat\\pi\\geq\$" . $ibs->{'thres_dup'} . "). ";
     $s .= "Additionally, " . $ibs->{'rel'} . " samples are closely related or inbred but not identical (\$\\hat\\pi\\geq\$ " . $ibs->{'thres_rel'} . "). ";
+    $s .= "By definition, \$Z0: P(\\text\{IBD\}=0)\$, \$Z1: P(\\text\{IBD\}=1)\$, \$Z2: P(\\text\{IBD\}=2)\$, \$Z0+Z1+Z2=1\$, and \$\\hat\\pi: P(\\text\{IBD\}=2) + 0.5 * P(\\text\{IBD\}=1)\$ (proportion identity-by-descent (IBD)). ";
+    $s .= "One individual (the one showing greater missingness) from each pair with \$\\hat\\pi > 0.1875\$ (which is halfway between expected IBD for third- and second degree relatives) is removed during QC. ";
 
     $s .= '\subsection{Phase Summary}';
     $s .= '\begin{minipage}{0.5\textwidth}%' . "\n";
