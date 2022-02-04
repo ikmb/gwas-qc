@@ -12,13 +12,24 @@ Typically, users would like to run the tool on an HPC instead of a single local 
 
 Note, that no separate installation of the pipeline software is necessary. During Nextflow's first launch, required scripts and containers are automatically downloaded and installed locally into a cache folder. If your HPC cluster has limited Internet connectivity, you might need to download some files manually (see [Shared Singularity Cache](#shared-singularity-cache)). If the current version on Github is updated, Nextflow prints a notice that the local copy is outdated. In that case, the local copy can be updated using `nextflow pull ikmb/gwas-qc`.
 
+**Note:** As we have a current issue with the hoster of our Singularity container, you need to download the container yourself and configure the path to the container before the first run of Nextflow. (Btw, the process is similar to setting up a [Shared Singularity Cache](#shared-singularity-cache).)
+```
+cd /some/place/for/your/container
+wget https://hybridcomputing.ikmb.uni-kiel.de/downloads/lwienbrandt-ikmb-gwas-qc-assoc-assets.sif
+```
+Then, add/modify the following key in your `~/.nextflow/config` (if the file does not exist, create it):
+```
+singularity.cacheDir = "/some/place/for/your/container"
+```
+
+
 ## Quick Start
 
 1. Get the example dataset: https://raw.githubusercontent.com/ikmb/gwas-qc/master/example.tar.gz
    - Note, that the example also contains files that will not be used by the QC, but for later marker association testing.
    - The example dataset is a subset of the 1000 Genomes Project, using 2504 samples with randomized sex and phenotype, and 50,000 randomly-selected variants.
 3. Unpack it in your home folder: `tar xvaf example.tar.gz -C $HOME; cd $HOME/example`
-4. Launch the pipeline: `nextflow run -c pipeline.config ikmb/gwas-qc`
+4. Launch the pipeline: `nextflow run -c pipeline.config ikmb/gwas-qc` (Please ensure that you followed beforementioned note about downloading the singulariry container first.)
 5. (optional) Use the QC output directly as input to the [Association Testing Pipeline](https://github.com/ikmb/gwas-assoc).
 
 The pipeline output and reports will be written to the `output` directory.
@@ -128,7 +139,7 @@ If your head node or compute nodes have restricted internet access, you need to 
 ```
 # the path under singularity.cacheDir, see above
 cd /some/shared/place/singularity
-singularity pull jkaessens-ikmb-gwas-qc-assoc.sif library://jkaessens/ikmb-gwas-qc-assoc
+wget https://hybridcomputing.ikmb.uni-kiel.de/downloads/lwienbrandt-ikmb-gwas-qc-assoc-assets.sif
 singularity pull saige-0.43.2.sif docker://wzhou88/saige:0.43.2
 ```
 
