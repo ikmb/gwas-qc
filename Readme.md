@@ -190,7 +190,7 @@ For optimal configuration on the UKSH medcluster, perform the following configur
 Create or change your `$HOME/.nextflow/config` file:
 ```
 // use pre-populated singularity image cache
-singularity.cacheDir = "/work_ifs/ikmb_repository/singularity-cache"
+singularity.cacheDir = "/work_ifs/ikmb_repository/singularity_cache"
 
 // bind /work_ifs folders. If you need more than $HOME and work_ifs, add another "-B /somewhere" switch.
 singularity.runOptions = "-B /work_ifs"
