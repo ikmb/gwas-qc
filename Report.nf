@@ -1,4 +1,5 @@
 
+nextflow.enable.dsl=1
 
 // params.traces - filename with list of traces, in order for report script
 // params.system - system info file
